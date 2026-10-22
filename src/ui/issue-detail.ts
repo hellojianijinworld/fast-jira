@@ -63,8 +63,9 @@ export function issueDetail(
   const url = safeHref(issue.url);
   const current = element("span", "breadcrumb-current");
   current.append(issueTypeIcon(issue), issueKeyCopy(issue.key, url, copied));
-  const breadcrumbs = issueBreadcrumbs(issue, known, api, select, current);
-  identity.append(breadcrumbs.element);
+  current.setAttribute("aria-current", "page");
+  const breadcrumbs = issueBreadcrumbs(issue, known, api, select);
+  identity.append(current);
   const history = issueHistory(api, issue.key);
   root.append(history.panel);
   const dismiss = iconButton("이슈 상세 닫기", "x");
@@ -87,7 +88,7 @@ export function issueDetail(
   form.append(input, save, cancel);
   form.hidden = true;
   titleRow.append(title, pencil, form);
-  root.append(head, titleRow);
+  root.append(breadcrumbs.element, head, titleRow);
   let alive = true;
   const refresh = createDetailState(() => {
     if (alive) refreshReady();

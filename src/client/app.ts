@@ -99,7 +99,14 @@ export async function createApp(
   loadingIndicator.setAttribute("aria-label", "이슈 불러오는 중");
   loadingIndicator.hidden = true;
   let detailLoading = false;
-  side.append(dashboard, detailHost);
+  const layout = matchMedia("(max-width: 900px)");
+  const dashboardFold = element("details", "dashboard-fold");
+  dashboardFold.open = !layout.matches;
+  dashboardFold.append(
+    element("summary", "dashboard-summary", "즐겨찾기 · 최근 이슈 · 활동"),
+    dashboard,
+  );
+  side.append(dashboardFold, detailHost);
   detailHost.hidden = true;
   const mobile = element("dialog", "detail-modal");
   mobile.setAttribute("aria-label", "이슈 상세");
@@ -165,7 +172,6 @@ export async function createApp(
     button.disabled = false;
 
   const debug = developerLog(root, logToggle, connectLog);
-  const layout = matchMedia("(max-width: 900px)");
   const split = createSplitPane(workspace, splitter, layout, storage);
   let render = () => {};
   const list = createListController(
@@ -699,6 +705,7 @@ export async function createApp(
     detailView?.refreshChildren();
     dashboardView();
     dashboard.hidden = bulk.active || Boolean(selectedKey);
+    dashboardFold.hidden = dashboard.hidden;
     detailHost.hidden = bulk.active || !selectedKey;
     const query = list.filters.q;
     searchInfo.replaceChildren();
@@ -788,7 +795,11 @@ export async function createApp(
     event.preventDefault();
     closeDetail();
   });
-  layout.addEventListener("change", placeDetail);
+  function changeLayout() {
+    dashboardFold.open = !layout.matches;
+    placeDetail();
+  }
+  layout.addEventListener("change", changeLayout);
   function popstate() {
     const key = new URL(location.href).searchParams.get("issue");
     if (key) {
@@ -966,7 +977,7 @@ export async function createApp(
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("focus", resume);
       window.removeEventListener("blur", resume);
-      layout.removeEventListener("change", placeDetail);
+      layout.removeEventListener("change", changeLayout);
       window.removeEventListener("popstate", popstate);
       panel.destroy();
       projectPanel.destroy();

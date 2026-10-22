@@ -6,6 +6,7 @@ import type { LogEntry } from "../src/domain/log.ts";
 import { record } from "../src/domain/validation.ts";
 import { type ChangeBatch, emptyIssue } from "../src/domain/wire.ts";
 import { element } from "../src/ui/dom.ts";
+import { issueCard } from "../src/ui/issue-card.ts";
 import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
 
@@ -425,6 +426,44 @@ const tick = () =>
   new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
+checks.push([
+  "모바일은 보조 정보를 접고 목록부터 보여주며 펼쳐도 재조회하지 않는다",
+  async () => {
+    const fold = root.querySelector<HTMLDetailsElement>(".dashboard-fold");
+    assert(fold, "보조 정보 접힘 영역 누락");
+    assert(
+      fold.open === !matchMedia("(max-width: 900px)").matches,
+      "초기 펼침 조건 불일치",
+    );
+    if (!fold.open) {
+      const before = calls.length;
+      const heading = root.querySelector(".project-heading");
+      assert(
+        heading && heading.getBoundingClientRect().top < 250,
+        "보조 정보가 목록을 밀어냄",
+      );
+      fold.querySelector("summary")?.click();
+      await tick();
+      assert(
+        fold.open &&
+          root.querySelector(".dashboard .activity-feed")?.getClientRects()
+            .length,
+        "기존 보조 정보 누락",
+      );
+      assert(calls.length === before, "펼침만으로 API 재조회");
+      fold.querySelector("summary")?.click();
+    }
+    const nav = root.querySelector(".top-nav");
+    const title = nav?.querySelector("h1");
+    assert(title && title.clientWidth >= title.scrollWidth, "서비스명 잘림");
+    for (const tool of root.querySelectorAll<HTMLElement>(
+      ".nav-tools button:not([hidden])",
+    )) {
+      const rect = tool.getBoundingClientRect();
+      assert(rect.left >= 0 && rect.right <= innerWidth, "상단 도구 넘침");
+    }
+  },
+]);
 checks.push([
   "다른 담당자의 조상도 내 작업의 부모 연결로 표시한다",
   () => {
@@ -1095,8 +1134,14 @@ checks.push([
       );
       assert(actions && author, "댓글 액션이 작성자 줄에 없다");
       assert(
-        actions.getBoundingClientRect().left >=
-          author.getBoundingClientRect().right - 1,
+        actions.getBoundingClientRect().top >=
+          author.getBoundingClientRect().bottom - 1
+          ? Math.abs(
+              actions.getBoundingClientRect().right -
+                header.getBoundingClientRect().right,
+            ) < 1
+          : actions.getBoundingClientRect().left >=
+              author.getBoundingClientRect().right - 1,
         "댓글 액션 우측 정렬 누락",
       );
       const copy = actions.querySelector('[aria-label="댓글 링크 복사"] use');
@@ -1394,18 +1439,20 @@ checks.push([
       const buttons = [...header.querySelectorAll("button")].filter(
         (button) => button.getClientRects().length,
       );
-      assert(
-        buttons.every(
-          (button) =>
-            Math.abs(
-              button.getBoundingClientRect().top +
-                button.getBoundingClientRect().height / 2 -
-                (buttons[0]?.getBoundingClientRect().top ?? 0) -
-                (buttons[0]?.getBoundingClientRect().height ?? 0) / 2,
-            ) < 1,
-        ),
-        "선택 액션이 한 줄에 있지 않다",
-      );
+      if (header.getBoundingClientRect().width > 560) {
+        assert(
+          buttons.every(
+            (button) =>
+              Math.abs(
+                button.getBoundingClientRect().top +
+                  button.getBoundingClientRect().height / 2 -
+                  (buttons[0]?.getBoundingClientRect().top ?? 0) -
+                  (buttons[0]?.getBoundingClientRect().height ?? 0) / 2,
+              ) < 1,
+          ),
+          "선택 액션이 한 줄에 있지 않다",
+        );
+      }
       assert(
         getComputedStyle(header.parentElement as HTMLElement).position !==
           "fixed",
@@ -1641,6 +1688,9 @@ checks.push([
       ".dashboard .issue-card",
     );
     const copy = recentCard?.querySelector<HTMLButtonElement>("button");
+    const fold = root.querySelector<HTMLDetailsElement>(".dashboard-fold");
+    const wasOpen = fold?.open;
+    if (fold) fold.open = true;
     copy?.focus();
     app.list.updateMany([], new Set());
     assert(
@@ -1648,6 +1698,7 @@ checks.push([
       "동일 데이터의 최근 카드를 다시 만들었다",
     );
     assert(document.activeElement === copy, "최근 카드의 포커스를 잃었다");
+    if (fold && wasOpen !== undefined) fold.open = wasOpen;
     const card = root.querySelector(".browse-list a.list-title");
     await app.checkChanges();
     assert(
@@ -1712,13 +1763,17 @@ checks.push([
     scroller.scrollTop = 600;
     await new Promise((resolve) => setTimeout(resolve, 220));
     await tick();
-    const top = scroller.getBoundingClientRect().top;
+    // 고정 경로에 가려진 카드 대신 실제로 읽을 수 있는 첫 카드를 추적한다.
+    const top =
+      scroller.getBoundingClientRect().top +
+      (Number.parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0);
     const card = [
       ...root.querySelectorAll<HTMLAnchorElement>(".browse-list a.list-title"),
     ].find(
       (card) =>
         !card.closest(".tree-parent") &&
-        card.getBoundingClientRect().bottom > top,
+        (card.closest(".list-item") ?? card).getBoundingClientRect().bottom >
+          top,
     );
     assert(card && scroller.scrollTop > 0, "스크롤 검사 카드 누락");
     const href = card.getAttribute("href"),
@@ -1744,7 +1799,7 @@ checks.push([
       ?.getBoundingClientRect().top;
     assert(
       after !== undefined && Math.abs(after - before) < 2,
-      "읽던 카드 위치가 이동했다",
+      `읽던 카드 위치가 이동했다: ${href} ${before} → ${after}`,
     );
   },
 ]);
@@ -1815,6 +1870,17 @@ checks.push([
     assert(setting, "개발자 설정 누락");
     setting.click();
     button("닫기").click();
+    const navTitle = root.querySelector<HTMLElement>(".top-nav h1");
+    assert(
+      navTitle && navTitle.clientWidth >= navTitle.scrollWidth,
+      "개발자 모드 서비스명 잘림",
+    );
+    const logRect = button("개발자 로그 켜기").getBoundingClientRect();
+    assert(
+      logRect.right <= innerWidth &&
+        logRect.width >= (innerWidth <= 900 ? 32 : 34),
+      "개발자 도구 넘침",
+    );
     button("개발자 로그 켜기").click();
     assert(
       Number(logConnections) === 1 &&
@@ -2980,6 +3046,302 @@ checks.push([
       );
       app.closeDetail();
     }
+  },
+]);
+
+checks.push([
+  "멘션 후보의 첫 Escape는 상세·초안·초점을 유지하고 후보만 닫는다",
+  async () => {
+    await app.select("TEST-3");
+    button("댓글 추가").click();
+    const input = root.querySelector<HTMLElement>(
+      '.comments [contenteditable="true"]',
+    );
+    assert(input, "댓글 입력 누락");
+    const paragraph = input.querySelector("p");
+    assert(paragraph, "편집 문단 누락");
+    paragraph.textContent = "보존할 초안 @동";
+    input.focus();
+    const range = document.createRange();
+    assert(paragraph.firstChild, "멘션 텍스트 누락");
+    range.setStart(paragraph.firstChild, paragraph.textContent.length);
+    range.collapse(true);
+    getSelection()?.removeAllRanges();
+    getSelection()?.addRange(range);
+    input.dispatchEvent(new Event("input"));
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    assert(input.getAttribute("aria-expanded") === "true", "멘션 후보 누락");
+    const escapeEvent = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    input.dispatchEvent(escapeEvent);
+    assert(escapeEvent.defaultPrevented, "후보 Escape가 상세 닫기까지 전달됨");
+    assert(
+      input.isConnected &&
+        input.textContent === "보존할 초안 @동" &&
+        document.activeElement === input,
+      "멘션 초안/초점 손실",
+    );
+    assert(
+      input.getAttribute("aria-expanded") === "false",
+      "멘션 후보가 닫히지 않음",
+    );
+    const next = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    input.dispatchEvent(next);
+    assert(!next.defaultPrevented, "후보 없는 Escape 기본 동작을 차단함");
+    app.closeDetail();
+  },
+]);
+checks.push([
+  "화면 폭이 바뀌면 열린 선택기만 닫고 값과 상세를 유지한다",
+  async () => {
+    await app.select("TEST-3");
+    button("상태").click();
+    await tick();
+    assert(root.querySelector(".select-options:popover-open"), "선택기 누락");
+    const detail = root.querySelector(".issue-detail");
+    const selected = root.querySelector<HTMLSelectElement>(
+      '[aria-label="상태"]',
+    )?.value;
+    const descriptor = Object.getOwnPropertyDescriptor(window, "innerWidth");
+    try {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: innerWidth + 100,
+      });
+      window.dispatchEvent(new Event("resize"));
+      assert(
+        !root.querySelector(".select-options:popover-open"),
+        "폭 변경 뒤 이전 좌표의 선택기가 남음",
+      );
+      assert(
+        root.querySelector(".issue-detail") === detail &&
+          root.querySelector<HTMLSelectElement>('[aria-label="상태"]')
+            ?.value === selected,
+        "회전이 상세/값을 변경함",
+      );
+      assert(
+        document.activeElement === button("상태"),
+        "닫힌 선택기에 초점이 남음",
+      );
+    } finally {
+      if (descriptor) Object.defineProperty(window, "innerWidth", descriptor);
+      window.dispatchEvent(new Event("resize"));
+      app.closeDetail();
+    }
+  },
+]);
+
+checks.push([
+  "실제 카드 폭이 좁아져도 간단히 보기의 제목과 배지 정보를 유지한다",
+  () => {
+    const compact = document.documentElement.dataset.compact;
+    const host = element("div", "issue-list-container");
+    host.style.cssText = "width:230px;position:fixed;top:0;left:0";
+    const card = issueCard(
+      {
+        ...emptyIssue(
+          "TEST-100",
+          "다양한 정보를 담은 긴 카드 제목을 읽을 수 있어야 합니다",
+        ),
+        assignee: "긴 이름의 담당자",
+        status: "개발 진행 중",
+        commentCount: 2,
+        dueDate: "2026-12-31",
+        priority: "높음",
+      },
+      { statusOrder: ["개발 진행 중"], onSelect() {} },
+    );
+    host.append(card);
+    document.body.append(host);
+    document.documentElement.dataset.compact = "true";
+    try {
+      const title = card.querySelector<HTMLElement>(".list-title");
+      assert(
+        title && title.getBoundingClientRect().width > 180,
+        "좁은 카드에서 제목이 사라짐",
+      );
+      assert(card.scrollWidth <= card.clientWidth, "배지가 카드를 넘어감");
+      assert(
+        card.querySelector(".status-pill")?.getClientRects().length,
+        "좁은 카드에서 상태 누락",
+      );
+    } finally {
+      host.remove();
+      if (compact === undefined)
+        delete document.documentElement.dataset.compact;
+      else document.documentElement.dataset.compact = compact;
+    }
+  },
+]);
+checks.push([
+  "좁은 일괄 작업 바는 동작 이름을 보여주고 가로로 넘치지 않는다",
+  () => {
+    app.closeDetail();
+    button("이슈 선택 모드").click();
+    try {
+      const bar = root.querySelector<HTMLElement>(".bulk-bar");
+      assert(
+        bar && bar.scrollWidth <= bar.clientWidth,
+        "일괄 작업 바 가로 넘침",
+      );
+      const actions = root.querySelectorAll<HTMLElement>(
+        ".bulk-actions button",
+      );
+      assert(actions.length === 6, "일괄 동작 누락");
+      for (const action of actions) {
+        assert(
+          Number.parseFloat(getComputedStyle(action).fontSize) >= 12,
+          "일괄 동작 이름 숨김",
+        );
+        if (innerWidth <= 900)
+          assert(
+            action.getBoundingClientRect().height >= 32,
+            "일괄 동작 터치 영역 부족",
+          );
+      }
+    } finally {
+      button("선택 종료").click();
+    }
+  },
+]);
+
+checks.push([
+  "상세 상위 경로는 전체 폭을 쓰고 긴 내용을 내려도 닫기 행이 보인다",
+  async () => {
+    await app.select("TEST-3");
+    const article = root.querySelector<HTMLElement>(".issue-detail");
+    const head = root.querySelector<HTMLElement>(".detail-head");
+    const path = root.querySelector<HTMLElement>(".detail-breadcrumbs");
+    assert(article && head && path, "상세 헤더 누락");
+    head.style.width = "min(100%, 259px)";
+    const fillers = Array.from({ length: 20 }, () =>
+      element("p", "", "길어진 설명과 댓글을 읽는 상황입니다. ".repeat(5)),
+    );
+    const scroller = root.querySelector<HTMLElement>(
+      matchMedia("(max-width: 900px)").matches
+        ? ".detail-content"
+        : ".detail-pane",
+    );
+    assert(scroller, "상세 스크롤 영역 누락");
+    const before = scroller.scrollTop;
+    try {
+      assert(
+        !head.contains(path) &&
+          path.getBoundingClientRect().width >=
+            head.getBoundingClientRect().width - 1,
+        "상위 경로가 동작 버튼과 좁은 폭을 공유함",
+      );
+      article.append(...fillers);
+      scroller.scrollTop = scroller.scrollHeight;
+      await tick();
+      const close = button("이슈 상세 닫기").getBoundingClientRect();
+      const bounds = scroller.getBoundingClientRect();
+      assert(
+        close.top >= bounds.top && close.bottom <= bounds.bottom,
+        "스크롤 후 상세 닫기가 화면 밖으로 사라짐",
+      );
+      assert(head.scrollWidth <= head.clientWidth, "상세 키와 버튼 가로 넘침");
+      const current = head.querySelector(".breadcrumb-current");
+      const actions = head.querySelector(".detail-head-actions");
+      assert(
+        current &&
+          actions &&
+          current.getBoundingClientRect().right <=
+            actions.getBoundingClientRect().left,
+        "이슈 키와 즐겨찾기/기록 버튼이 겹침",
+      );
+    } finally {
+      for (const filler of fillers) filler.remove();
+      head.style.removeProperty("width");
+      scroller.scrollTop = before;
+      app.closeDetail();
+    }
+  },
+]);
+checks.push([
+  "작은 화면의 카드·댓글 조작은 S 크기와 보조 버튼 크기를 구분한다",
+  async () => {
+    if (!matchMedia("(max-width: 900px)").matches) return;
+    await app.select("TEST-3");
+    await tick();
+    for (const control of root.querySelectorAll<HTMLElement>(
+      ".comment-toolbar button, .breadcrumb-current .card-copy",
+    )) {
+      assert(
+        control.getBoundingClientRect().height >=
+          (control.matches(".card-copy") ? 24 : 32),
+        "댓글/복사 조작 크기가 S 기준보다 작음",
+      );
+    }
+    app.closeDetail();
+    for (const control of root.querySelectorAll<HTMLElement>(
+      ".browse .tree-toggle, .browse .card-copy, .browse .card-view-button",
+    )) {
+      if (control.getClientRects().length)
+        assert(
+          control.getBoundingClientRect().height >=
+            (control.matches(".card-copy") ? 24 : 32),
+          "목록 조작 크기가 S 기준보다 작음",
+        );
+    }
+  },
+]);
+
+checks.push([
+  "좁은 화면의 버튼·선택기·필드 간격은 함께 작아지고 작성 글자는 읽을 수 있다",
+  async () => {
+    await app.select("TEST-3");
+    const small = matchMedia("(max-width: 900px)").matches;
+    const controls = [
+      ...root.querySelectorAll<HTMLElement>(".detail-field .select-trigger"),
+    ];
+    assert(controls.length === 3, "상세 선택기 누락");
+    for (const control of controls) {
+      const height = control.getBoundingClientRect().height;
+      assert(
+        height >= 30 && height <= (small ? 34 : 36),
+        "선택기가 공통 크기를 벗어남",
+      );
+    }
+    const fields = root.querySelector<HTMLElement>(".detail-fields");
+    assert(
+      fields &&
+        Number.parseFloat(getComputedStyle(fields).rowGap) <= (small ? 12 : 16),
+      "필드 간격이 지나치게 큼",
+    );
+    const field = root.querySelector<HTMLElement>(".detail-field");
+    assert(
+      field &&
+        Number.parseFloat(getComputedStyle(field).rowGap) <= (small ? 4 : 6),
+      "레이블 간격이 지나치게 큼",
+    );
+    button("댓글 추가").click();
+    const save = button("댓글 저장");
+    assert(
+      Math.abs(
+        save.getBoundingClientRect().height -
+          (controls[0]?.getBoundingClientRect().height ?? 0),
+      ) < 2,
+      "버튼과 선택기 크기가 다름",
+    );
+    if (innerWidth <= 600) {
+      const date = root.querySelector<HTMLElement>(
+        '.detail-field input[type="date"]',
+      );
+      assert(
+        date && Number.parseFloat(getComputedStyle(date).fontSize) >= 16,
+        "직접 입력 글자까지 작아짐",
+      );
+    }
+    button("취소").click();
+    app.closeDetail();
   },
 ]);
 

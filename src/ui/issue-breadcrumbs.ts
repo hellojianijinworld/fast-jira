@@ -9,7 +9,6 @@ export function issueBreadcrumbs(
   known: ReadonlyMap<string, Issue>,
   api: Pick<Api, "ancestors">,
   select: (key: string) => void,
-  currentItem?: HTMLElement,
 ) {
   const root = element("nav", "detail-breadcrumbs");
   root.setAttribute("aria-label", "상위 이슈 경로");
@@ -34,8 +33,8 @@ export function issueBreadcrumbs(
       }
       current = parent;
     }
-    root.hidden = !path.length && !currentItem;
-    for (const parent of path) {
+    root.hidden = !path.length;
+    for (const [index, parent] of path.entries()) {
       const link = element("a");
       if (parent.issueType)
         link.append(
@@ -57,12 +56,8 @@ export function issueBreadcrumbs(
         event.preventDefault();
         select(parent.key);
       });
-      root.append(link, uiIcon("chevron-right"));
-    }
-    if (path.length || currentItem) {
-      const current = currentItem ?? element("span", "", issue.key);
-      current.setAttribute("aria-current", "page");
-      root.append(current);
+      root.append(link);
+      if (index < path.length - 1) root.append(uiIcon("chevron-right"));
     }
     return missing;
   }

@@ -170,6 +170,8 @@ export function mentionPicker(
     (event) => {
       if (event.isComposing || composing) return;
       if (event.key === "Escape") {
+        if (inline && menu.panel.matches(":popover-open"))
+          event.preventDefault();
         close();
         return;
       }

@@ -10,7 +10,7 @@ button {
   justify-content: center;
   gap: 6px;
   min-height: var(--button-height);
-  padding: 0 12px;
+  padding: 0 var(--button-padding-x);
   border: 1px solid transparent;
   border-radius: 7px;
   background: var(--button-bg);
@@ -32,7 +32,7 @@ input,
 textarea,
 select {
   min-width: 0;
-  padding: 7px 10px;
+  padding: var(--control-padding-y) var(--control-padding-x);
   border: 1px solid var(--border-strong);
   border-radius: 7px;
   background: var(--surface);
@@ -46,9 +46,9 @@ a {
   color: var(--blue);
 }
 .tool-button {
-  width: 34px;
-  min-width: 34px;
-  height: 34px;
+  width: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  height: var(--icon-button-size);
   padding: 0;
   color: var(--muted);
   background: transparent;
@@ -59,8 +59,8 @@ a {
 }
 .ui-icon {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: var(--control-icon-size);
+  height: var(--control-icon-size);
   aspect-ratio: 1;
   fill: none;
   stroke: currentColor;
@@ -377,6 +377,26 @@ a {
   overflow: hidden;
 }
 
+/* 중첩 깊이와 무관하게 카드 자체의 가독폭을 확보한다. */
+@container issue-card (max-width: 480px) {
+  :root .issue-card .list-item {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  :root .issue-card .list-meta {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+}
+@container issue-card (max-width: 360px) {
+  :root .issue-card .list-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :root .issue-card .list-title {
+    grid-column: 1;
+  }
+}
+
 .status-pill,
 .date-pill,
 .comment-pill,
@@ -401,8 +421,8 @@ a {
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
+  min-height: var(--button-height);
+  padding: var(--control-padding-y) var(--control-padding-x);
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
@@ -461,8 +481,8 @@ a {
   justify-content: flex-start;
   gap: 8px;
   width: 100%;
-  min-height: 36px;
-  padding: 8px 9px;
+  min-height: var(--option-height);
+  padding: var(--control-padding-y) var(--control-padding-x);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -484,8 +504,8 @@ a {
 }
 .select-option .avatar,
 .select-trigger .avatar {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 .select-option-copy {
   display: grid;
@@ -682,7 +702,7 @@ a {
   font-weight: 600;
 }
 .filter-section {
-  margin-bottom: 20px;
+  margin-bottom: var(--section-gap);
 }
 .filter-section .filter-section {
   margin: 0;
@@ -920,7 +940,7 @@ a {
 
 .detail-child-section {
   position: relative;
-  margin-top: 24px;
+  margin-top: var(--section-gap);
   border-top: 1px solid var(--border);
   padding-top: 16px;
 }
@@ -958,7 +978,7 @@ a {
   justify-content: space-between;
   gap: 12px;
   flex: none;
-  padding: 16px 20px;
+  padding: var(--field-row-gap) var(--pane-padding);
   border-bottom: 1px solid var(--border);
 }
 .view-panel-heading {
@@ -987,14 +1007,14 @@ a {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 18px 20px;
+  padding: var(--field-row-gap) var(--pane-padding);
 }
 .view-panel > .filter-footer {
   position: static;
   flex: none;
   flex-wrap: wrap;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: 12px var(--pane-padding);
 }
 .view-footer-actions {
   display: flex;

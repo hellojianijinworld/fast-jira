@@ -18,7 +18,11 @@ const fieldLabels: Record<string, string> = {
 };
 /** 변경 전에는 읽은 페이지를 재사용하고, 수정 뒤에는 다음 열기에 최신 페이지부터 확인한다. */
 export function issueHistory(api: Pick<Api, "history">, key: string) {
-  const trigger = actionButton("변경 기록", "history");
+  const trigger = actionButton("기록", "history");
+  trigger.setAttribute("aria-label", "변경 기록");
+  trigger
+    .querySelector("span")
+    ?.prepend(element("span", "history-prefix", "변경 "));
   const panel = element("section", "history-panel");
   panel.popover = "auto";
   panel.id = `history-${key}`;

@@ -254,6 +254,18 @@ export function enhanceSelect(
     () => trigger.setAttribute("aria-expanded", String(isOpen())),
     { signal },
   );
+  let viewportWidth = innerWidth;
+  window.addEventListener(
+    "resize",
+    () => {
+      if (innerWidth === viewportWidth) return;
+      viewportWidth = innerWidth;
+      const restoreFocus = panel.contains(document.activeElement);
+      close();
+      if (restoreFocus && trigger.isConnected) trigger.focus();
+    },
+    { signal },
+  );
   select.addEventListener("change", sync, { signal });
   const observer = new MutationObserver(sync);
   observer.observe(select, {

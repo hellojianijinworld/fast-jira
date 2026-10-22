@@ -62,6 +62,16 @@
 :root {
   --button-height: 34px;
   --button-font-size: 13px;
+  --button-padding-x: 12px;
+  --control-padding-x: 10px;
+  --control-padding-y: 4px;
+  --icon-button-size: 34px;
+  --control-icon-size: 18px;
+  --option-height: 36px;
+  --field-label-gap: 6px;
+  --field-row-gap: 16px;
+  --field-column-gap: 20px;
+  --section-gap: 20px;
   --nav-height: 58px;
   --pane-padding: 20px;
   --pane-heading-height: 32px;
@@ -174,7 +184,7 @@ main {
   padding: 16px;
 }
 .issue-detail {
-  padding: 20px 24px 32px;
+  padding: var(--pane-padding) var(--pane-padding) var(--section-gap);
 }
 .detail-head,
 .dialog-head {
@@ -202,12 +212,12 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 20px 28px;
-  margin-bottom: 24px;
+  gap: var(--field-row-gap) var(--field-column-gap);
+  margin-bottom: var(--section-gap);
 }
 .detail-field {
   display: grid;
-  gap: 8px;
+  gap: var(--field-label-gap);
   min-width: 0;
   max-width: 100%;
   font-size: 12px;
@@ -228,7 +238,7 @@ main {
   font-size: 11px;
 }
 .detail-description {
-  padding-top: 16px;
+  padding-top: var(--field-row-gap);
   border-top: 1px solid var(--border);
 }
 .detail-modal {
@@ -300,6 +310,24 @@ dialog::backdrop {
   display: none;
 }
 @media (max-width: 900px) {
+  :root {
+    --button-height: 32px;
+    --button-padding-x: 8px;
+    --control-padding-x: 8px;
+    --control-padding-y: 3px;
+    --icon-button-size: 32px;
+    --control-icon-size: 16px;
+    --option-height: 32px;
+    --field-label-gap: 4px;
+    --field-row-gap: 12px;
+    --field-column-gap: 16px;
+    --section-gap: 16px;
+    --pane-padding: 14px;
+    --nav-height: 50px;
+  }
+  .detail-title {
+    font-size: 18px;
+  }
   .workspace {
     overflow-anchor: none;
     display: flex;
@@ -340,7 +368,7 @@ dialog::backdrop {
   }
   .dashboard,
   .issue-detail {
-    padding: 16px;
+    padding: var(--pane-padding);
   }
   .search-form {
     flex-wrap: wrap;
@@ -355,7 +383,7 @@ dialog::backdrop {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin: 16px 0;
+  margin: var(--field-row-gap) 0;
 }
 .detail-title-row .detail-title {
   flex: 0 1 auto;
@@ -427,8 +455,8 @@ dialog::backdrop {
 
 .comments {
   border-top: 1px solid var(--border);
-  margin-top: 24px;
-  padding-top: 16px;
+  margin-top: var(--section-gap);
+  padding-top: var(--field-row-gap);
 }
 .comments-head {
   display: flex;
@@ -553,17 +581,37 @@ dialog::backdrop {
   font-size: 13px;
 }
 .bulk-head button {
-  min-height: 30px;
+  min-height: var(--button-height);
   padding: 0 6px;
   font-size: 12px;
   white-space: nowrap;
 }
 @container (max-width: 560px) {
+  .bulk-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .bulk-head > strong {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .bulk-head > .tool-button {
+    grid-column: 2;
+    grid-row: 1;
+    width: var(--icon-button-size);
+    height: var(--icon-button-size);
+  }
+  .bulk-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 6px;
+    min-width: 0;
+  }
   .bulk-actions button {
-    width: 30px;
-    min-width: 30px;
-    font-size: 0;
-    gap: 0;
+    min-width: 0;
+    min-height: var(--button-height);
   }
 }
 .bulk-result:not(:empty) {
@@ -758,7 +806,7 @@ dialog::backdrop {
 }
 
 .detail-children {
-  margin-top: 24px;
+  margin-top: var(--section-gap);
   border-top: 1px solid var(--border);
   padding-top: 16px;
 }
@@ -824,6 +872,7 @@ button.debug-line[aria-pressed="true"] {
 }
 
 .issue-card {
+  container: issue-card / inline-size;
   position: relative;
   min-width: 0;
 }
@@ -939,10 +988,10 @@ button.debug-line[aria-pressed="true"] {
 }
 .detail-field .select-trigger,
 .detail-field input[type="date"] {
-  min-height: 34px;
-  height: 34px;
-  padding: 5px 8px;
-  font-size: 12px;
+  min-height: var(--button-height);
+  height: var(--button-height);
+  padding: var(--control-padding-y) var(--control-padding-x);
+  font-size: var(--button-font-size);
 }
 .assignee-value {
   display: flex;
@@ -953,7 +1002,7 @@ button.debug-line[aria-pressed="true"] {
   min-width: 0;
 }
 .assignee-value > button {
-  min-height: 34px;
+  min-height: var(--button-height);
   padding: 4px 6px;
   font-size: 11px;
 }
@@ -962,7 +1011,7 @@ button.debug-line[aria-pressed="true"] {
   height: 14px;
 }
 .reporter-value {
-  min-height: 34px;
+  min-height: var(--button-height);
   gap: 4px;
 }
 .detail-field .select-arrow {
@@ -1227,7 +1276,7 @@ button.debug-line[aria-pressed="true"] {
   padding: 16px 4px 4px;
 }
 .setting-row {
-  padding: 12px 0;
+  padding: calc(var(--field-row-gap) - 4px) 0;
   gap: 10px;
 }
 .setting-row + .setting-row {
@@ -1295,38 +1344,15 @@ button.debug-line[aria-pressed="true"] {
     flex: none;
     gap: 2px;
   }
-  .nav-tools .tool-button,
-  .dialog-head > .tool-button,
-  .detail-head-actions > .tool-button,
-  .detail-pending > .tool-button {
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    min-height: 40px;
-  }
   .settings-modal {
-    padding: 16px;
-  }
-  .settings-tab {
-    min-height: 40px;
+    padding: var(--pane-padding);
   }
   .connection-field input,
   .select-search input,
   .search-form input,
   .detail-field input[type="date"] {
     font-size: 16px;
-    min-height: 40px;
-  }
-  .detail-field .select-trigger,
-  .assignee-value > button,
-  .detail-head-actions > .secondary,
-  .modal-footer > button,
-  .connection-actions > button {
-    min-height: 40px;
-    height: auto;
-  }
-  .detail-fields {
-    gap: 20px 24px;
+    min-height: var(--button-height);
   }
   .card-copy .ui-icon {
     opacity: 1;
@@ -1334,8 +1360,8 @@ button.debug-line[aria-pressed="true"] {
 }
 
 .activity-feed {
-  margin-top: 28px;
-  padding-top: 20px;
+  margin-top: var(--section-gap);
+  padding-top: var(--section-gap);
   border-top: 1px solid var(--border);
 }
 .activity-heading {
@@ -1414,4 +1440,110 @@ button.debug-line[aria-pressed="true"] {
   min-height: 20px;
   padding: 3px;
   flex: 0 0 auto;
+}
+
+/* 보조 정보는 모바일 첫 목록을 밀어내지 않고 같은 자리에서 펼친다. */
+.dashboard-summary {
+  display: none;
+}
+@media (max-width: 900px) {
+  .dashboard-summary {
+    display: list-item;
+    margin-inline: 16px;
+    padding-block: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+  }
+}
+/* 도구가 서비스명을 밀어낼 때만 자연스럽게 두 번째 행을 사용한다. */
+@media (max-width: 420px) {
+  .top-nav {
+    flex-wrap: wrap;
+  }
+  .top-nav h1 {
+    flex: none;
+    overflow: visible;
+  }
+  .nav-tools {
+    flex: 1 0 auto;
+    justify-content: space-between;
+  }
+}
+
+/* 조상 경로는 전체 폭을 사용하고 현재 키·닫기 행만 고정한다. */
+.issue-detail > .detail-breadcrumbs {
+  margin-bottom: 8px;
+}
+.detail-head {
+  container: detail-head / inline-size;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-block: 4px;
+  align-items: center;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+@media (max-width: 900px) {
+  .tree-list {
+    --tree-gutter: 36px;
+  }
+  .row-action,
+  .comment-toolbar .tool-button,
+  .detail-title-row > .tool-button {
+    width: var(--icon-button-size);
+    min-width: var(--icon-button-size);
+    height: var(--icon-button-size);
+    min-height: var(--icon-button-size);
+  }
+  .tree-actions {
+    padding-inline: 2px;
+  }
+  .card-view-button {
+    width: auto;
+  }
+  .card-copy {
+    min-height: 24px;
+    height: 24px;
+  }
+  .issue-card .favorite-button {
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    min-height: 24px;
+  }
+  .tree-section-toggle {
+    min-height: var(--button-height);
+  }
+  .comment:not(.comment-reply) {
+    padding: 12px;
+  }
+  .detail-head-actions > .secondary {
+    min-height: var(--button-height);
+  }
+  .comment-head {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .comment-author {
+    flex: 1 1 140px;
+  }
+  .comment-toolbar {
+    margin-left: auto;
+  }
+}
+
+@container detail-head (max-width: 300px) {
+  .detail-head-actions {
+    gap: 4px;
+  }
+  .detail-head-actions > .secondary {
+    padding-inline: 4px;
+    gap: 4px;
+    font-size: 11px;
+  }
+  .history-prefix {
+    display: none;
+  }
 }
