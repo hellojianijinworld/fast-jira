@@ -47,6 +47,7 @@ export function issueComments(
   let writing: ReturnType<typeof documentForm> | null = null;
   let release: (() => void) | null = null;
   function renderEntries() {
+    if (writing) return;
     entries.replaceChildren(
       ...commentThreads([...comments.values()]).map((thread) => row(thread)),
     );
@@ -155,7 +156,8 @@ export function issueComments(
     const comment = thread.comment,
       entry = element("article", nested ? "comment comment-reply" : "comment");
     entry.id = `comment-${comment.id}`;
-    const author = element("div", "comment-head");
+    const header = element("div", "comment-head");
+    const author = element("div", "comment-author");
     author.append(
       avatar({ name: comment.author, avatar: comment.avatar }),
       element("strong", "", comment.author),
@@ -164,7 +166,7 @@ export function issueComments(
     const body = element("div", "adf comment-body");
     body.append(renderADF(comment.body, issue, imageEnabled));
     const toolbar = element("div", "comment-toolbar"),
-      copy = iconButton("댓글 링크 복사", "link");
+      copy = iconButton("댓글 링크 복사", "copy");
     copy.disabled = !commentLink(comment.id);
     copy.addEventListener("click", async () => {
       await copyText(
@@ -182,7 +184,8 @@ export function issueComments(
       edit.addEventListener("click", () => compose(comment, false, entry));
       toolbar.append(edit);
     }
-    entry.append(author, body, toolbar);
+    header.append(author, toolbar);
+    entry.append(header, body);
     if (!nested && comment.parentId) {
       const parent = element("a", "comment-parent-link", "원댓글 보기");
       const href = commentLink(comment.parentId);
@@ -224,7 +227,7 @@ export function issueComments(
       more.hidden = false;
     } finally {
       loading = false;
-      more.disabled = false;
+      more.disabled = Boolean(writing);
     }
   }
   more.hidden = !issue.commentCount;

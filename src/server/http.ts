@@ -199,7 +199,12 @@ export function createHttpServer(
       case "/api/bulk-undo":
         return service.bulk.undo(string("token"));
       case "/api/update":
-        return service.update(key(input.key), string("field"), string("value"));
+        return service.update(
+          key(input.key),
+          string("field"),
+          string("value"),
+          input.expected === undefined ? undefined : string("expected"),
+        );
       case "/api/description":
         return service.updateDescription(
           key(input.key),
@@ -298,7 +303,11 @@ export function createHttpServer(
           req,
           url.pathname === "/api/sync"
             ? 2000000
-            : url.pathname === "/api/description"
+            : [
+                  "/api/description",
+                  "/api/comment",
+                  "/api/comment-edit",
+                ].includes(url.pathname)
               ? 500000
               : 20000,
         );

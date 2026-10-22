@@ -629,6 +629,13 @@ a {
   border: 1px solid var(--border);
   border-radius: 7px;
   text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.smart-link-location {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 * {
   scrollbar-width: thin;

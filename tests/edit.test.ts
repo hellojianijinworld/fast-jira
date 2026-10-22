@@ -188,3 +188,89 @@ test("부모 변경은 프로젝트·동적 계층·순환을 검증한 뒤 저�
   await good.edit.applyUpdate("AA-1", "parent", "");
   assert.deepEqual(good.calls.at(-1)?.body, { fields: { parent: null } });
 });
+
+test("단건 되돌리기는 같은 필드의 원격 후속 변경을 확인하면 쓰지 않는다", async () => {
+  for (const [field, expected, previous] of [
+    ["summary", "내 제목", "원래 제목"],
+    ["status", "내 상태", "원래 상태"],
+    ["assignee", "my-account", "previous-account"],
+    ["priority", "2", "3"],
+    ["dueDate", "2026-10-01", ""],
+  ] as const) {
+    const { edit, calls } = setup(() =>
+      Response.json({
+        key: "AA-1",
+        fields: {
+          summary: "동료 제목",
+          status: { name: "동료 상태" },
+          assignee: { accountId: "other-account" },
+          priority: { id: "9" },
+          duedate: "2026-10-10",
+        },
+      }),
+    );
+    await assert.rejects(
+      edit.update("AA-1", field ?? "", previous ?? "", expected),
+      { status: 409 },
+    );
+    assert.equal(
+      calls.filter((call) => call.method !== "GET").length,
+      0,
+      field,
+    );
+  }
+});
+
+test("되돌리기는 일치한 최신값만 복원하고 일반 저장에는 사전 조회가 없다", async () => {
+  let summary = "내 제목";
+  const { edit, calls } = setup((_url, method, body) => {
+    if (method === "PUT") {
+      summary = String(record(record(body).fields).summary);
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({
+      key: "AA-1",
+      fields: { summary, status: { name: "다른 필드 변경" } },
+    });
+  });
+  await edit.update("AA-1", "summary", "원래 제목", "내 제목");
+  assert.equal(summary, "원래 제목");
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ["GET", "PUT", "GET"],
+  );
+  calls.length = 0;
+  await edit.update("AA-1", "summary", "일반 저장");
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ["PUT", "GET"],
+  );
+});
+
+test("되돌리기의 현재값이 비어 있어도 비교하며 최신 조회 실패는 쓰지 않는다", async () => {
+  let accountId: string | null = null;
+  const { edit, calls } = setup((_url, method, body) => {
+    if (method === "PUT") {
+      accountId = String(record(body).accountId);
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({
+      key: "AA-1",
+      fields: { assignee: accountId ? { accountId } : null },
+    });
+  });
+  await edit.update("AA-1", "assignee", "previous-account", "");
+  assert.equal(accountId, "previous-account");
+  assert.deepEqual(
+    calls.map((call) => call.method),
+    ["GET", "PUT", "GET"],
+  );
+  const failed = setup(() =>
+    Response.json({ errorMessages: ["조회 실패"] }, { status: 503 }),
+  );
+  await assert.rejects(
+    failed.edit.update("AA-1", "summary", "원래 제목", "내 제목"),
+    { status: 503 },
+  );
+  assert.equal(failed.calls.filter((call) => call.method !== "GET").length, 0);
+});

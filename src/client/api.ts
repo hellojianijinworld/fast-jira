@@ -118,11 +118,16 @@ export function createApi(fetcher: typeof fetch = fetch) {
       ),
     detail: (key: string) =>
       request(`/api/detail?key=${encodeURIComponent(key)}`, decodeDetails),
-    update: (key: string, field: EditableField, value: string) =>
+    update: (
+      key: string,
+      field: EditableField,
+      value: string,
+      expected?: string,
+    ) =>
       request("/api/update", decodeDetails, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, field, value }),
+        body: JSON.stringify({ key, field, value, expected }),
       }),
     priorities: (key: string) =>
       request(

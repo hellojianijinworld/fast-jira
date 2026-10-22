@@ -7,12 +7,16 @@ export function createNotice(notice: HTMLElement) {
   const signal = controller.signal;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let duration = 3000;
+  let hasUndo = false;
+  let pendingBackground: string | undefined;
   notice.classList.add("notice");
   notice.setAttribute("role", "status");
   notice.hidden = true;
   function close() {
     clearTimeout(timer);
     notice.hidden = true;
+    hasUndo = false;
+    if (pendingBackground !== undefined) show(pendingBackground);
   }
   function schedule() {
     clearTimeout(timer);
@@ -33,6 +37,8 @@ export function createNotice(notice: HTMLElement) {
   });
   function show(text: string, undo?: UndoAction) {
     clearTimeout(timer);
+    pendingBackground = undefined;
+    hasUndo = !!undo;
     duration = undo ? 5000 : 3000;
     notice.replaceChildren(element("span", "", text));
     if (undo) {
@@ -41,6 +47,7 @@ export function createNotice(notice: HTMLElement) {
       button.addEventListener(
         "click",
         async () => {
+          pendingBackground = undefined;
           close();
           button.disabled = true;
           try {
@@ -63,8 +70,13 @@ export function createNotice(notice: HTMLElement) {
   }
   return {
     show,
+    showBackground(text: string) {
+      if (!notice.hidden && hasUndo) pendingBackground = text;
+      else show(text);
+    },
     close,
     destroy: () => {
+      pendingBackground = undefined;
       close();
       controller.abort();
       notice.replaceChildren();

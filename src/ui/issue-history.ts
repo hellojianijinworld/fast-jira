@@ -16,8 +16,8 @@ const fieldLabels: Record<string, string> = {
   labels: "라벨",
   IssueParentAssociation: "상위 이슈",
 };
-/** 기록은 요청할 때만 읽는다. 팝오버를 다시 열어도 읽은 페이지는 유지한다. */
-export function issueHistory(api: Api, key: string) {
+/** 변경 전에는 읽은 페이지를 재사용하고, 수정 뒤에는 다음 열기에 최신 페이지부터 확인한다. */
+export function issueHistory(api: Pick<Api, "history">, key: string) {
   const trigger = actionButton("변경 기록", "history");
   const panel = element("section", "history-panel");
   panel.popover = "auto";
@@ -54,16 +54,22 @@ export function issueHistory(api: Api, key: string) {
   let before: number | null = null,
     loaded = false,
     loading = false,
-    alive = true;
+    alive = true,
+    revision = 0;
   const seen = new Set<string>();
   async function load() {
     if (loading || !alive) return;
     loading = true;
+    const generation = revision;
     more.disabled = true;
     message.textContent = "기록을 불러오는 중…";
     try {
       const page = await api.history(key, before);
-      if (!alive) return;
+      if (!alive || generation !== revision) return;
+      if (!loaded) {
+        seen.clear();
+        entries.replaceChildren();
+      }
       for (const entry of page.entries) {
         if (seen.has(entry.id)) continue;
         seen.add(entry.id);
@@ -92,13 +98,15 @@ export function issueHistory(api: Api, key: string) {
       more.hidden = before === null;
       message.textContent = seen.size ? "" : "변경 기록이 없습니다.";
     } catch (reason) {
-      if (!alive) return;
+      if (!alive || generation !== revision) return;
       message.textContent =
         reason instanceof Error ? reason.message : "기록을 불러오지 못했어요.";
       more.hidden = false;
     } finally {
-      loading = false;
-      more.disabled = false;
+      if (alive && generation === revision) {
+        loading = false;
+        more.disabled = false;
+      }
     }
   }
   more.hidden = true;
@@ -126,6 +134,16 @@ export function issueHistory(api: Api, key: string) {
   return {
     trigger,
     panel,
+    invalidate() {
+      if (!alive) return;
+      revision++;
+      loaded = loading = false;
+      before = null;
+      more.hidden = true;
+      more.disabled = false;
+      if (panel.matches(":popover-open"))
+        message.textContent = "수정된 기록은 다시 열면 확인할 수 있어요.";
+    },
     destroy() {
       alive = false;
       if (panel.matches(":popover-open")) panel.hidePopover();

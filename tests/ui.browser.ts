@@ -18,6 +18,7 @@ import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
 import { readPreferences } from "../src/client/preferences.ts";
 import type { AdfDocument, AdfNode } from "../src/domain/adf.ts";
+import type { Comment, HistoryPage } from "../src/domain/content.ts";
 import type { Issue } from "../src/domain/issue.ts";
 import { adfEditor } from "../src/ui/adf-editor.ts";
 import { renderADF } from "../src/ui/adf-render.ts";
@@ -26,6 +27,8 @@ import { actionButton, element } from "../src/ui/dom.ts";
 import { filterChecklist } from "../src/ui/filter-checklist.ts";
 import { createFilterPanel } from "../src/ui/filter-panel.ts";
 import { issueCard } from "../src/ui/issue-card.ts";
+import { issueComments } from "../src/ui/issue-comments.ts";
+import { issueHistory } from "../src/ui/issue-history.ts";
 import { mentionPicker } from "../src/ui/mention-picker.ts";
 import {
   personPill,
@@ -639,13 +642,193 @@ await check(
     );
     assert(
       container.querySelector(".smart-link")?.textContent ===
-        "figma.com에서 열기 ↗",
-      "스마트 링크 fallback",
+        "figma.com/design/fixture",
+      "스마트 링크 경로 fallback",
     );
     assert(
       !container.textContent?.includes("hidden-filename.png"),
       "이미지 파일명 숨김",
     );
+  },
+);
+
+await check(
+  "스마트 링크는 제목·경로·노드 위치를 구분하고 좁은 폭에서도 안전하게 표시한다",
+  () => {
+    const container = element("section", "adf smart-link-fixture");
+    container.style.width = "240px";
+    container.style.maxWidth = "100%";
+    const issue = {
+      key: "TEST-1",
+      url: "https://example.atlassian.net/browse/TEST-1",
+    };
+    const href =
+      "https://www.figma.com/design/fixture/%ED%95%99%EC%83%9D?node-id=1-2#detail";
+    container.append(
+      renderADF(
+        { type: "blockCard", attrs: { url: href, title: "학생 채점 화면" } },
+        issue,
+      ),
+      renderADF(
+        {
+          type: "embedCard",
+          attrs: {
+            url: "https://www.figma.com/design/fixture/%ED%95%99%EC%83%9D?node-id=3-4",
+          },
+        },
+        issue,
+      ),
+      renderADF(
+        {
+          type: "inlineCard",
+          attrs: { url: "https://www.figma.com/design/other?node-id=5-6" },
+        },
+        issue,
+      ),
+      renderADF(
+        {
+          type: "blockCard",
+          attrs: { url: "javascript:alert(1)", title: "실행 금지" },
+        },
+        issue,
+      ),
+      renderADF(
+        {
+          type: "blockCard",
+          attrs: {
+            url: "https://example.com/bad%ZZ",
+            title: "<script>실행하지 않음</script>",
+          },
+        },
+        issue,
+      ),
+    );
+    fixture.append(container);
+    const links = [...container.querySelectorAll<HTMLAnchorElement>("a")];
+    assert(
+      links.length === 4,
+      "위험한 링크를 활성화했거나 잘못된 % 표기 때문에 링크를 잃음",
+    );
+    assert(
+      links[0]?.textContent?.includes("학생 채점 화면") === true,
+      "문서에 포함된 제목을 표시하지 않음",
+    );
+    assert(
+      links[0]?.textContent?.includes("학생?node-id=1-2#detail") === true,
+      "제목 아래 링크 위치 정보 누락",
+    );
+    assert(
+      links[1]?.textContent?.includes("학생?node-id=3-4") === true,
+      "같은 파일의 다른 노드를 구분할 수 없음",
+    );
+    assert(
+      links[2]?.textContent?.includes("/design/other") === true,
+      "인라인 링크 경로 누락",
+    );
+    assert(links[0]?.href === href, "표시를 바꾸면서 실제 목적지를 변경함");
+    for (const link of links) {
+      assert(
+        link.target === "_blank" && link.rel === "noopener noreferrer",
+        "외부 링크 보호 누락",
+      );
+      assert(
+        link.getBoundingClientRect().right <=
+          container.getBoundingClientRect().right + 1,
+        "긴 링크가 좁은 본문을 넘침",
+      );
+    }
+    assert(
+      !container.querySelector("iframe, img, script"),
+      "외부 미리보기를 추가하거나 제목을 HTML로 삽입함",
+    );
+  },
+);
+
+await check(
+  "기록 무효화 전 응답은 최신 기록을 덮지 않고 갱신 실패 후 첫 페이지를 재시도한다",
+  async () => {
+    const cursors: (number | null)[] = [];
+    let finishOld: (page: HistoryPage) => void = () => {};
+    let fail = false;
+    const page = (id: string): HistoryPage => ({
+      before: null,
+      entries: [
+        {
+          id,
+          author: "모의 작성자",
+          avatar: "",
+          created: "2026-10-01T08:00:00Z",
+          changes: [{ field: "summary", from: "이전", to: id }],
+        },
+      ],
+    });
+    const history = issueHistory(
+      {
+        history: async (_key, before) => {
+          cursors.push(before ?? null);
+          if (cursors.length === 1)
+            return new Promise<HistoryPage>((resolve) => {
+              finishOld = resolve;
+            });
+          if (fail) throw new Error("모의 기록 조회 실패");
+          return page("최신 기록");
+        },
+      },
+      "TEST-991",
+    );
+    fixture.append(history.trigger, history.panel);
+    const close = history.panel.querySelector<HTMLButtonElement>(
+      '[aria-label="변경 기록 닫기"]',
+    );
+    assert(Boolean(close), "기록 닫기 버튼 없음");
+    try {
+      history.trigger.click();
+      await wait();
+      history.invalidate();
+      close?.click();
+      history.trigger.click();
+      await wait();
+      assert(
+        history.panel.textContent?.includes("최신 기록") === true &&
+          cursors.length === 2,
+        "무효화 뒤 최신 첫 페이지를 읽지 않음",
+      );
+      finishOld(page("과거 기록"));
+      await wait();
+      assert(
+        history.panel.textContent?.includes("최신 기록") === true &&
+          !history.panel.textContent?.includes("과거 기록"),
+        "수정 전 늦은 응답이 최신 결과를 덮음",
+      );
+      close?.click();
+      history.invalidate();
+      fail = true;
+      history.trigger.click();
+      await wait();
+      assert(
+        history.panel.textContent?.includes("모의 기록 조회 실패") === true &&
+          history.panel.textContent.includes("최신 기록"),
+        "조회 실패가 기존 기록이나 오류 안내를 지움",
+      );
+      fail = false;
+      [...history.panel.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent === "이전 기록")
+        ?.click();
+      await wait();
+      assert(
+        Number(cursors.length) === 4 &&
+          cursors.at(-1) === null &&
+          history.panel.querySelectorAll(".history-entry").length === 1,
+        "재시도 커서가 잘못됐거나 기존 기록과 중복됨",
+      );
+      close?.click();
+      history.trigger.click();
+      await wait();
+      assert(Number(cursors.length) === 4, "변경 없이 재열 때 다시 조회함");
+    } finally {
+      history.destroy();
+      history.trigger.remove();
+    }
   },
 );
 
@@ -655,6 +838,254 @@ await check("댓글·기록·보고 시각은 같은 상대 시각 갱신을 사
   refreshRelativeTimes(fixture, new Date(now.getTime() + 60000));
   assert(time.textContent === "2분 전", "공유 상대 시각");
 });
+
+await check(
+  "자동 알림은 되돌리기 시간을 유지하고 최신 한 건만 이어서 표시한다",
+  async () => {
+    const host = element("div");
+    fixture.append(host);
+    const notice = createNotice(host);
+    try {
+      notice.show("상태 변경됨", () => {});
+      await wait(2500);
+      notice.showBackground("이전 자동 알림");
+      notice.showBackground("최신 자동 알림");
+      assert(
+        host.textContent?.includes("되돌리기") === true,
+        "자동 알림이 되돌리기를 덮음",
+      );
+      await wait(2650);
+      assert(
+        host.textContent?.includes("최신 자동 알림") === true && !host.hidden,
+        "5초 뒤 최신 보류 알림 표시",
+      );
+      assert(
+        !host.textContent?.includes("이전 자동 알림"),
+        "오래된 보류 알림 제거",
+      );
+      await wait(3100);
+      assert(Boolean(host.hidden), "보류된 일반 알림은 3초 뒤 종료");
+    } finally {
+      notice.destroy();
+      host.remove();
+    }
+  },
+);
+
+await check(
+  "직접 조작과 되돌리기·종료는 오래된 자동 알림을 남기지 않는다",
+  async () => {
+    const host = element("div");
+    fixture.append(host);
+    const notice = createNotice(host);
+    try {
+      notice.show("변경됨", () => {});
+      notice.showBackground("오래된 자동 알림");
+      notice.show("링크 복사됨");
+      notice.close();
+      assert(host.hidden === true, "다음 직접 조작이 보류 알림 폐기");
+      let undo = 0;
+      notice.show("변경됨", () => {
+        undo++;
+      });
+      notice.showBackground("되돌리기 전 자동 알림");
+      host.querySelector<HTMLButtonElement>(".secondary")?.click();
+      await wait();
+      assert(
+        undo === 1 && host.hidden === true,
+        "되돌리기는 보류 알림 없이 실행",
+      );
+      notice.show("변경됨", () => {});
+      notice.showBackground("닫은 뒤 자동 알림");
+      host
+        .querySelector<HTMLButtonElement>('[aria-label="알림 닫기"]')
+        ?.click();
+      assert(
+        host.textContent?.includes("닫은 뒤 자동 알림") === true,
+        "직접 닫으면 보류 알림 표시",
+      );
+      notice.show("변경됨", () => {});
+      notice.showBackground("종료 후 표시 금지");
+      notice.destroy();
+      assert(
+        host.hidden === true && host.childElementCount === 0,
+        "종료 시 보류 알림 폐기",
+      );
+    } finally {
+      notice.destroy();
+      host.remove();
+    }
+  },
+);
+
+await check(
+  "댓글 더보기 응답은 작성 중인 답글·편집 폼과 초점을 보존하고 종료 후 반영한다",
+  async () => {
+    for (const mode of ["답글", "편집"] as const) {
+      const draft = `유지할 ${mode} 초안`;
+      const child: Comment = {
+        id: "2",
+        parentId: "1",
+        authorId: "me",
+        author: "나",
+        avatar: "",
+        created: "2026-10-01T00:00:00Z",
+        updated: "2026-10-01T00:00:00Z",
+        body: {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "기존 댓글" }],
+            },
+          ],
+        },
+      };
+      const parent: Comment = {
+        ...child,
+        id: "1",
+        parentId: "",
+        authorId: "other",
+        author: "동료",
+      };
+      let reads = 0,
+        saves = 0,
+        held = 0,
+        failSave = true;
+      let complete = (_response: Response) => {};
+      const pending = new Promise<Response>((resolve) => {
+        complete = resolve;
+      });
+      const api = createApi(async (path, init) => {
+        if (init?.method === "POST") {
+          assert(String(path) === "/api/comment-edit", "예상 밖 댓글 쓰기");
+          saves++;
+          if (failSave)
+            return Response.json({ error: "모의 저장 실패" }, { status: 400 });
+          assert(
+            String(init.body).includes(draft),
+            "편집 초안을 전송하지 않음",
+          );
+          return Response.json({
+            ...child,
+            body: {
+              type: "doc",
+              version: 1,
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: draft }] },
+              ],
+            },
+          });
+        }
+        assert(String(path).startsWith("/api/comments?"), "예상 밖 조회");
+        reads++;
+        return reads === 1
+          ? Response.json({ total: 3, startAt: 0, comments: [child] })
+          : pending;
+      });
+      const view = issueComments(
+        api,
+        {
+          ...issue,
+          reporter: "",
+          reporterAvatar: "",
+          created: "",
+          url: "https://fixture.atlassian.net/browse/TEST-711",
+          description: null,
+          attachments: [],
+        },
+        false,
+        () => {},
+        "me",
+        async () => {},
+        () => {
+          held++;
+          return () => {
+            held--;
+          };
+        },
+      );
+      fixture.append(view.element);
+      try {
+        await wait();
+        const more = view.element.lastElementChild;
+        assert(more instanceof HTMLButtonElement, "더보기 버튼 누락");
+        more.click();
+        view.element
+          .querySelector<HTMLButtonElement>(
+            mode === "답글"
+              ? '[aria-label="답글 작성"]'
+              : '[aria-label="내 댓글 편집"]',
+          )
+          ?.click();
+        const form =
+          view.element.querySelector<HTMLFormElement>(".document-form");
+        const input = form?.querySelector<HTMLElement>(
+          '[contenteditable="true"]',
+        );
+        assert(
+          form !== null && input !== null && input !== undefined,
+          "작성 폼 누락",
+        );
+        input.textContent = draft;
+        input.focus();
+        complete(Response.json({ total: 3, startAt: 1, comments: [parent] }));
+        await wait();
+        assert(
+          form.isConnected && input.isConnected,
+          `${mode}: 더보기 응답이 작성 폼을 제거함`,
+        );
+        assert(
+          input.textContent === draft && document.activeElement === input,
+          `${mode}: 초안 또는 초점 유실`,
+        );
+        assert(more.disabled && held === 1, "작성 중 더보기를 다시 활성화함");
+        assert(
+          !view.element.querySelector("#comment-1"),
+          "작성 중 댓글 행 교체",
+        );
+        if (mode === "답글") {
+          form
+            .querySelector<HTMLButtonElement>(
+              '.document-actions button[type="button"]',
+            )
+            ?.click();
+        } else {
+          form.requestSubmit();
+          await wait();
+          assert(
+            form.isConnected && input.textContent === draft,
+            "저장 실패 후 초안 유실",
+          );
+          failSave = false;
+          form.requestSubmit();
+          await wait();
+          assert(
+            view.element.querySelector("#comment-2 .comment-body")
+              ?.textContent === draft,
+            "재시도한 편집 결과 누락",
+          );
+        }
+        assert(
+          view.element.querySelector(
+            "#comment-1 .comment-replies #comment-2",
+          ) !== null,
+          "종료 후 받아둔 부모·답글 목록 반영 누락",
+        );
+        assert(
+          !more.disabled && Number(held) === 0 && reads === 2,
+          "작성 종료 후 상태 또는 조회 횟수 오류",
+        );
+        assert(saves === (mode === "답글" ? 0 : 2), "예상 밖 저장 호출");
+      } finally {
+        complete(Response.json({ total: 3, startAt: 1, comments: [parent] }));
+        view.destroy();
+        view.element.remove();
+      }
+    }
+  },
+);
 
 await check("일반 알림은 3초, 되돌리기 알림은 5초 뒤 닫힌다", async () => {
   const host = element("div");

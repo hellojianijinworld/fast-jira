@@ -126,6 +126,8 @@ let changes: ChangeBatch = { issues: [], ancestors: [] };
 let bulkBefore = "";
 let bulkKeys: string[] = [];
 let pendingRead: Promise<void> | null = null;
+let pendingLookup: Promise<Response> | null = null;
+let pendingChanges: Promise<Response> | null = null;
 const api = createApi(async (input, init) => {
   assert(
     !init?.method ||
@@ -144,6 +146,16 @@ const api = createApi(async (input, init) => {
   );
   const url = new URL(String(input), location.origin);
   calls.push(url);
+  if (url.pathname === "/api/changes" && pendingChanges) {
+    const response = pendingChanges;
+    pendingChanges = null;
+    return response;
+  }
+  if (url.pathname === "/api/issue" && pendingLookup) {
+    const response = pendingLookup;
+    pendingLookup = null;
+    return response;
+  }
   if (
     pendingRead &&
     ["/api/children", "/api/issue", "/api/issues"].includes(url.pathname)
@@ -451,6 +463,67 @@ checks.push([
   },
 ]);
 checks.push([
+  "키보드 상세 진입과 닫기는 원래 카드 초점을 복원하고 입력 중 갱신은 초안을 유지한다",
+  async () => {
+    const opener = root.querySelector<HTMLAnchorElement>(
+      '.browse .list-title[href="?issue=TEST-3"]',
+    );
+    assert(opener, "시작 카드 누락");
+    opener.focus();
+    assert(opener.matches(":focus-visible"), "키보드 초점 준비");
+    opener.click();
+    await tick();
+    const title = root.querySelector<HTMLElement>(".detail-title");
+    assert(
+      document.activeElement === title,
+      "상세 제목으로 초점이 이동하지 않음",
+    );
+    button("상태").click();
+    await tick();
+    const option = root.querySelector<HTMLElement>(
+      '.detail-fields [role="option"]',
+    );
+    assert(option, "상태 선택지 누락");
+    option.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    assert(
+      root.querySelector(".detail-title") === title &&
+        document.activeElement?.getAttribute("aria-label") === "상태",
+      "Escape가 상세를 닫거나 필드 초점을 잃음",
+    );
+    button("제목 수정").click();
+    const input = root.querySelector<HTMLInputElement>(
+      ".detail-title-editor input",
+    );
+    assert(input, "제목 입력 누락");
+    input.value = "저장하지 않은 제목 초안";
+    await app.select("TEST-3", false, true);
+    assert(input.isConnected, "배경 갱신이 입력 폼을 교체함");
+    assert(
+      input.value === "저장하지 않은 제목 초안",
+      "배경 갱신이 입력값을 덮음",
+    );
+    assert(
+      document.activeElement === input,
+      `배경 갱신 중 초점 유실: ${document.activeElement?.outerHTML.slice(0, 180)}`,
+    );
+    button("취소").click();
+    button("이슈 상세 닫기").click();
+    const returned = root.querySelector(
+      '.browse .list-title[href="?issue=TEST-3"]',
+    );
+    assert(
+      document.activeElement === returned,
+      "상세 닫기 후 원래 카드 복귀 실패",
+    );
+  },
+]);
+checks.push([
   "상위를 접었다 펼치면 이전 하위 펼침은 복원하지 않는다",
   () => {
     button("TEST-1 하위 이슈 접기").click();
@@ -603,6 +676,26 @@ checks.push([
         "TEST-3",
       "최근 카드 누락",
     );
+    const images = root.querySelector<HTMLElement>(".attachment-images");
+    assert(images, "첨부 이미지 영역 누락");
+    const imageLink = images?.querySelector<HTMLAnchorElement>("a");
+    assert(
+      images?.textContent?.includes("첨부 이미지 1개"),
+      "본문 밖 첨부 이미지 누락",
+    );
+    assert(
+      imageLink?.textContent === "이미지 1 열기",
+      "이미지 파일명이 노출됨",
+    );
+    assert(
+      imageLink?.href === "https://fixture.atlassian.net/file.png",
+      "첨부 원본 링크 손실",
+    );
+    assert(
+      imageLink.target === "_blank" && imageLink.rel === "noopener noreferrer",
+      "첨부 이미지 외부 링크 보호 누락",
+    );
+    assert(!images.querySelector("img"), "클릭 전에 이미지를 다운로드함");
     const links = root.querySelectorAll<HTMLAnchorElement>(".attachments a");
     assert(
       links.length === 1 && links[0]?.textContent === "설계.pdf",
@@ -750,6 +843,23 @@ checks.push([
         ?.textContent?.includes("안전한 모의 본문"),
       "본문 손실",
     );
+    const changedParent = issues[0];
+    assert(changedParent, "변경 대상 부모 누락");
+    changes = {
+      issues: [
+        { ...changedParent, updated: "2026-10-01T17:00:00Z", matches: true },
+      ],
+      ancestors: [],
+    };
+    try {
+      await app.checkChanges();
+      assert(
+        root.querySelector(".notice")?.textContent?.includes("되돌리기"),
+        "자동 변경 알림이 수정 결과의 되돌리기를 덮음",
+      );
+    } finally {
+      changes = { issues: [], ancestors: [] };
+    }
     button("되돌리기").click();
     await tick();
     assert(
@@ -897,6 +1007,51 @@ checks.push([
       "재열기 불필요 조회",
     );
     button("변경 기록 닫기").click();
+    const reads = () =>
+      calls.filter((call) => call.pathname === "/api/history");
+    button("제목 수정").click();
+    const titleInput = root.querySelector<HTMLInputElement>(
+      ".detail-title-editor input",
+    );
+    const form = root.querySelector<HTMLFormElement>(".detail-title-editor");
+    assert(titleInput && form, "제목 편집 폼 없음");
+    titleInput.value = "기록 갱신 검사";
+    failSave = true;
+    form.requestSubmit();
+    await tick();
+    failSave = false;
+    button("취소").click();
+    button("변경 기록").click();
+    await tick();
+    assert(reads().length === count, "실패한 수정이 기록 캐시를 무효화함");
+    button("변경 기록 닫기").click();
+    button("제목 수정").click();
+    titleInput.value = "기록 갱신 검사";
+    form.requestSubmit();
+    await tick();
+    assert(reads().length === count, "수정만 해도 닫힌 기록을 선조회함");
+    button("변경 기록").click();
+    await tick();
+    assert(
+      reads().length === count + 1,
+      "수정 뒤 기록 재열기에 최신 조회 없음",
+    );
+    assert(
+      !reads().at(-1)?.searchParams.has("before"),
+      "수정 뒤 이전 페이지 커서를 재사용함",
+    );
+    assert(
+      root.querySelectorAll(".history-entry").length === 1,
+      "이전 페이지와 최신 페이지가 섞임",
+    );
+    button("변경 기록 닫기").click();
+    button("되돌리기").click();
+    await tick();
+    assert(reads().length === count + 1, "되돌리기 직후 기록을 선조회함");
+    button("변경 기록").click();
+    await tick();
+    assert(reads().length === count + 2, "되돌린 뒤 기록 캐시가 갱신되지 않음");
+    button("변경 기록 닫기").click();
     app.closeDetail();
   },
 ]);
@@ -931,6 +1086,32 @@ checks.push([
       root.querySelector(".comment-head time") instanceof HTMLTimeElement,
       "댓글 상대 시각 누락",
     );
+    for (const header of root.querySelectorAll<HTMLElement>(".comment-head")) {
+      const actions = header.querySelector<HTMLElement>(
+        ":scope > .comment-toolbar",
+      );
+      const author = header.querySelector<HTMLElement>(
+        ":scope > .comment-author",
+      );
+      assert(actions && author, "댓글 액션이 작성자 줄에 없다");
+      assert(
+        actions.getBoundingClientRect().left >=
+          author.getBoundingClientRect().right - 1,
+        "댓글 액션 우측 정렬 누락",
+      );
+      const copy = actions.querySelector('[aria-label="댓글 링크 복사"] use');
+      assert(
+        copy?.getAttribute("href") === "/assets/icons.svg#copy",
+        "댓글 복사 아이콘이 공통 Lucide가 아니다",
+      );
+    }
+    const replies = root.querySelector(".comment-replies");
+    assert(
+      replies &&
+        getComputedStyle(replies).marginLeft === "0px" &&
+        getComputedStyle(replies).paddingLeft === "12px",
+      "답글 왼쪽 여백이 중복된다",
+    );
     app.closeDetail();
   },
 ]);
@@ -938,6 +1119,12 @@ checks.push([
   "본문 저장 실패는 초안을 유지하며 저장 뒤 상태 변경도 새 본문을 보존한다",
   async () => {
     await app.select("TEST-3");
+    button("변경 기록").click();
+    await tick();
+    button("변경 기록 닫기").click();
+    const historyCount = calls.filter(
+      (call) => call.pathname === "/api/history",
+    ).length;
     button("수정").click();
     const form = root.querySelector<HTMLFormElement>(
         ".detail-description .document-form",
@@ -965,6 +1152,19 @@ checks.push([
           ?.textContent?.includes("수정한 본문"),
       "본문 저장 미반영",
     );
+    assert(
+      calls.filter((call) => call.pathname === "/api/history").length ===
+        historyCount,
+      "본문 저장 시 닫힌 기록을 선조회함",
+    );
+    button("변경 기록").click();
+    await tick();
+    assert(
+      calls.filter((call) => call.pathname === "/api/history").length ===
+        historyCount + 1,
+      "본문 저장 뒤 기록 캐시가 갱신되지 않음",
+    );
+    button("변경 기록 닫기").click();
     button("상태").click();
     await tick();
     [
@@ -993,16 +1193,16 @@ checks.push([
     await tick();
     assert(
       !root.querySelector(
-        '#comment-2 > .comment-toolbar [aria-label="내 댓글 편집"]',
+        '#comment-2 > .comment-head > .comment-toolbar [aria-label="내 댓글 편집"]',
       ) &&
         root.querySelector(
-          '#comment-1 > .comment-toolbar [aria-label="내 댓글 편집"]',
+          '#comment-1 > .comment-head > .comment-toolbar [aria-label="내 댓글 편집"]',
         ),
       "작성자 편집 권한 불일치",
     );
     root
       .querySelector<HTMLButtonElement>(
-        '#comment-1 > .comment-toolbar [aria-label="내 댓글 편집"]',
+        '#comment-1 > .comment-head > .comment-toolbar [aria-label="내 댓글 편집"]',
       )
       ?.click();
     let form = root.querySelector<HTMLFormElement>(".comments .document-form");
@@ -1018,7 +1218,7 @@ checks.push([
     );
     root
       .querySelector<HTMLButtonElement>(
-        '#comment-2 > .comment-toolbar [aria-label="답글 작성"]',
+        '#comment-2 > .comment-head > .comment-toolbar [aria-label="답글 작성"]',
       )
       ?.click();
     form = root.querySelector<HTMLFormElement>(".comments .document-form");
@@ -2471,6 +2671,121 @@ checks.push([
 ]);
 
 checks.push([
+  "내 제목·본문·댓글 저장 후 도착한 이전 상세는 화면·최근·즐겨찾기를 덮지 않는다",
+  async () => {
+    for (const kind of ["제목", "본문", "댓글"] as const) {
+      const snapshot = await api.lookup("TEST-3");
+      await app.select("TEST-3");
+      button("즐겨찾기 추가").click();
+      let release = () => {};
+      pendingLookup = new Promise<Response>((resolve) => {
+        release = () => resolve(Response.json(snapshot));
+      });
+      const reading = app.select("TEST-3", false, true);
+      const before = calls.length;
+      const matchesBefore = calls.filter(
+        (call) => call.pathname === "/api/matches",
+      ).length;
+      try {
+        if (kind === "제목") {
+          button("제목 수정").click();
+          const input = root.querySelector<HTMLInputElement>(
+            ".detail-title-editor input",
+          );
+          const form = root.querySelector<HTMLFormElement>(
+            ".detail-title-editor",
+          );
+          assert(input && form, "제목 작성 폼 누락");
+          input.value = "이전 응답보다 새 제목";
+          form.requestSubmit();
+        } else {
+          button(kind === "본문" ? "수정" : "댓글 추가").click();
+          const form = root.querySelector<HTMLFormElement>(
+            kind === "본문"
+              ? ".detail-description .document-form"
+              : ".comments .document-form",
+          );
+          const input = form?.querySelector<HTMLElement>(
+            '[contenteditable="true"]',
+          );
+          assert(form && input, "작성 폼 누락");
+          input.textContent = `이전 응답보다 새 ${kind}`;
+          form.requestSubmit();
+        }
+        await tick();
+        for (
+          let attempt = 0;
+          attempt < 30 &&
+          root.querySelector(
+            ".document-form,.detail-title-editor:not([hidden])",
+          );
+          attempt++
+        )
+          await tick();
+        assert(
+          !root.querySelector(
+            ".document-form,.detail-title-editor:not([hidden])",
+          ),
+          `${kind}: 저장이 끝나지 않음 · ${root.querySelector(".document-form > .document-actions .error")?.textContent ?? root.querySelector(".document-form .error")?.textContent ?? ""}`,
+        );
+        assert(
+          calls.filter((call) => call.pathname === "/api/matches").length ===
+            matchesBefore + (kind === "제목" ? 1 : 0),
+          `${kind}: 내용 저장에 불필요한 필터 재조회`,
+        );
+        const saved = root.querySelector(".issue-detail");
+        const recent = values.get(
+          "fastJira:recent:fixture.atlassian.net:my-account",
+        );
+        const favorites = values.get(
+          "fastJira:favorites:fixture.atlassian.net:my-account",
+        );
+        assert(recent && favorites, "저장된 최근·즐겨찾기 검사 데이터 누락");
+        const reads = calls.filter(
+          (call) => call.pathname === "/api/issue",
+        ).length;
+        assert(calls.length > before, "저장 요청 누락");
+        release();
+        await reading;
+        await tick();
+        assert(
+          root.querySelector(".issue-detail") === saved,
+          `${kind}: 이전 응답이 상세를 교체함`,
+        );
+        assert(
+          values.get("fastJira:recent:fixture.atlassian.net:my-account") ===
+            recent,
+          `${kind}: 최근 이력이 되돌아감`,
+        );
+        assert(
+          values.get("fastJira:favorites:fixture.atlassian.net:my-account") ===
+            favorites,
+          `${kind}: 즐겨찾기가 되돌아감`,
+        );
+        assert(
+          calls.filter((call) => call.pathname === "/api/issue").length ===
+            reads,
+          "이전 응답을 버리면서 추가 조회함",
+        );
+      } finally {
+        pendingLookup = null;
+        release();
+        await reading;
+        button("즐겨찾기 해제").click();
+        app.closeDetail();
+      }
+    }
+    await app.select("TEST-3");
+    const previousView = root.querySelector(".issue-detail");
+    await app.select("TEST-3", false, true);
+    assert(
+      root.querySelector(".issue-detail") !== previousView,
+      "내 수정이 없는데 정상 갱신까지 차단함",
+    );
+    app.closeDetail();
+  },
+]);
+checks.push([
   "탭 표시와 창 포커스가 모두 활성일 때만 자동 갱신하고 짧은 복귀는 재조회하지 않는다",
   async () => {
     const originalNow = Date.now;
@@ -2535,6 +2850,135 @@ checks.push([
         Object.defineProperty(document, "hidden", hiddenDescriptor);
       else Reflect.deleteProperty(document, "hidden");
       window.dispatchEvent(new Event("focus"));
+    }
+  },
+]);
+
+checks.push([
+  "본문 저장 전 시작된 변경 조회는 저장 후 목록·상세를 이전 값으로 바꾸지 않는다",
+  async () => {
+    await app.select("TEST-3");
+    const snapshot = await api.lookup("TEST-3");
+    let release = () => {};
+    pendingChanges = new Promise<Response>((resolve) => {
+      release = () =>
+        resolve(
+          Response.json({
+            issues: [
+              {
+                ...snapshot.parent,
+                summary: "저장 전 변경 조회의 제목",
+                updated: new Date().toISOString(),
+                matches: true,
+              },
+            ],
+            ancestors: [],
+          }),
+        );
+    });
+    const reading = app.checkChanges();
+    try {
+      await tick();
+      button("수정").click();
+      const form = root.querySelector<HTMLFormElement>(
+        ".detail-description .document-form",
+      );
+      const input = form?.querySelector<HTMLElement>(
+        '[contenteditable="true"]',
+      );
+      assert(form && input, "본문 폼 누락");
+      input.textContent = "지연된 변경 응답보다 새 본문";
+      form.requestSubmit();
+      for (let attempt = 0; attempt < 30 && form.isConnected; attempt++)
+        await tick();
+      assert(!form.isConnected, "본문 저장이 끝나지 않음");
+      const saved = root.querySelector(".issue-detail");
+      const reads = calls.filter(
+        (call) => call.pathname === "/api/issue",
+      ).length;
+      const matches = calls.filter(
+        (call) => call.pathname === "/api/matches",
+      ).length;
+      pendingLookup = Promise.resolve(Response.json(snapshot));
+      release();
+      await reading;
+      await tick();
+      assert(
+        root.querySelector(".issue-detail") === saved,
+        "본문 저장 뒤 이전 변경 조회가 상세를 교체함",
+      );
+      assert(
+        root
+          .querySelector(".detail-description .adf")
+          ?.textContent?.includes("지연된 변경 응답보다 새 본문"),
+        "새 본문이 되돌아감",
+      );
+      assert(
+        app.list.items.get("TEST-3")?.summary === snapshot.parent.summary,
+        "본문 저장 뒤 이전 변경 조회가 목록을 덮음",
+      );
+      assert(
+        calls.filter((call) => call.pathname === "/api/issue").length === reads,
+        "이전 변경 응답으로 상세 재조회함",
+      );
+      assert(
+        calls.filter((call) => call.pathname === "/api/matches").length ===
+          matches,
+        "이전 변경 응답으로 필터 재조회함",
+      );
+    } finally {
+      release();
+      await reading;
+      pendingChanges = pendingLookup = null;
+      changes = { issues: [], ancestors: [] };
+      app.closeDetail();
+    }
+  },
+]);
+
+checks.push([
+  "본문·댓글 저장은 작성 중 갱신된 목록의 제목·상태를 보존한다",
+  async () => {
+    for (const kind of ["본문", "댓글"] as const) {
+      await app.select("TEST-3");
+      const before = await api.lookup("TEST-3");
+      button(kind === "본문" ? "수정" : "댓글 추가").click();
+      const form = root.querySelector<HTMLFormElement>(
+        kind === "본문"
+          ? ".detail-description .document-form"
+          : ".comments .document-form",
+      );
+      const input = form?.querySelector<HTMLElement>(
+        '[contenteditable="true"]',
+      );
+      assert(form && input, "내용 작성 폼 누락");
+      const current = {
+        ...before.parent,
+        summary: `작성 중 갱신된 ${kind} 이슈`,
+        status: "완료",
+        statusId: "3",
+        updated: new Date().toISOString(),
+      };
+      app.list.update(current, true);
+      input.textContent = `갱신된 목록과 함께 저장할 ${kind}`;
+      const count = before.parent.commentCount;
+      form.requestSubmit();
+      for (let attempt = 0; attempt < 30 && form.isConnected; attempt++)
+        await tick();
+      assert(!form.isConnected, "내용 저장이 끝나지 않음");
+      const saved = app.list.items.get("TEST-3");
+      assert(
+        saved?.summary === current.summary &&
+          saved.status === current.status &&
+          saved.updated === current.updated,
+        `${kind}: 내용 저장이 최신 목록 메타정보를 덮음`,
+      );
+      assert(
+        saved.commentCount ===
+          (kind === "댓글" ? count + 1 : current.commentCount),
+        `${kind}: 댓글 개수 반영 불일치`,
+      );
+      app.closeDetail();
     }
   },
 ]);

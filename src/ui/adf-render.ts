@@ -114,13 +114,23 @@ export function renderADF(
     const href = safeHref(url, issue.url);
     if (!href) return element("span", "", url);
     const inline = node.type === "inlineCard";
-    return externalLink(
+    const parsed = new URL(href);
+    let location = `${parsed.host.replace(/^www\./, "")}${parsed.pathname === "/" ? "" : parsed.pathname}${parsed.search}${parsed.hash}`;
+    try {
+      location = decodeURI(location);
+    } catch {
+      // 잘못된 % 표기가 있어도 원래 경로로 표시하고 링크는 유지한다.
+    }
+    const title = stringAttr(node, "title").trim();
+    const link = externalLink(
       href,
-      inline
-        ? url
-        : `${new URL(href).hostname.replace(/^www\./, "")}에서 열기 ↗`,
+      title || location,
       inline ? "" : "smart-link",
     );
+    if (!inline && title && title !== location)
+      link.append(element("small", "smart-link-location", location));
+    link.title = href;
+    return link;
   }
   if (["doc", "mediaSingle", "mediaGroup"].includes(node.type))
     return children(node.content, issue, images);

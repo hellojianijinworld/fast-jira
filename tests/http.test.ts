@@ -18,6 +18,7 @@ const comment = {
 };
 async function setup() {
   let jiraCalls = 0;
+  const writes: { path: string; method: string; body: unknown }[] = [];
   const listeners = new Set<(entry: LogEntry) => void>();
   const service = createJiraService({
     credentials: {
@@ -32,10 +33,16 @@ async function setup() {
       jiraCalls++;
       const url = new URL(String(value)),
         path = url.pathname;
-      if (options?.method === "PUT" || options?.method === "POST")
+      if (options?.method === "PUT" || options?.method === "POST") {
+        writes.push({
+          path,
+          method: options.method,
+          body: JSON.parse(String(options.body)),
+        });
         return path.includes("/comment")
           ? Response.json(comment)
           : new Response(null, { status: 204 });
+      }
       if (path.endsWith("/users/search")) return Response.json([]);
       if (path.endsWith("/field")) return Response.json([]);
       if (path.endsWith("/myself"))
@@ -113,6 +120,7 @@ async function setup() {
     service,
     server,
     count: () => jiraCalls,
+    writes,
     close: async () => {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -302,4 +310,191 @@ test("HTTP 활동 조회는 프로젝트만 받아 단일 Atom 피드를 반환�
   const invalid = await fetch(`${app.base}/api/activity?projects=AA%26bad`);
   assert.equal(invalid.status, 400);
   assert.equal(app.count() - before, 1);
+});
+
+test("HTTP 되돌리기는 기대값을 서버 검사로 전달하고 잘못된 값은 Jira 호출 전에 거부한다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const post = (expected: unknown) =>
+    fetch(`${app.base}/api/update`, {
+      method: "POST",
+      headers: { Origin: app.base, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: "AA-1",
+        field: "summary",
+        value: "원래 제목",
+        expected,
+      }),
+    });
+  assert.equal((await post(null)).status, 400);
+  assert.equal(app.count(), 0);
+  const conflict = await post("내 제목");
+  assert.equal(conflict.status, 409);
+  assert.match(String(record(await conflict.json()).error), /이후 변경/);
+});
+
+test("허용 글자수 안의 한글·이모지·멘션 댓글은 작성·답글·편집 모두 원문 그대로 전송한다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const post = (path: string, body: object) =>
+    fetch(app.base + path, {
+      method: "POST",
+      headers: { Origin: app.base, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const documents = [
+    {
+      ...doc,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "한".repeat(10000) }],
+        },
+      ],
+    },
+    {
+      ...doc,
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "🙂".repeat(5000) }],
+        },
+      ],
+    },
+    {
+      ...doc,
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "한".repeat(9997),
+              marks: [{ type: "strong" }],
+            },
+            { type: "mention", attrs: { id: "my-account", text: "@동료" } },
+          ],
+        },
+      ],
+    },
+  ];
+  for (const document of documents)
+    for (const kind of ["add", "reply", "edit"] as const) {
+      const input = {
+        key: "AA-1",
+        document,
+        ...(kind === "reply" ? { parentId: "10" } : {}),
+        ...(kind === "edit" ? { id: "10" } : {}),
+      };
+      assert.ok(Buffer.byteLength(JSON.stringify(input)) > 20000);
+      const before = app.writes.length;
+      const response = await post(
+        kind === "edit" ? "/api/comment-edit" : "/api/comment",
+        input,
+      );
+      assert.equal(response.status, 200, kind);
+      assert.equal(app.writes.length, before + 1);
+      assert.deepEqual(app.writes.at(-1), {
+        path:
+          kind === "edit"
+            ? "/rest/api/3/issue/AA-1/comment/10"
+            : "/rest/api/3/issue/AA-1/comment",
+        method: kind === "edit" ? "PUT" : "POST",
+        body: {
+          body: document,
+          ...(kind === "reply" ? { parentId: "10" } : {}),
+        },
+      });
+    }
+  const response = await post("/api/comment", {
+    key: "AA-1",
+    text: "한".repeat(10000),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(app.writes.at(-1)?.body, { body: documents[0] });
+});
+
+test("댓글 전송 한도가 늘어도 글자수·멘션·용량 오류는 Jira 호출 전에 차단한다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const post = (path: string, body: object, origin = app.base) =>
+    fetch(app.base + path, {
+      method: "POST",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  for (const path of ["/api/comment", "/api/comment-edit"]) {
+    const base = { key: "AA-1", id: "10" };
+    const tooLong = await post(path, {
+      ...base,
+      document: {
+        ...doc,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "한".repeat(10001) }],
+          },
+        ],
+      },
+    });
+    assert.equal(tooLong.status, 400);
+    assert.match(String(record(await tooLong.json()).error), /10000/);
+    const badMention = await post(path, {
+      ...base,
+      document: {
+        ...doc,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "mention", attrs: { id: "" } }],
+          },
+        ],
+      },
+    });
+    assert.equal(badMention.status, 400);
+    assert.match(String(record(await badMention.json()).error), /멘션/);
+    const tooLarge = await post(path, {
+      ...base,
+      document: {
+        ...doc,
+        content: [
+          {
+            type: "paragraph",
+            attrs: { data: "x".repeat(500000) },
+            content: [{ type: "text", text: "내용" }],
+          },
+        ],
+      },
+    });
+    assert.equal(tooLarge.status, 400);
+    assert.match(String(record(await tooLarge.json()).error), /너무 큽니다/);
+  }
+  const textTooLong = await post("/api/comment", {
+    key: "AA-1",
+    text: "한".repeat(10001),
+  });
+  assert.equal(textTooLong.status, 400);
+  assert.match(String(record(await textTooLong.json()).error), /10000/);
+  assert.equal(
+    (
+      await post(
+        "/api/comment",
+        { key: "AA-1", document: doc },
+        "https://attacker.example",
+      )
+    ).status,
+    403,
+  );
+  const ordinaryTooLarge = await post("/api/update", {
+    key: "AA-1",
+    field: "summary",
+    value: "x".repeat(21000),
+  });
+  assert.equal(ordinaryTooLarge.status, 400);
+  assert.match(
+    String(record(await ordinaryTooLarge.json()).error),
+    /너무 큽니다/,
+  );
+  assert.equal(app.count(), 0);
+  assert.deepEqual(app.writes, []);
 });

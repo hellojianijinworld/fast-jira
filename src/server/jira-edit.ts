@@ -1,6 +1,7 @@
 import type { JsonValue } from "../domain/adf.ts";
 import type { PriorityOption } from "../domain/catalog.ts";
 import type { IssueDetails } from "../domain/details.ts";
+import { type EditableField, fieldValue } from "../domain/issue.ts";
 import { parseIssueKey, record, requiredString } from "../domain/validation.ts";
 import { createPromiseCache } from "./cache.ts";
 import {
@@ -241,7 +242,20 @@ export function createJiraEdit(
     key: string,
     field: string,
     value: string,
+    expected?: string,
   ): Promise<IssueDetails> {
+    if (expected !== undefined) {
+      if (
+        !["summary", "status", "assignee", "priority", "dueDate"].includes(
+          field,
+        )
+      )
+        throw invalid("지원하지 않는 필드입니다.");
+      const current = await read.detail(key);
+      // Jira는 조회와 쓰기를 하나의 트랜잭션으로 묶지 않는다. 일괄 되돌리기와 같은 사전 비교다.
+      if (fieldValue(current, field as EditableField) !== expected)
+        throw new JiraError("이후 변경된 값이 있어 되돌리지 않았어요.", 409);
+    }
     await applyUpdate(key, field, value);
     const changed = await read.detail(key);
     if (field === "dueDate") changed.dueDate = value;

@@ -1,12 +1,18 @@
 import type { Api } from "../client/api.ts";
-import { createIssueEditor, fieldValue } from "../client/issue-editor.ts";
+import { createIssueEditor } from "../client/issue-editor.ts";
+import { unembeddedImages } from "../domain/attachments.ts";
 import type { PriorityOption } from "../domain/catalog.ts";
 import {
   createDetailState,
   createEditOptions,
 } from "../domain/detail-state.ts";
-import type { LookupResult } from "../domain/details.ts";
-import type { EditableField, Issue, UserOption } from "../domain/issue.ts";
+import type { IssueDetails, LookupResult } from "../domain/details.ts";
+import {
+  type EditableField,
+  fieldValue,
+  type Issue,
+  type UserOption,
+} from "../domain/issue.ts";
 import { decodeEditOptions } from "../domain/wire.ts";
 import { renderADF } from "./adf-render.ts";
 import { issueKeyCopy } from "./clipboard.ts";
@@ -40,7 +46,10 @@ export function issueDetail(
   copied: (message: string, undo?: () => Promise<void>) => void,
   api: Api,
   me: { accountId: string; displayName: string },
-  changed: (issue: LookupResult["parent"]) => void | Promise<void>,
+  changed: (
+    issue: LookupResult["parent"],
+    content?: "description" | "commentCount",
+  ) => void | Promise<void>,
   refreshReady: () => void,
   select: (key: string) => void,
   known: ReadonlyMap<string, Issue> = new Map(),
@@ -66,6 +75,7 @@ export function issueDetail(
   head.append(identity, actions);
   const titleRow = element("div", "detail-title-row");
   const title = element("h2", "detail-title", issue.summary);
+  title.tabIndex = -1;
   const pencil = iconButton("제목 수정", "square-pen");
   const form = element("form", "detail-title-editor");
   const input = element("input");
@@ -103,6 +113,7 @@ export function issueDetail(
     notice: copied,
     changed: async (updated) => {
       options.invalidate();
+      history.invalidate();
       await changed(updated);
     },
     state() {
@@ -154,6 +165,15 @@ export function issueDetail(
           editor.busy !== null;
     },
   });
+  async function contentChanged(
+    patch: Partial<Pick<IssueDetails, "description" | "commentCount">>,
+  ) {
+    editor.mergeContent(patch);
+    await changed(
+      editor.issue,
+      "description" in patch ? "description" : "commentCount",
+    );
+  }
   function endTitle() {
     form.hidden = true;
     title.hidden = pencil.hidden = false;
@@ -312,12 +332,48 @@ export function issueDetail(
     edit = actionButton("수정", "square-pen"),
     rendered = element("div", "adf");
   descriptionHead.append(element("h3", "", "설명"), edit);
+  const attachments = element("section", "detail-attachments");
+  function renderAttachments() {
+    attachments.replaceChildren();
+    const imageLinks = element("div", "attachment-image-links");
+    for (const file of unembeddedImages(
+      result.imageEnabled ? editor.issue.description : null,
+      issue.attachments,
+    )) {
+      const href = safeHref(file.url);
+      if (href)
+        imageLinks.append(
+          externalLink(href, `이미지 ${imageLinks.children.length + 1} 열기`),
+        );
+    }
+    if (imageLinks.children.length) {
+      const images = element("section", "attachment-images");
+      images.setAttribute("aria-label", "첨부 이미지");
+      images.append(
+        element("h3", "", `첨부 이미지 ${imageLinks.children.length}개`),
+        imageLinks,
+      );
+      attachments.append(images);
+    }
+    const files = element("ul", "attachments");
+    files.setAttribute("aria-label", "첨부 파일");
+    for (const file of issue.attachments) {
+      const href = safeHref(file.url);
+      if (file.mimeType.startsWith("image/") || !href) continue;
+      const row = element("li");
+      row.append(externalLink(href, file.name));
+      files.append(row);
+    }
+    if (files.children.length) attachments.append(files);
+    attachments.hidden = !attachments.children.length;
+  }
   function renderDescription() {
     rendered.replaceChildren(
       editor.issue.description
         ? renderADF(editor.issue.description, editor.issue, result.imageEnabled)
         : element("p", "empty", "설명이 없습니다."),
     );
+    renderAttachments();
   }
   renderDescription();
   body.append(descriptionHead, rendered);
@@ -342,7 +398,10 @@ export function issueDetail(
       close: closeWriting,
       async save(document) {
         const description = await api.description(issue.key, document);
-        editor.mergeContent({ description });
+        history.invalidate();
+        void contentChanged({ description }).catch(() =>
+          copied("본문은 저장됐지만 목록을 갱신하지 못했어요."),
+        );
         if (alive) renderDescription();
         copied(`본문 변경됨 · ${issue.key}`);
       },
@@ -357,23 +416,10 @@ export function issueDetail(
     result.imageEnabled,
     copied,
     me.accountId,
-    async (count) => {
-      editor.mergeContent({ commentCount: count });
-      await changed(editor.issue);
-    },
+    (count) => contentChanged({ commentCount: count }),
     refresh.hold,
   );
-  root.append(body);
-  const files = element("ul", "attachments");
-  files.setAttribute("aria-label", "첨부 파일");
-  for (const file of issue.attachments) {
-    const href = safeHref(file.url);
-    if (file.mimeType.startsWith("image/") || !href) continue;
-    const row = element("li");
-    row.append(externalLink(href, file.name));
-    files.append(row);
-  }
-  if (files.children.length) root.append(files);
+  root.append(body, attachments);
   const children = detailChildren(
     result,
     api,

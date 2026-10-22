@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createApi } from "../src/client/api.ts";
 import { createIssueEditor } from "../src/client/issue-editor.ts";
 import type { IssueDetails } from "../src/domain/details.ts";
+import { record } from "../src/domain/validation.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
 
 const initial: IssueDetails = {
@@ -81,6 +82,7 @@ test("필드 저장은 본문·첨부를 보존하며 알림의 되돌리기가 
     key: "TEST-1",
     field: "summary",
     value: "원래 제목",
+    expected: "새 제목",
   });
 });
 test("저장 중 같은 값·중복 액션은 요청하지 않고 실패 시 값과 busy 상태를 복구한다", async () => {
@@ -216,4 +218,45 @@ test("댓글·본문 저장 뒤 늦은 필드 응답이 새 내용을 덮어쓰�
     editor.issue.description?.content[0]?.content?.[0]?.text,
     "새 본문",
   );
+});
+
+test("서버가 되돌리기 충돌을 거부하면 성공 안내·화면 갱신 없이 종료한다", async () => {
+  let undo: (() => Promise<void>) | undefined;
+  const notices: string[] = [];
+  let changed = 0;
+  let writes = 0;
+  const editor = createIssueEditor(
+    createApi(async (_path, init) => {
+      const body = record(JSON.parse(String(init?.body)));
+      writes++;
+      if (body.expected !== undefined) {
+        assert.equal(body.expected, "내 제목");
+        return Response.json(
+          { error: "이후 변경된 값이 있어 되돌리지 않았어요." },
+          { status: 409 },
+        );
+      }
+      return Response.json({ ...initial, summary: "내 제목" });
+    }),
+    initial,
+    {
+      state() {},
+      changed() {
+        changed++;
+      },
+      notice(text, action) {
+        notices.push(text);
+        undo = action;
+      },
+    },
+  );
+  await editor.change("summary", "내 제목");
+  assert(undo);
+  await undo();
+  assert.equal(editor.busy, null);
+  assert.equal(editor.issue.summary, "내 제목");
+  assert.equal(changed, 1);
+  assert.equal(writes, 2);
+  assert.match(notices.at(-1) ?? "", /이후 변경/);
+  assert(!notices.some((text) => text.includes("되돌렸어요")));
 });

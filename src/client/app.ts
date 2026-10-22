@@ -120,6 +120,7 @@ export async function createApp(
     detailRevision = 0,
     destroyed = false;
   let detailView: ReturnType<typeof issueDetail> | null = null;
+  let detailOpener: { host: HTMLElement; href: string } | null = null;
   let recent = store.recent();
   let favorites = store.favorites();
   const changedVersions = new Map<string, number>();
@@ -400,13 +401,14 @@ export async function createApp(
   }
   function placeDetail() {
     if (layout.matches) {
-      mobile.append(detailHost, noticeHost);
+      if (detailHost.parentElement !== mobile) mobile.append(detailHost);
+      if (noticeHost.parentElement !== mobile) mobile.append(noticeHost);
       debug.place(selectedKey && !bulk.active ? mobile : root);
       if (bulk.active && mobile.open) mobile.close();
       else if (selectedKey && !mobile.open) mobile.showModal();
     } else {
       if (mobile.open) mobile.close();
-      side.append(detailHost);
+      if (detailHost.parentElement !== side) side.append(detailHost);
       root.append(noticeHost);
       debug.place(root);
     }
@@ -426,13 +428,33 @@ export async function createApp(
     url.searchParams.delete("issue");
     history.replaceState(null, "", url);
     render();
+    detailOpener?.host
+      .querySelector<HTMLElement>(
+        `.list-title[href="${CSS.escape(detailOpener.href)}"]`,
+      )
+      ?.focus({ preventScroll: true });
+    detailOpener = null;
   }
   async function select(key: string, updateUrl = true, silent = false) {
+    const active = document.activeElement;
+    const keyboard =
+      !silent &&
+      active instanceof HTMLAnchorElement &&
+      active.matches(".list-title:focus-visible");
+    if (!silent && !detailHost.contains(active)) {
+      const host = keyboard
+        ? active.closest<HTMLElement>(".browse,.dashboard")
+        : null;
+      detailOpener = host
+        ? { host, href: active?.getAttribute("href") ?? "" }
+        : null;
+    }
     if (!silent) {
       detailView?.destroy();
       detailView = null;
     }
     const version = ++detailRevision;
+    const displayedIssue = detailView?.issue;
     selectedKey = key;
     detailHost.hidden = false;
     dashboard.hidden = true;
@@ -446,6 +468,10 @@ export async function createApp(
     }
     placeDetail();
     render();
+    if (keyboard)
+      detailHost
+        .querySelector<HTMLElement>(".detail-pending button")
+        ?.focus({ preventScroll: true });
     if (updateUrl) {
       const url = new URL(location.href);
       url.searchParams.set("issue", key);
@@ -455,6 +481,8 @@ export async function createApp(
       const result = await api.lookup(key);
       // 선택 순서를 지킨다. 늦은 응답은 현재 상세와 최근 이력을 덮어쓰지 않는다.
       if (destroyed || version !== detailRevision) return;
+      // 조회 시작 이후 이 화면에서 저장한 내용은 이전 응답으로 덮지 않는다.
+      if (silent && detailView?.issue !== displayedIssue) return;
       // 조회 중 편집을 시작했어도 초안을 지킨다. 종료 후 최신 내용을 다시 확인한다.
       if (silent && detailView && !detailView.canRefresh()) return;
       detailView?.destroy();
@@ -466,9 +494,22 @@ export async function createApp(
         notice.show,
         api,
         bootstrap.me,
-        async (updated) => {
+        async (updated, content) => {
           const changeVersion = (changedVersions.get(updated.key) ?? 0) + 1;
           changedVersions.set(updated.key, changeVersion);
+          if (content === "description") return;
+          if (content === "commentCount") {
+            const current =
+              list.visibleItems().get(updated.key) ??
+              recent.find((item) => item.key === updated.key) ??
+              favorites.find((item) => item.key === updated.key) ??
+              updated;
+            updated = {
+              ...updated,
+              ...current,
+              commentCount: updated.commentCount,
+            };
+          }
           recent = recent.map((item) =>
             item.key === updated.key ? updated : item,
           );
@@ -476,6 +517,7 @@ export async function createApp(
           refreshFavorites([updated]);
           const filters = list.filters;
           list.update(updated, list.direct.has(updated.key));
+          if (content) return;
           const matches = await api.matches(updated.key, filters);
           // 이전 저장의 느린 필터 판정이 더 최근 저장 결과를 덮어쓰지 않는다.
           if (
@@ -505,7 +547,13 @@ export async function createApp(
           },
         ),
       );
+      const focusTitle =
+        keyboard && detailHost.contains(document.activeElement);
       detailHost.replaceChildren(detailView.element);
+      if (focusTitle)
+        detailHost
+          .querySelector<HTMLElement>(".detail-title")
+          ?.focus({ preventScroll: true });
       recent = [
         result.parent,
         ...recent.filter((issue) => issue.key !== key),
@@ -515,7 +563,7 @@ export async function createApp(
     } catch (reason) {
       if (version !== detailRevision || destroyed) return;
       if (silent) {
-        notice.show("상세 변경 확인이 지연되고 있어요.");
+        notice.showBackground("상세 변경 확인이 지연되고 있어요.");
         return;
       }
       const retry = actionButton("다시 시도", "refresh-cw");
@@ -797,9 +845,10 @@ export async function createApp(
       store.saveRecent(recent);
       refreshFavorites(relevant, batch.removed ?? []);
       list.applyChanges({ ...batch, issues: relevant });
-      if (relevant.length) notice.show(`새 변경 ${relevant.length}건 반영`);
+      if (relevant.length)
+        notice.showBackground(`새 변경 ${relevant.length}건 반영`);
       else if (batch.removed?.length)
-        notice.show(`열 수 없는 이슈 ${batch.removed.length}개 반영`);
+        notice.showBackground(`열 수 없는 이슈 ${batch.removed.length}개 반영`);
       if (
         relevant.some((issue) => issue.key === selectedKey) &&
         detailView?.canRefresh()
@@ -812,7 +861,7 @@ export async function createApp(
         return;
       }
       list.syncFailed(reason);
-      notice.show("변경 확인이 지연되고 있어요.");
+      notice.showBackground("변경 확인이 지연되고 있어요.");
     },
   });
   const checkListChanges = async () => {
@@ -879,7 +928,7 @@ export async function createApp(
       refreshRelativeTimes(root);
       await checkChanges();
     },
-    failed: () => notice.show("변경 확인이 지연되고 있어요."),
+    failed: () => notice.showBackground("변경 확인이 지연되고 있어요."),
   });
   const resume = () => {
     if (active()) refreshRelativeTimes(root);

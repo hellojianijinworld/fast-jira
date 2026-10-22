@@ -5,7 +5,12 @@ import {
   createDetailState,
   createEditOptions,
 } from "../src/domain/detail-state.ts";
-import type { BranchDefaults, Issue, IssueType } from "../src/domain/issue.ts";
+import {
+  type BranchDefaults,
+  fieldValue,
+  type Issue,
+  type IssueType,
+} from "../src/domain/issue.ts";
 import {
   compareIssues,
   passesChild,
@@ -180,4 +185,27 @@ test("상태 변경 후 담당자는 캐시하고 전환만 새로 조회한다"
   assert.deepEqual((await options.get()).statuses, ["완료"]);
   assert.equal(paths.length, 2);
   assert(paths[1]?.includes("/transitions?"));
+});
+
+test("편집과 되돌리기의 비교값은 사용자·우선순위의 이름이 아닌 ID를 사용한다", () => {
+  const item = issue({
+    summary: "제목",
+    status: "검토",
+    statusId: "status-id",
+    assignee: "같은 이름",
+    assigneeId: "account-id",
+    priority: "높음",
+    priorityId: "priority-id",
+    dueDate: "2026-10-22",
+  });
+  assert.deepEqual(
+    [
+      fieldValue(item, "summary"),
+      fieldValue(item, "status"),
+      fieldValue(item, "assignee"),
+      fieldValue(item, "priority"),
+      fieldValue(item, "dueDate"),
+    ],
+    ["제목", "검토", "account-id", "priority-id", "2026-10-22"],
+  );
 });

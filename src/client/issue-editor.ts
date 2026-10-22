@@ -1,5 +1,5 @@
 import type { IssueDetails } from "../domain/details.ts";
-import type { EditableField } from "../domain/issue.ts";
+import { type EditableField, fieldValue } from "../domain/issue.ts";
 import type { Api } from "./api.ts";
 
 export interface EditorCallbacks {
@@ -14,13 +14,6 @@ const labels: Record<EditableField, string> = {
   priority: "우선순위",
   dueDate: "마감일",
 };
-export function fieldValue(issue: IssueDetails, field: EditableField): string {
-  return field === "assignee"
-    ? issue.assigneeId
-    : field === "priority"
-      ? issue.priorityId
-      : issue[field];
-}
 /** 저장 결과와 되돌리기만 조정한다. DOM·목록 멤버십은 호출자에게 맡긴다. */
 export function createIssueEditor(
   api: Pick<Api, "update">,
@@ -34,6 +27,7 @@ export function createIssueEditor(
     field: EditableField,
     value: string,
     canUndo = true,
+    expected?: string,
   ): Promise<boolean> {
     if (busy) return false;
     const previous = fieldValue(issue, field);
@@ -42,7 +36,7 @@ export function createIssueEditor(
     busy = field;
     callbacks.state();
     try {
-      const updated = await api.update(issue.key, field, value);
+      const updated = await api.update(issue.key, field, value, expected);
       if (updated.key !== issue.key)
         throw new Error("변경 응답의 이슈가 일치하지 않습니다.");
       // 변경 응답은 메타정보만 담는다. 빈 본문·첨부로 이미 읽은 내용을 지우지 않는다.
@@ -69,7 +63,7 @@ export function createIssueEditor(
         ? async () => {
             if (fieldValue(issue, field) !== after)
               throw new Error("이후 변경된 값이 있어 되돌리지 않았어요.");
-            await change(field, previous, false);
+            await change(field, previous, false, after);
           }
         : undefined;
     callbacks.state();

@@ -73,3 +73,11 @@ export type EditableField =
   | "assignee"
   | "priority"
   | "dueDate";
+
+export function fieldValue(issue: Issue, field: EditableField): string {
+  return field === "assignee"
+    ? issue.assigneeId
+    : field === "priority"
+      ? issue.priorityId
+      : issue[field];
+}
