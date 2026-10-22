@@ -1,10 +1,11 @@
-import { element, uiIcon } from "./dom.ts";
+import { element, elementId, uiIcon } from "./dom.ts";
 import { type PopoverRect, popoverPosition } from "./geometry.ts";
 
 export interface SelectConfig {
   renderOption?: (option: HTMLOptionElement) => Node;
   beforeOpen?: () => Promise<boolean | undefined>;
   onSearch?: (query: string) => Promise<void>;
+  searchLabel?: string;
 }
 export interface SelectMenu {
   trigger: HTMLButtonElement;
@@ -31,7 +32,7 @@ export function enhanceSelect(
   const wrapper = element("div", "select-menu");
   const trigger = element("button", "select-trigger");
   trigger.type = "button";
-  trigger.id = `${select.id || `select-${crypto.randomUUID()}`}-trigger`;
+  trigger.id = `${select.id || elementId("select")}-trigger`;
   const labels = Array.from(select.labels ?? []).map((label) => ({
     label,
     htmlFor: label.htmlFor,
@@ -65,8 +66,8 @@ export function enhanceSelect(
     const form = element("form", "select-search");
     const input = element("input");
     input.type = "search";
-    input.placeholder = "이름으로 검색";
-    input.setAttribute("aria-label", "이름으로 검색");
+    input.placeholder = config.searchLabel ?? "이름으로 검색";
+    input.setAttribute("aria-label", config.searchLabel ?? "이름으로 검색");
     searchInput = input;
     const submit = element("button", "", "검색");
     submit.type = "submit";

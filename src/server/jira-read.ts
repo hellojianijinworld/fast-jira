@@ -29,6 +29,7 @@ export function createJiraRead(
   client: JiraClient,
   metadata: ReturnType<typeof createJiraMetadata>,
   site: string,
+  relatedFields: () => Promise<readonly string[]> = async () => [],
 ) {
   const attachments = createPromiseCache<Attachment[]>();
   const icons = createPromiseCache<BinaryAsset>();
@@ -49,10 +50,10 @@ export function createJiraRead(
       };
     });
   }
-  function item(value: unknown): IssueDetails {
+  function item(value: unknown, relatedIds: readonly string[]): IssueDetails {
     const fields = record(record(value).fields),
       reporter = optionalRecord(fields.reporter);
-    const issue = decodeIssue(value);
+    const issue = decodeIssue(value, relatedIds);
     return {
       ...issue,
       reporter: stringValue(reporter.displayName),
@@ -68,9 +69,10 @@ export function createJiraRead(
   }
   async function lookup(key: string): Promise<LookupResult> {
     key = parseIssueKey(key, "");
+    const ids = await relatedFields();
     const parent = await client.json(
-      `${pathFor(key)}?fields=summary,description,status,assignee,reporter,created,duedate,attachment,comment,issuetype,priority,subtasks,updated,project,parent`,
-      item,
+      `${pathFor(key)}?fields=summary,description,status,assignee,reporter,created,duedate,attachment,comment,issuetype,priority,subtasks,updated,project,parent${ids.length ? `,${ids.join(",")}` : ""}`,
+      (value) => item(value, ids),
     );
     // 본문에 이미지가 여러 개 있어도 방금 받은 첨부 정보를 재사용해 목록 요청을 늘리지 않는다.
     attachments.prime(key, parent.attachments);
@@ -84,9 +86,11 @@ export function createJiraRead(
     };
   }
   async function detail(key: string): Promise<IssueDetails> {
+    key = parseIssueKey(key, "");
+    const ids = await relatedFields();
     const issue = await client.json(
-      `${pathFor(key)}?fields=summary,status,assignee,reporter,created,duedate,issuetype,priority,updated,project,parent,comment,subtasks`,
-      item,
+      `${pathFor(key)}?fields=summary,status,assignee,reporter,created,duedate,issuetype,priority,updated,project,parent,comment,subtasks${ids.length ? `,${ids.join(",")}` : ""}`,
+      (value) => item(value, ids),
     );
     await metadata.withDefaultPriorities([issue]);
     return issue;

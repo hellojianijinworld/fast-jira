@@ -9,7 +9,13 @@ import {
   readPreferences,
   writePreferences,
 } from "../src/client/preferences.ts";
-import { type Filters, withoutDone } from "../src/domain/filters.ts";
+import { createViewController } from "../src/client/view-controller.ts";
+import {
+  branchDefaults,
+  type Filters,
+  withoutDone,
+} from "../src/domain/filters.ts";
+import { initialViews, resolveView } from "../src/domain/views.ts";
 import {
   type ChangeBatch,
   decodeLogEntry,
@@ -85,8 +91,12 @@ test("계정별 설정은 이전 소유자만 이식하고 손상된 값은 각 
     `fastJira:branches:${store.scope}`,
     JSON.stringify([["TEST-1", { statuses: [], assignees: null }]]),
   );
-  assert.deepEqual(store.branches().get("TEST-1")?.statuses, []);
-  assert.equal(store.branches().get("TEST-1")?.assignees, null);
+  const restoredBranch = resolveView(store.views(saved.filters), {
+    kind: "branch",
+    key: "TEST-1",
+  });
+  assert.deepEqual(restoredBranch.statuses, []);
+  assert.equal(restoredBranch.assignees, null);
   local.setItem(
     `fastJira:recent:${store.scope}`,
     JSON.stringify([
@@ -114,6 +124,7 @@ test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다",
     developerMode: false,
     compactView: false,
     compactDone: true,
+    compactDoneParents: true,
   });
   assert.doesNotThrow(() =>
     writePreferences(blocked, {
@@ -121,6 +132,7 @@ test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다",
       developerMode: true,
       compactView: true,
       compactDone: false,
+      compactDoneParents: false,
     }),
   );
   const store = createAccountStore(blocked, "example", "me");
@@ -210,6 +222,11 @@ test("하위 커서는 중복 호출을 합치고 세 개씩 조회하며 변경
       }>
     >;
   }[] = [];
+  const views = createViewController(initialViews(filters), {
+    save: () => {},
+    changed: () => {},
+    statuses: () => [],
+  });
   const state = createListController(
     {
       issues: async () => ({ issues: [], ancestors: [], nextPageToken: null }),
@@ -228,6 +245,10 @@ test("하위 커서는 중복 호출을 합치고 세 개씩 조회하며 변경
     },
     filters,
     "me",
+    () => {},
+    undefined,
+    (key, current) =>
+      branchDefaults({ ...current, ...views.resolve({ kind: "branch", key }) }),
   );
   for (let index = 1; index <= 5; index++)
     state.items.set(`TEST-${index}`, {
@@ -255,7 +276,7 @@ test("하위 커서는 중복 호출을 합치고 세 개씩 조회하며 변경
   assert(state.visibleItems().has("TEST-11"));
   const next = state.queueChildren("TEST-1");
   assert.equal(waiting[5]?.token, "next");
-  state.setBranch("TEST-1", { assignees: [] });
+  views.apply({ kind: "branch", key: "TEST-1" }, { ...filters, assignees: [] });
   waiting[5]?.done.resolve({
     issues: [{ ...emptyIssue("TEST-12"), parent: "TEST-1" }],
     nextPageToken: null,
@@ -268,6 +289,11 @@ test("하위 커서는 중복 호출을 합치고 세 개씩 조회하며 변경
 });
 test("프로젝트 선택 없음은 요청하지 않고 접힘·하위 상속을 별도로 유지한다", async () => {
   let calls = 0;
+  const views = createViewController(initialViews(filters), {
+    save: () => {},
+    changed: () => {},
+    statuses: () => [],
+  });
   const state = createListController(
     {
       issues: async () => {
@@ -278,6 +304,10 @@ test("프로젝트 선택 없음은 요청하지 않고 접힘·하위 상속을
     },
     { ...filters, projects: [] },
     "me",
+    () => {},
+    undefined,
+    (key, current) =>
+      branchDefaults({ ...current, ...views.resolve({ kind: "branch", key }) }),
   );
   await state.load();
   assert.equal(calls, 0);
@@ -286,9 +316,9 @@ test("프로젝트 선택 없음은 요청하지 않고 접힘·하위 상속을
   state.toggle("TEST-1", false);
   assert.equal(state.tree.states.get("TEST-1")?.resetAt, 1);
   assert.equal(state.tree.states.get("TEST-1")?.openedAt, 2);
-  state.setBranch("TEST-1", { assignees: [] });
+  views.apply({ kind: "branch", key: "TEST-1" }, { ...filters, assignees: [] });
   assert.deepEqual(state.effectiveBranch("TEST-1").assignees, []);
-  state.setBranch("TEST-1", { assignees: "inherit" });
+  views.select({ kind: "branch", key: "TEST-1" }, { kind: "default" });
   assert.equal(state.effectiveBranch("TEST-1").assignees, null);
 });
 
@@ -587,6 +617,47 @@ test("일괄 변경은 목록·하위 커서를 유지하고 한 번만 알린�
 test("완료 간단히 보기는 기본 켜짐이고 끈 선택을 로컬에 기억한다", () => {
   const local = storage();
   assert.equal(readPreferences(local).compactDone, true);
+  assert.equal(readPreferences(local).compactDoneParents, true);
   writePreferences(local, { ...readPreferences(local), compactDone: false });
   assert.equal(readPreferences(local).compactDone, false);
+  writePreferences(local, {
+    ...readPreferences(local),
+    compactDoneParents: false,
+  });
+  assert.equal(readPreferences(local).compactDoneParents, false);
+});
+
+test("읽던 위치는 계정·조회별로 분리하고 손상 좌표를 무시하며 상단 복귀를 저장한다", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  const mine = createAccountStore(storage, "example.atlassian.net", "me");
+  mine.savePosition("query", [{ key: "TEST-20", offset: -12.5 }]);
+  assert.deepEqual(mine.position("query"), [{ key: "TEST-20", offset: -12.5 }]);
+  assert.deepEqual(mine.position("other"), []);
+  assert.deepEqual(
+    createAccountStore(storage, "example.atlassian.net", "other").position(
+      "query",
+    ),
+    [],
+  );
+  values.set(
+    "fastJira:position:example.atlassian.net:me",
+    JSON.stringify({
+      query: "query",
+      anchors: [
+        { key: "TEST-1", offset: "12" },
+        { key: "invalid", offset: 0 },
+        { key: "TEST-2", offset: 1e10 },
+        { key: "TEST-3", offset: null },
+      ],
+    }),
+  );
+  assert.deepEqual(mine.position("query"), []);
+  mine.savePosition("query", []);
+  assert.deepEqual(mine.position("query"), []);
 });

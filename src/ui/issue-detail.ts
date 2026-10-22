@@ -6,11 +6,11 @@ import {
   createEditOptions,
 } from "../domain/detail-state.ts";
 import type { LookupResult } from "../domain/details.ts";
-import type { EditableField, UserOption } from "../domain/issue.ts";
+import type { EditableField, Issue, UserOption } from "../domain/issue.ts";
 import { decodeEditOptions } from "../domain/wire.ts";
 import { renderADF } from "./adf-render.ts";
-import { copyText } from "./clipboard.ts";
-import { detailChildren } from "./detail-children.ts";
+import { issueKeyCopy } from "./clipboard.ts";
+import { type DetailChildOptions, detailChildren } from "./detail-children.ts";
 import { documentForm } from "./document-form.ts";
 import {
   actionButton,
@@ -19,6 +19,7 @@ import {
   iconButton,
   safeHref,
 } from "./dom.ts";
+import { issueBreadcrumbs } from "./issue-breadcrumbs.ts";
 import { issueComments } from "./issue-comments.ts";
 import { issueHistory } from "./issue-history.ts";
 import {
@@ -42,31 +43,25 @@ export function issueDetail(
   changed: (issue: LookupResult["parent"]) => void | Promise<void>,
   refreshReady: () => void,
   select: (key: string) => void,
+  known: ReadonlyMap<string, Issue> = new Map(),
+  childOptions?: DetailChildOptions,
 ) {
   const issue = result.parent,
     root = element("article", "issue-detail");
   const head = element("div", "detail-head");
   const identity = element("div", "detail-identity");
-  const link = element("a", "key", issue.key),
-    url = safeHref(issue.url);
-  if (url) {
-    link.href = url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-  }
-  identity.append(issueTypeIcon(issue), link);
-  const copy = actionButton("이슈 링크 복사", "copy", "secondary detail-copy");
-  copy.disabled = !url;
-  copy.addEventListener("click", async () => {
-    if (!url) return;
-    await copyText(url, copied);
-  });
+  const url = safeHref(issue.url);
+  const current = element("span", "breadcrumb-current");
+  current.append(issueTypeIcon(issue), issueKeyCopy(issue.key, url, copied));
+  const breadcrumbs = issueBreadcrumbs(issue, known, api, select, current);
+  identity.append(breadcrumbs.element);
   const history = issueHistory(api, issue.key);
-  identity.append(copy, history.trigger);
   root.append(history.panel);
   const dismiss = iconButton("이슈 상세 닫기", "x");
   dismiss.addEventListener("click", close);
-  head.append(identity, dismiss);
+  const actions = element("div", "detail-head-actions");
+  actions.append(history.trigger, dismiss);
+  head.append(identity, actions);
   const titleRow = element("div", "detail-title-row");
   const title = element("h2", "detail-title", issue.summary);
   const pencil = iconButton("제목 수정", "square-pen");
@@ -377,22 +372,29 @@ export function issueDetail(
     files.append(row);
   }
   if (files.children.length) root.append(files);
-  root.append(comments.element);
-  const children = detailChildren(result, api, {
-    ...(url ? { site: new URL(url).hostname } : {}),
-    copied,
-    statusOrder: order,
-    onSelect: select,
-  });
+  const children = detailChildren(
+    result,
+    api,
+    {
+      ...(url ? { site: new URL(url).hostname } : {}),
+      copied,
+      statusOrder: order,
+      onSelect: select,
+    },
+    childOptions,
+  );
   if (children) root.append(children.element);
+  root.append(comments.element);
   return {
     element: root,
     canRefresh: refresh.canRefresh,
+    refreshChildren: () => children?.refresh(),
     get issue() {
       return editor.issue;
     },
     destroy() {
       alive = false;
+      breadcrumbs.destroy();
       children?.destroy();
       history.destroy();
       comments.destroy();

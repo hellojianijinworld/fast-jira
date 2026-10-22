@@ -21,12 +21,17 @@ const rawIssue = (key: string, fields: object = {}) => ({
   key,
   fields: { summary: key, ...fields },
 });
-function setup(reply: (url: URL) => Response) {
+function setup(reply: (url: URL) => Response, fields: unknown[] = []) {
   const calls: URL[] = [];
+  let fieldCalls = 0;
   const client = createJiraClient(
     { site: "example.atlassian.net", email: "test@example.com", token: "fake" },
     async (value) => {
       const url = new URL(String(value));
+      if (url.pathname.endsWith("/field")) {
+        fieldCalls++;
+        return Response.json(fields);
+      }
       calls.push(url);
       return reply(url);
     },
@@ -34,6 +39,7 @@ function setup(reply: (url: URL) => Response) {
   return {
     query: createJiraQuery(client, createJiraMetadata(client), ["협업 담당"]),
     calls,
+    fieldCount: () => fieldCalls,
   };
 }
 test("검색·필터 JQL은 입력을 검증하며 빈 선택이면 HTTP 없이 종료한다", async () => {
@@ -190,15 +196,16 @@ test("하위 조회는 나·미지정을 포함하며 부모 키와 필터를 �
   );
 });
 test("관련 담당 필드는 동적 스키마에서 한 번 읽고 검색 조건에 재사용한다", async () => {
-  const { query, calls } = setup(() =>
-    Response.json([
+  const { query, fieldCount } = setup(
+    () => Response.json({ issues: [] }),
+    [
       {
         id: "customfield_12",
         name: "협업 담당",
         schema: { type: "array", items: "user" },
       },
       { id: "customfield_13", name: "협업 담당", schema: { type: "string" } },
-    ]),
+    ],
   );
   const conditions = await query.browseConditions({
     ...options,
@@ -208,7 +215,7 @@ test("관련 담당 필드는 동적 스키마에서 한 번 읽고 검색 조�
     conditions.includes("(assignee = currentUser() OR cf[12] = currentUser())"),
   );
   await query.browseConditions({ ...options, scope: "related" });
-  assert.equal(calls.length, 1);
+  assert.equal(fieldCount(), 1);
 });
 test("최근 변경은 필터 밖 변경도 반환하고 일치 여부만 묶음 재조회한다", async () => {
   const { query, calls } = setup((url) =>
@@ -277,4 +284,176 @@ test("일괄 변경 필터 판정은 선택한 키만 묶어서 조회하고 새
   await assert.rejects(query.matchesIssues([], options));
   await assert.rejects(query.matchesIssues(["AA-1) OR project=BB"], options));
   assert.equal(calls.length, 2);
+});
+
+test("상위 경로는 5단계 넘는 실제 부모 연결도 끝까지 조회하며 입력을 검증한다", async () => {
+  const { query, calls } = setup((url) => {
+    const key = (url.searchParams.get("jql") ?? "").match(/AA-\d+/)?.[0];
+    assert.ok(key);
+    const number = Number(key.split("-")[1]);
+    return Response.json({
+      issues: [
+        rawIssue(
+          key,
+          number > 1 ? { parent: { key: `AA-${number - 1}` } } : {},
+        ),
+      ],
+    });
+  });
+  const path = await query.ancestorPath("AA-8");
+  assert.deepEqual(
+    path.map((issue) => issue.key),
+    ["AA-8", "AA-7", "AA-6", "AA-5", "AA-4", "AA-3", "AA-2", "AA-1"],
+  );
+  assert.equal(calls.length, 8);
+  await assert.rejects(query.ancestorPath("AA-2 OR project=BB"));
+  assert.equal(calls.length, 8);
+});
+
+test("선택한 작업 관계자는 동적 사용자 필드의 계정으로 조회하고 본인 조건을 겹치지 않는다", async () => {
+  const { query } = setup(
+    () => Response.json({ issues: [] }),
+    [
+      {
+        id: "customfield_12",
+        name: "협업 담당",
+        schema: { type: "array", items: "user" },
+      },
+    ],
+  );
+  const conditions = await query.browseConditions({
+    ...options,
+    scope: "related",
+    assignees: "account-other",
+  });
+  assert(
+    conditions.some((condition) =>
+      condition.includes('cf[12] in ("account-other")'),
+    ),
+  );
+  assert(!conditions.some((condition) => condition.includes("currentUser()")));
+  const assigned = await query.browseConditions({
+    ...options,
+    scope: "assigned",
+    assignees: "account-other",
+  });
+  assert(assigned.includes('(assignee in ("account-other"))'));
+  assert(!assigned.some((condition) => condition.includes("currentUser()")));
+});
+
+test("관계자 필드는 이름을 고정하지 않고 사용자 스키마를 읽어 묶음 응답에 포함한다", async () => {
+  let fieldCalls = 0;
+  const searches: URL[] = [];
+  const client = createJiraClient(
+    { site: "example.atlassian.net", email: "test@example.com", token: "fake" },
+    async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/field")) {
+        fieldCalls++;
+        return Response.json([
+          {
+            id: "customfield_42",
+            name: "프로젝트에서 정한 역할",
+            schema: { type: "user" },
+          },
+          {
+            id: "customfield_43",
+            name: "다른 역할",
+            schema: { type: "array", items: "user" },
+          },
+          {
+            id: "customfield_44",
+            name: "검색 불가 역할",
+            searchable: false,
+            schema: { type: "user" },
+          },
+          { id: "customfield_45", name: "텍스트", schema: { type: "string" } },
+        ]);
+      }
+      searches.push(url);
+      return Response.json({
+        issues: [
+          rawIssue("AA-2", {
+            assignee: { accountId: "owner-id" },
+            customfield_42: { accountId: "member-id" },
+            customfield_43: [
+              { accountId: "another-id" },
+              { accountId: "member-id" },
+            ],
+          }),
+        ],
+      });
+    },
+  );
+  const query = createJiraQuery(client, createJiraMetadata(client));
+  const page = await query.childrenPage("AA-1", options, "related", "recent");
+  assert.deepEqual(page.issues[0]?.relatedUserIds, [
+    "owner-id",
+    "member-id",
+    "another-id",
+  ]);
+  assert(searches[0]?.searchParams.get("fields")?.includes("customfield_42"));
+  assert(!searches[0]?.searchParams.get("fields")?.includes("customfield_44"));
+  await query.childrenPage("AA-1", options, "related", "recent");
+  assert.equal(fieldCalls, 1);
+});
+
+test("미지정 작업 조회는 담당자 또는 모든 동적 관계자 필드의 비어 있음을 검색한다", async () => {
+  const { query, fieldCount } = setup(
+    () => Response.json({ issues: [] }),
+    [
+      { id: "customfield_12", name: "협업 담당", schema: { type: "user" } },
+      {
+        id: "customfield_14",
+        name: "협업 담당",
+        schema: { type: "array", items: "user" },
+      },
+    ],
+  );
+  const assigned = await query.browseConditions({
+    ...options,
+    scope: "assigned",
+    assignees: "unassigned",
+    statuses: "10",
+  });
+  assert(assigned.includes("(assignee is EMPTY)"));
+  assert(assigned.includes("status in (10)"));
+  const related = await query.browseConditions({
+    ...options,
+    scope: "related",
+    assignees: "unassigned",
+    statuses: "10",
+  });
+  assert(
+    related.includes(
+      "((assignee is EMPTY AND cf[12] is EMPTY AND cf[14] is EMPTY))",
+    ),
+  );
+  assert(
+    !related.some(
+      (condition) =>
+        condition.includes("currentUser()") || condition.includes(" OR "),
+    ),
+  );
+  await query.browseConditions({
+    ...options,
+    scope: "related",
+    assignees: "unassigned",
+  });
+  assert.equal(fieldCount(), 1);
+});
+
+test("새로고침 묶음 조회는 최대 100개이며 일반 하위 페이지는 25개를 유지한다", async () => {
+  const { query, calls } = setup(() => Response.json({ issues: [] }));
+  await query.childrenPage("AA-1", options, "all", "recent");
+  await query.childrenPage("AA-1", options, "all", "recent", "", 100);
+  await query.browse(options, "recent", "", 100);
+  assert.deepEqual(
+    calls.map((url) => url.searchParams.get("maxResults")),
+    ["25", "100", "100"],
+  );
+  await assert.rejects(
+    query.childrenPage("AA-1", options, "all", "recent", "", 101),
+  );
+  await assert.rejects(query.browse(options, "recent", "", Number.NaN));
 });

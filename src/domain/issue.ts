@@ -18,6 +18,7 @@ export interface Issue {
   priorityIcon: string;
   assignee: string;
   assigneeId: string;
+  relatedUserIds?: readonly string[];
   assigneeAvatar: string;
   updated: string;
   dueDate: string;
@@ -45,7 +46,7 @@ export interface ChildPage {
   issues: Map<string, Issue>;
 }
 export type SelectionFilter = readonly string[] | null;
-export type PeopleFilter = "all" | "mine";
+export type PeopleFilter = "all" | "mine" | "assigned" | "related";
 
 export interface BranchDefaults {
   sort: string;

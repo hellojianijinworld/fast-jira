@@ -65,7 +65,11 @@ export function createApi(fetcher: typeof fetch = fetch) {
     const data = record(value);
     if (typeof data.site !== "string" || typeof data.email !== "string")
       throw new Error("연결 설정 응답이 올바르지 않습니다.");
-    return { site: data.site, email: data.email };
+    return {
+      site: data.site,
+      email: data.email,
+      tokenConfigured: data.tokenConfigured === true,
+    };
   };
   return {
     request,
@@ -76,6 +80,11 @@ export function createApi(fetcher: typeof fetch = fetch) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
       }),
+    parentOptions: (keys: string[], q = "", pageToken = "") =>
+      request(
+        `/api/parent-options?${new URLSearchParams({ keys: keys.join(","), q, pageToken })}`,
+        decodeIssuePage,
+      ),
     bulkOptions: (keys: string[], field: "status" | "assignee" | "priority") =>
       request("/api/bulk-options", decodeBulkOptions, {
         method: "POST",
@@ -176,6 +185,10 @@ export function createApi(fetcher: typeof fetch = fetch) {
           body: JSON.stringify({ key, description }),
         },
       ),
+    ancestors: (key: string) =>
+      request(`/api/ancestors?key=${encodeURIComponent(key)}`, (value) =>
+        wireArray(value, decodeIssue),
+      ),
     lookup: (key: string) =>
       request(`/api/issue?key=${encodeURIComponent(key)}`, decodeLookup),
     bootstrap: () => request("/api/projects", decodeBootstrap),
@@ -199,9 +212,10 @@ export function createApi(fetcher: typeof fetch = fetch) {
       params.set("lookback", String(lookback));
       return request(`/api/changes?${params}`, decodeChanges);
     },
-    issues: (filters: Filters, token = "") => {
+    issues: (filters: Filters, token = "", pageSize = 30) => {
       const params = filterParameters(filters);
       if (token) params.set("pageToken", token);
+      if (pageSize !== 30) params.set("pageSize", String(pageSize));
       return request(`/api/issues?${params}`, decodeListPage);
     },
     children: (
@@ -209,6 +223,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
       filters: Filters,
       settings: BranchDefaults,
       token = "",
+      pageSize = 25,
     ) => {
       const params = filterParameters(filters);
       params.delete("q");
@@ -220,6 +235,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
       params.set("statuses", selectionParameter(settings.statuses));
       params.set("assignees", selectionParameter(settings.assignees));
       if (token) params.set("pageToken", token);
+      if (pageSize !== 25) params.set("pageSize", String(pageSize));
       return request(`/api/children?${params}`, decodeIssuePage);
     },
   };

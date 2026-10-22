@@ -8,6 +8,7 @@ import {
   hierarchyDepth,
   searchAncestors,
 } from "../domain/tree.ts";
+import type { ViewInfo } from "../domain/view-labels.ts";
 import { element, iconButton } from "./dom.ts";
 import { issueCard } from "./issue-card.ts";
 import { projectIcon } from "./meta.ts";
@@ -17,8 +18,11 @@ export interface TreeCallbacks {
   site: string;
   copied: (message: string) => void;
   selectedKey: () => string;
+  compactDone?: () => boolean;
+  compactDoneParents?: () => boolean;
   onSelect: (key: string) => void;
   onBranch: (key: string, anchor: HTMLButtonElement) => void;
+  viewInfo?: (key: string) => ViewInfo;
   onTreeChange: () => void;
   decorate?: (issue: Issue, card: HTMLElement) => HTMLElement;
 }
@@ -34,37 +38,24 @@ export function createTreeView(
       for (const entry of entries)
         if (entry.isIntersecting && entry.target instanceof HTMLElement) {
           const parent = entry.target.dataset.parent;
-          if (parent) void list.queueChildren(parent);
+          if (
+            entry.target.classList.contains("tree-children") &&
+            parent &&
+            !list.childPage(parent).restored
+          )
+            continue;
+          if (parent)
+            void list.queueChildren(parent, () => branchVisible(parent));
           else if (entry.target.dataset.more === "true") void list.load();
         }
     },
     { rootMargin: "350px" },
   );
-  function stickyOffsets() {
-    const rows = Array.from(
-      host.querySelectorAll<HTMLElement>(".sticky-parent"),
+  function branchVisible(key: string) {
+    return [...host.querySelectorAll<HTMLElement>(".tree-children")].some(
+      (region) => region.dataset.parent === key,
     );
-    for (const row of rows) {
-      let offset = 0;
-      // 같은 깊이의 다른 작업 높이는 섞지 않는다. 실제 조상 행의 높이만 쌓는다.
-      for (
-        let parent = row.parentElement?.parentElement;
-        parent && parent !== host;
-        parent = parent.parentElement
-      ) {
-        if (parent.tagName !== "LI") continue;
-        const ancestor = Array.from(parent.children).find(
-          (child) =>
-            child instanceof HTMLElement &&
-            child.classList.contains("sticky-parent"),
-        );
-        if (ancestor) offset += ancestor.getBoundingClientRect().height;
-      }
-      row.style.top = `calc(var(--sticky-offset, 58px) + ${offset}px)`;
-    }
   }
-  const resize = new ResizeObserver(stickyOffsets);
-  resize.observe(host);
   // 키가 같은 행과 하위 목록은 유지한다. 정렬 이동·필터 이탈만 DOM 위치에 반영한다.
   function reconcile(current: HTMLElement, next: HTMLElement) {
     const existing = new Map(
@@ -100,12 +91,7 @@ export function createTreeView(
           ) {
             reconcile(previous, part);
           } else if (previous instanceof HTMLElement) {
-            const signature = (element: HTMLElement) => {
-              const copy = element.cloneNode(true) as HTMLElement;
-              if (copy.matches(".tree-row")) copy.style.removeProperty("top");
-              return copy.outerHTML;
-            };
-            if (signature(previous) !== signature(part))
+            if (previous.outerHTML !== part.outerHTML)
               previous.replaceWith(part);
           } else old.append(part);
         }
@@ -172,9 +158,16 @@ export function createTreeView(
       reset: number,
       unparented = false,
       path = new Set<string>(),
+      standaloneTree = unparented,
     ): HTMLUListElement {
       const group = element("ul", "tree-list");
       group.dataset.treeKey = unparented ? "standalone" : "children";
+      const completed = element("li", "completed-group");
+      completed.dataset.treeKey = "completed";
+      completed.style.paddingLeft = `calc(${depth * 24}px + var(--tree-gutter) + 4px)`;
+      const tiles = element("ul", "tree-list completed-grid");
+      tiles.dataset.treeKey = "tiles";
+      tiles.setAttribute("aria-label", "완료된 이슈");
       for (const issue of sorted(parent).filter(
         (issue) =>
           permitted(issue) &&
@@ -188,11 +181,40 @@ export function createTreeView(
         const item = element("li");
         item.dataset.treeKey = issue.key;
         const row = element("div", "tree-row");
-        row.style.paddingLeft = `${hierarchyDepth(issue, catalog.types, depth) * 24}px`;
+        row.style.paddingLeft = `${(standaloneTree ? depth : hierarchyDepth(issue, catalog.types, depth)) * 24}px`;
         const descendants = groups.get(issue.key) ?? [];
+        const hasChildren = issue.hasChildren || descendants.some(permitted);
         const page = list.childPage(issue.key);
         const state = branchState(list.tree.states, issue.key, reset);
         const collapsed = !forced.has(issue.key) && state.collapsed;
+        const level =
+          issue.hierarchyLevel ??
+          catalog.types.find(
+            (type) =>
+              type.project === issue.project && type.id === issue.issueTypeId,
+          )?.hierarchyLevel;
+        const compactCompleted =
+          issue.statusCategory === "done" &&
+          ((level === -1 &&
+            parent &&
+            !hasChildren &&
+            (callbacks.compactDone?.() ?? true)) ||
+            (level !== -1 && callbacks.compactDoneParents?.()));
+        const info = hasChildren ? callbacks.viewInfo?.(issue.key) : undefined;
+        let viewAction: HTMLButtonElement | undefined;
+        if (!compactCompleted && info && info.kind !== "default") {
+          viewAction = iconButton(`${issue.key} 하위 정렬·필터`, info.icon);
+          viewAction.classList.add("row-action", "active", "card-view-button");
+          viewAction.append(element("span", "card-view-label", info.label));
+          viewAction.dataset.viewKind = info.kind;
+          viewAction.title = `하위 뷰 · ${info.label}${info.temporary ? " · 이번만 넓혀 보기" : ""}`;
+          const button = viewAction;
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            callbacks.onBranch(issue.key, button);
+          });
+        }
         const card = issueCard(issue, {
           site: callbacks.site,
           copied: callbacks.copied,
@@ -200,28 +222,25 @@ export function createTreeView(
           context: context(issue),
           statusOrder,
           onSelect: callbacks.onSelect,
+          ...(viewAction ? { metaAction: viewAction } : {}),
         });
         const decorated = callbacks.decorate?.(issue, card) ?? card;
-        if (issue.hasChildren || descendants.some(permitted)) {
-          if (!collapsed) row.classList.add("sticky-parent");
+        if (compactCompleted) {
+          card.title = `${issue.key} · ${issue.summary} · ${issue.status}`;
+          row.style.paddingLeft = "0";
+          row.append(decorated);
+          item.append(row);
+          tiles.append(item);
+          continue;
+        }
+        if (hasChildren) {
+          if (!collapsed) {
+            row.classList.add("tree-parent");
+            row.dataset.contextKey = issue.key;
+            row.dataset.contextParent = parent;
+          }
           row.dataset.depth = String(depth);
-          row.style.zIndex = String(Math.max(1, 10 - depth));
           const actions = element("div", "tree-actions");
-          const settings = iconButton(
-            `${issue.key} 하위 정렬·필터`,
-            "list-filter",
-          );
-          settings.classList.add("row-action");
-          const overrides = Object.values(
-            list.tree.branches.get(issue.key) ?? {},
-          ).some((value) => value !== undefined && value !== "inherit");
-          settings.classList.toggle("active", overrides);
-          settings.title = overrides
-            ? "하위 정렬·필터 · 개별 설정 적용 중"
-            : "하위 정렬·필터 · 글로벌 필터 적용";
-          settings.addEventListener("click", () =>
-            callbacks.onBranch(issue.key, settings),
-          );
           const toggle = iconButton(
             `${issue.key} 하위 이슈 ${collapsed ? "펼치기" : "접기"}`,
             "chevron-right",
@@ -238,7 +257,7 @@ export function createTreeView(
               )
               ?.focus();
           });
-          actions.append(settings, toggle);
+          actions.append(toggle);
           row.append(actions, decorated);
           item.append(row);
           if (!collapsed) {
@@ -249,12 +268,20 @@ export function createTreeView(
               state.childReset,
               false,
               nextPath,
+              standaloneTree,
             );
-            if (page.loading)
+            nested.classList.add("tree-children");
+            nested.dataset.parent = issue.key;
+            if (page.loading && !page.restored)
               card
                 .querySelector(".list-item")
                 ?.setAttribute("aria-busy", "true");
-            if (!page.loaded || page.nextPageToken || page.error) {
+            if (
+              !page.loaded ||
+              page.restored ||
+              page.nextPageToken ||
+              page.error
+            ) {
               const placeholder = element("li", "child-page");
               const button = element(
                 "button",
@@ -274,7 +301,9 @@ export function createTreeView(
               button.dataset.retry = String(Boolean(page.error));
               button.dataset.parent = issue.key;
               button.addEventListener("click", () => {
-                void list.queueChildren(issue.key);
+                void list.queueChildren(issue.key, () =>
+                  branchVisible(issue.key),
+                );
               });
               placeholder.append(button);
               nested.append(placeholder);
@@ -289,6 +318,13 @@ export function createTreeView(
           item.append(row);
         }
         group.append(item);
+      }
+      if (tiles.children.length) {
+        completed.append(
+          element("h4", "completed-heading", `완료 ${tiles.children.length}개`),
+          tiles,
+        );
+        group.append(completed);
       }
       return group;
     }
@@ -364,13 +400,16 @@ export function createTreeView(
       "[data-parent]:not(:disabled)[data-retry=false],[data-more]:not(:disabled)[data-retry=false]",
     ))
       observer.observe(target);
-    stickyOffsets();
+    for (const target of host.querySelectorAll<HTMLElement>(".tree-children")) {
+      const page = list.childPage(target.dataset.parent ?? "");
+      if (page.restored && !page.loading && !page.error)
+        observer.observe(target);
+    }
   }
   return {
     render,
     destroy: () => {
       observer.disconnect();
-      resize.disconnect();
       host.replaceChildren();
     },
   };

@@ -23,6 +23,7 @@ export function createConnection(options: {
     settings: (): ConnectionSettings => ({
       site: credentials?.site ?? options.defaults.site,
       email: credentials?.email ?? options.defaults.email,
+      tokenConfigured: Boolean(credentials?.token),
     }),
     service() {
       if (!service)

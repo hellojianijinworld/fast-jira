@@ -5,6 +5,7 @@ import { copyText } from "./clipboard.ts";
 import { actionButton, element, iconButton } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
 import { personPill, priorityPill, statusPill } from "./meta.ts";
+import { parentSelect } from "./parent-select.ts";
 import { enhanceSelect, type SelectMenu } from "./select-menu.ts";
 
 /** 선택은 명시적인 키 집합이다. 상위 선택을 하위 자동 선택으로 해석하지 않는다. */
@@ -30,10 +31,9 @@ export function createBulkSelection(config: {
     count = element("strong"),
     exit = iconButton("선택 종료", "x");
   const actions = element("div", "bulk-actions"),
-    result = element("div", "bulk-result"),
-    undoButton = actionButton("되돌리기", "undo-2");
+    result = element("div", "bulk-result");
   result.setAttribute("role", "status");
-  head.append(count, actions, undoButton, exit);
+  head.append(count, actions, exit);
   bar.append(head, result);
   config.mount.append(bar);
   config.host.append(panel);
@@ -54,10 +54,9 @@ export function createBulkSelection(config: {
     config.toggle.setAttribute("aria-pressed", String(active));
     config.toggle.disabled = busy;
     count.textContent = `${selected.size}개 선택`;
-    for (const button of [exit, undoButton]) button.disabled = busy;
+    exit.disabled = busy;
     for (const button of actions.querySelectorAll<HTMLButtonElement>("button"))
       button.disabled = busy || !selected.size;
-    undoButton.hidden = !undoToken;
     for (const check of config.host.querySelectorAll<HTMLInputElement>(
       "[data-select-key]",
     )) {
@@ -154,7 +153,22 @@ export function createBulkSelection(config: {
     panel.showPopover();
     let control: HTMLInputElement | HTMLSelectElement;
     try {
-      if (field === "status" || field === "assignee" || field === "priority") {
+      if (field === "parent") {
+        holder.textContent = "가능한 부모를 확인하는 중…";
+        const picker = await parentSelect(holder, config.api, [...selected]);
+        if (!alive || version !== revision || !panel.matches(":popover-open")) {
+          picker.menu.destroy();
+          return;
+        }
+        control = picker.select;
+        menu = picker.menu;
+        hint.textContent =
+          "같은 프로젝트의 바로 상위 단계에서 골라요. 키·제목 검색으로 다른 후보도 찾을 수 있어요.";
+      } else if (
+        field === "status" ||
+        field === "assignee" ||
+        field === "priority"
+      ) {
         holder.textContent = "공통 선택지를 확인하는 중…";
         const options = await config.api.bulkOptions([...selected], field);
         if (!alive || version !== revision || !panel.matches(":popover-open"))
@@ -213,16 +227,15 @@ export function createBulkSelection(config: {
         });
       } else {
         control = element("input");
-        control.type = field === "dueDate" ? "date" : "text";
+        control.type = "date";
         control.setAttribute("aria-label", label);
-        if (field === "parent") {
-          control.placeholder = "상위 이슈 키 · 예: PROJ-123";
-          hint.textContent =
-            "같은 프로젝트의 바로 상위 단계 이슈를 지정해요. 빈 값은 부모 연결을 해제합니다.";
-        } else hint.textContent = "빈 값은 선택한 이슈의 마감일을 해제합니다.";
+        hint.textContent = "빈 값은 선택한 이슈의 마감일을 해제합니다.";
         holder.append(control);
       }
-      save.disabled = false;
+      save.disabled = field === "parent" && control.value === "__choose__";
+      control.addEventListener("change", () => {
+        save.disabled = control.value === "__choose__";
+      });
       save.addEventListener("click", async () => {
         if (busy || version !== revision) return;
         busy = true;
@@ -297,9 +310,6 @@ export function createBulkSelection(config: {
     active = !active;
     sync();
     config.render();
-  });
-  undoButton.addEventListener("click", () => {
-    void undo();
   });
   sync();
   return {

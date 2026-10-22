@@ -125,8 +125,12 @@ main {
   overscroll-behavior: contain;
 }
 .browse {
-  padding: var(--pane-padding) 16px 60px;
-  --sticky-offset: 0px;
+  overflow-anchor: none;
+  padding: 0 16px 60px;
+  scroll-padding-top: var(--tree-context-height, 0px);
+}
+.browse-content {
+  padding-top: var(--pane-padding);
 }
 .detail-pane {
   border-left: 1px solid var(--border);
@@ -163,6 +167,12 @@ main {
 .detail-content {
   min-height: 100%;
 }
+.detail-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+}
 .issue-detail {
   padding: 20px 24px 32px;
 }
@@ -181,23 +191,6 @@ main {
   align-items: center;
   gap: 7px;
 }
-.detail-identity > .key {
-  text-decoration: none;
-}
-.detail-identity > .tool-button {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
-}
-.detail-copy {
-  min-height: 28px;
-  padding: 3px 7px;
-  font-size: 11px;
-}
-.detail-identity {
-  flex-wrap: wrap;
-}
 .detail-title {
   margin: 16px 0 20px;
   font-size: 20px;
@@ -209,12 +202,12 @@ main {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 20px 28px;
+  margin-bottom: 24px;
 }
 .detail-field {
   display: grid;
-  gap: 5px;
+  gap: 8px;
   min-width: 0;
   max-width: 100%;
   font-size: 12px;
@@ -240,6 +233,7 @@ main {
 }
 .detail-modal {
   width: min(860px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   height: calc(100dvh - 16px);
   max-height: calc(100dvh - 16px);
   margin: auto;
@@ -255,6 +249,7 @@ dialog::backdrop {
 }
 .settings-modal {
   width: min(520px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
   padding: 20px;
   border: 1px solid var(--border);
@@ -262,17 +257,34 @@ dialog::backdrop {
   background: var(--surface);
   color: var(--text);
 }
+/* 작은 높이에서도 헤더·푸터는 유지하고 본문만 스크롤한다. */
+.settings-modal[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-modal > :where(:not(.dialog-head):not(.modal-footer)) {
+  min-height: 0;
+  overflow-y: auto;
+}
+.dialog-head,
+.modal-footer {
+  flex: none;
+}
+
 .dialog-head h2 {
   margin: 0;
   font-size: 17px;
 }
 .settings-account {
+  display: grid;
+  gap: 6px;
   color: var(--muted);
   font-size: 12px;
 }
 .setting-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 8px 0;
   font-size: 13px;
@@ -289,9 +301,11 @@ dialog::backdrop {
 }
 @media (max-width: 900px) {
   .workspace {
+    overflow-anchor: none;
     display: flex;
     flex-direction: column;
     overflow: auto;
+    scroll-padding-top: var(--tree-context-height, 0px);
   }
   .browse {
     overflow: visible;
@@ -308,6 +322,13 @@ dialog::backdrop {
   }
 }
 @media (max-width: 500px) {
+  .browse-content {
+    padding-top: 12px;
+  }
+  .tree-context {
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
   .top-nav {
     padding: 8px 12px;
   }
@@ -315,7 +336,7 @@ dialog::backdrop {
     gap: 4px;
   }
   .browse {
-    padding: 12px 8px 40px;
+    padding: 0 8px 40px;
   }
   .dashboard,
   .issue-detail {
@@ -897,22 +918,6 @@ button.debug-line[aria-pressed="true"] {
     animation: none;
   }
 }
-/* Header actions stay quiet; copy and history share one visual treatment. */
-.detail-copy,
-.detail-identity > .secondary {
-  min-height: 28px;
-  padding: 3px 8px;
-  font-size: 12px;
-  color: var(--muted);
-  background: transparent;
-  border-color: var(--border);
-}
-.detail-copy:hover,
-.detail-identity > .secondary:hover {
-  color: var(--blue);
-  background: var(--hover);
-  border-color: var(--border-strong);
-}
 .card-copy:hover {
   background: transparent;
   color: var(--blue);
@@ -1088,4 +1093,219 @@ button.debug-line[aria-pressed="true"] {
 }
 .connection-guide li + li {
   margin-top: 6px;
+}
+
+/* 경로만 남은 너비에서 줄바꿈하고 기록·닫기는 우측에 유지한다. */
+.detail-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+}
+.detail-identity {
+  min-width: 0;
+}
+.detail-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.detail-head-actions > .secondary {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--border);
+  white-space: nowrap;
+}
+.detail-head-actions > .secondary:hover {
+  color: var(--blue);
+  background: var(--hover);
+}
+.detail-breadcrumbs {
+  min-height: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.detail-breadcrumbs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+.breadcrumb-label {
+  overflow-wrap: anywhere;
+}
+.detail-breadcrumbs a:hover {
+  color: var(--blue);
+  text-decoration: underline;
+}
+.detail-breadcrumbs > .ui-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.detail-breadcrumbs a .issue-type-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.breadcrumb-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--secondary-text);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  height: min(520px, 65dvh);
+  min-height: 0;
+}
+.settings-modal > .settings-content {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.settings-tabs {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  margin: 16px 0 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tab {
+  flex: 1;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 500;
+}
+.settings-tab[aria-selected="true"] {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+.settings-panels {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 4px 4px;
+}
+.setting-row {
+  padding: 12px 0;
+  gap: 10px;
+}
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border);
+}
+.setting-row input {
+  flex: none;
+  margin: 3px 0 0;
+}
+.setting-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.setting-label {
+  font-weight: 500;
+}
+.setting-help {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.settings-panel .settings-account {
+  margin-top: 0;
+  line-height: 1.6;
+}
+.settings-panel .connection-form {
+  margin-top: 16px;
+}
+
+.connection-field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.connection-field-label a {
+  color: var(--blue);
+  font-size: 12px;
+  text-decoration: none;
+}
+.connection-field-label a:hover {
+  text-decoration: underline;
+}
+
+.connection-field > .connection-guide {
+  margin-top: 2px;
+  line-height: 1.6;
+}
+
+@media (max-width: 600px) {
+  .top-nav {
+    padding-inline: 8px;
+    gap: 8px;
+  }
+  .top-nav h1 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 18px;
+  }
+  .nav-tools {
+    flex: none;
+    gap: 2px;
+  }
+  .nav-tools .tool-button,
+  .dialog-head > .tool-button,
+  .detail-head-actions > .tool-button,
+  .detail-pending > .tool-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+  }
+  .settings-modal {
+    padding: 16px;
+  }
+  .settings-tab {
+    min-height: 40px;
+  }
+  .connection-field input,
+  .select-search input,
+  .search-form input,
+  .detail-field input[type="date"] {
+    font-size: 16px;
+    min-height: 40px;
+  }
+  .detail-field .select-trigger,
+  .assignee-value > button,
+  .detail-head-actions > .secondary,
+  .modal-footer > button,
+  .connection-actions > button {
+    min-height: 40px;
+    height: auto;
+  }
+  .detail-fields {
+    gap: 20px 24px;
+  }
+  .card-copy .ui-icon {
+    opacity: 1;
+  }
 }

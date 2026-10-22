@@ -7,6 +7,7 @@ import {
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
+import type { PeopleFilter } from "../domain/issue.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { record } from "../domain/validation.ts";
 import type { Connection } from "./connection.ts";
@@ -90,10 +91,16 @@ export function createHttpServer(
     const params = url.searchParams;
     const issueKey = () => key(params.get("key") ?? "");
     switch (url.pathname) {
+      case "/api/parent-options":
+        return service.parentOptions(
+          (params.get("keys") ?? "").split(",").filter(Boolean),
+          params.get("q") ?? "",
+          params.get("pageToken") ?? "",
+        );
       case "/api/projects": {
         const [projects, me, priorities] = await Promise.all([
           service.projects(),
-          service.currentUser(),
+          service.currentUser(true),
           service.priorities(),
         ]);
         return {
@@ -108,12 +115,13 @@ export function createHttpServer(
       case "/api/statuses":
         return service.projectStatuses(params.get("projects") ?? "");
       case "/api/assignees":
-        return service.projectAssignees(params.get("projects") ?? "");
+        return service.filterUsers(params.get("projects") ?? "");
       case "/api/issues":
         return service.browse(
           browseOptions(params),
           params.get("sort") ?? "recent",
           params.get("pageToken") ?? "",
+          Number(params.get("pageSize") ?? 30),
         );
       case "/api/changes":
         return service.recentChanges(
@@ -122,14 +130,15 @@ export function createHttpServer(
         );
       case "/api/children": {
         const people = params.get("people") ?? "all";
-        if (people !== "all" && people !== "mine")
+        if (!["all", "mine", "assigned", "related"].includes(people))
           throw invalid("하위 담당자 조건이 올바르지 않습니다.");
         return service.childrenPage(
           issueKey(),
           browseOptions(params),
-          people,
+          people as PeopleFilter,
           params.get("sort") ?? "recent",
           params.get("pageToken") ?? "",
+          Number(params.get("pageSize") ?? 25),
         );
       }
       case "/api/matches":
@@ -140,6 +149,8 @@ export function createHttpServer(
               (params.get("parents") ?? "").split(",").filter(Boolean),
             )
           : service.matchesIssue(issueKey(), browseOptions(params));
+      case "/api/ancestors":
+        return service.ancestorPath(issueKey());
       case "/api/issue":
         return service.lookup(issueKey());
       case "/api/detail":

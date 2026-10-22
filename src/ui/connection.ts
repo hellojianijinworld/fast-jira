@@ -2,52 +2,45 @@ import type { Api } from "../client/api.ts";
 import { actionButton, element, externalLink } from "./dom.ts";
 
 /** 토큰은 입력·전송 후 비우며 브라우저 저장소에는 남기지 않는다. */
-export function connectionForm(api: Api, connected: () => void) {
+export function connectionForm(
+  api: Pick<Api, "connection" | "saveConnection">,
+  connected: () => void,
+) {
   const form = element("form", "connection-form");
   form.append(element("h3", "", "Jira 연결 설정"));
-  const guide = element("section", "connection-guide");
-  guide.append(
-    element(
-      "p",
-      "",
-      "처음 연결하거나 토큰이 만료됐다면 새 API 토큰을 발급받아 주세요.",
-    ),
-  );
-  const steps = element("ol");
-  const first = element("li");
-  first.append(
-    externalLink(
-      "https://id.atlassian.com/manage-profile/security/api-tokens",
-      "Atlassian API 토큰 발급 페이지 열기",
-    ),
-    document.createTextNode(" → 본인 계정으로 로그인하세요."),
-  );
-  steps.append(
-    first,
-    element(
-      "li",
-      "",
-      "Create API token을 선택하고 이름(Fast Jira)과 만료일을 정해 만드세요. 이 앱은 scopes 없는 토큰을 사용해요.",
-    ),
-    element(
-      "li",
-      "",
-      "표시된 토큰을 복사해 아래에 입력하고 연결 확인 및 저장을 누르세요. 발급 화면을 닫으면 토큰을 다시 볼 수 없어요.",
-    ),
-  );
-  guide.append(steps);
-  form.append(guide);
   const fields = {
     site: element("input"),
     email: element("input"),
     token: element("input"),
   };
+  const storedMask = "••••••••";
+  let tokenConfigured = false;
+  fields.token.addEventListener("focus", () => {
+    if (fields.token.value === storedMask) fields.token.value = "";
+  });
+  fields.token.addEventListener("blur", () => {
+    if (tokenConfigured && !fields.token.value) fields.token.value = storedMask;
+  });
   for (const [key, label, placeholder, type] of [
-    ["site", "Jira 사이트", "your-site.atlassian.net", "text"],
+    ["site", "Jira 사이트", "예: your-team.atlassian.net", "text"],
     ["email", "Atlassian 이메일", "you@example.com", "email"],
-    ["token", "새 API 토큰", "발급받은 토큰을 입력하세요", "password"],
+    [
+      "token",
+      "API 토큰",
+      "발급받은 토큰을 붙여넣으세요 (예: ATATT…)",
+      "password",
+    ],
   ] as const) {
-    const row = element("label", "connection-field", label);
+    const row = element("label", "connection-field");
+    const heading = element("span", "connection-field-label", label);
+    if (key === "token")
+      heading.append(
+        externalLink(
+          "https://id.atlassian.com/manage-profile/security/api-tokens",
+          "토큰 발급 ↗",
+        ),
+      );
+    row.append(heading);
     const input = fields[key];
     input.type = type;
     input.placeholder = placeholder;
@@ -55,7 +48,16 @@ export function connectionForm(api: Api, connected: () => void) {
     input.autocomplete =
       key === "token" ? "new-password" : key === "email" ? "email" : "off";
     input.spellcheck = false;
+    input.setAttribute("aria-label", label);
     row.append(input);
+    if (key === "token")
+      row.append(
+        element(
+          "small",
+          "connection-guide",
+          "권한 범위(scopes) 없는 API 토큰을 사용해요. 연결 확인에 성공하면 이 컴퓨터에 저장하고 바로 적용해요.",
+        ),
+      );
     form.append(row);
   }
   const feedback = element("p", "connection-feedback");
@@ -64,26 +66,31 @@ export function connectionForm(api: Api, connected: () => void) {
   save.type = "submit";
   const actions = element("div", "connection-actions");
   actions.append(save);
-  form.append(
-    element(
-      "p",
-      "connection-guide",
-      "연결에 성공한 정보만 이 컴퓨터의 .env에 저장돼요. 새 토큰은 서버 재시작 없이 적용돼요.",
-    ),
-    feedback,
-    actions,
-  );
+  form.append(feedback, actions);
   void api
     .connection()
     .then((settings) => {
       // 설정 응답을 기다리는 동안 사용자가 입력한 값은 보존한다.
       if (!fields.site.value) fields.site.value = settings.site;
       if (!fields.email.value) fields.email.value = settings.email;
+      tokenConfigured = settings.tokenConfigured === true;
+      if (
+        tokenConfigured &&
+        !fields.token.value &&
+        document.activeElement !== fields.token
+      )
+        fields.token.value = storedMask;
     })
     .catch(() => {});
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (save.disabled || !form.reportValidity()) return;
+    if (save.disabled) return;
+    if (fields.token.value === storedMask) {
+      feedback.textContent = "변경할 새 API 토큰을 입력하세요.";
+      fields.token.focus();
+      return;
+    }
+    if (!form.reportValidity()) return;
     save.disabled = true;
     feedback.classList.remove("error");
     feedback.textContent = "Jira 연결을 확인하고 있어요…";

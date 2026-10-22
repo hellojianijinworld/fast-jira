@@ -1,421 +1,379 @@
 import type { Api } from "../client/api.ts";
+import type { ViewController } from "../client/view-controller.ts";
+import { createViewDraft } from "../client/view-editor-controller.ts";
+import { createViewOptions } from "../client/view-options.ts";
 import type { TreeCatalog } from "../domain/catalog.ts";
-import { cloneFilters, type Filters, withoutDone } from "../domain/filters.ts";
-import type {
-  BranchOverrides,
-  SelectionFilter,
-  UserOption,
-} from "../domain/issue.ts";
-import { actionButton, element } from "./dom.ts";
-import { personPill, projectIcon, statusPill } from "./meta.ts";
-import { createSortEditor } from "./sort-editor.ts";
+import { cloneFilters, type Filters } from "../domain/filters.ts";
+import { resolveBinding, type ViewTarget } from "../domain/views.ts";
+import { actionButton, element, elementId, iconButton } from "./dom.ts";
+import { createViewEditor, viewSummary } from "./view-editor.ts";
+import { createViewManager } from "./view-manager.ts";
+import { createViewPicker } from "./view-picker.ts";
 
 export interface FilterCallbacks {
   filters: () => Filters;
   catalog: () => TreeCatalog;
-  compactDone?: () => boolean;
-  onApply: (
-    filters: Filters,
-    catalog: TreeCatalog,
-    compactDone: boolean,
-  ) => void;
-  onBranch: (key: string, overrides: BranchOverrides) => void;
+  views: ViewController;
+  catalogProjects?: () => readonly string[];
+  onApply: (filters: Filters, catalog: TreeCatalog, commit: () => void) => void;
+  onCatalog?: (catalog: TreeCatalog, projects: readonly string[]) => void;
 }
-interface Choice {
-  id: string;
-  name: string;
-}
-/** 전체·하위 팝오버는 초안을 유지하고 적용 버튼으로 상태를 한 번만 변경한다. */
+/** 뷰 선택·초안·등록을 조립한다. 실제 조건은 공통 편집기에서만 편집한다. */
 export function createFilterPanel(
   api: Pick<Api, "statuses" | "users" | "types">,
   me: { accountId: string; displayName: string },
   callbacks: FilterCallbacks,
 ) {
-  const panel = element("div", "filter-panel");
+  const views = callbacks.views;
+  const panel = element("div", "filter-panel view-panel");
   panel.popover = "auto";
-  panel.setAttribute("aria-label", "필터 및 정렬");
+  panel.setAttribute("aria-label", "필터 및 뷰");
+  const head = element("div", "view-panel-head"),
+    heading = element("div", "view-panel-heading"),
+    title = element("h2", "", "필터 및 뷰"),
+    scope = element("p", "view-help view-panel-scope");
+  heading.append(title, scope);
+  const manage = actionButton("뷰 관리", "layers"),
+    dismiss = iconButton("닫기", "x");
+  const headActions = element("div", "view-head-actions");
+  headActions.append(manage, dismiss);
+  head.append(heading, headActions);
+  const body = element("div", "view-panel-body"),
+    pickerHost = element("div"),
+    summary = element("p", "view-help view-current-summary");
+  const editToggle = actionButton("조건 편집", "square-pen"),
+    editHost = element("div", "view-editor-host");
+  const match = element("p", "view-match");
+  match.setAttribute("role", "status");
+  const registration = actionButton("내 뷰로 저장", "user"),
+    saveHelp = element(
+      "p",
+      "view-help",
+      "이 브라우저에만 저장돼요. 다른 기기나 팀원에게 공유되지 않아요.",
+    ),
+    nameRow = element("label", "view-name-field", "뷰 이름"),
+    name = element("input");
+  name.maxLength = 80;
+  name.placeholder = "예: QA 확인";
+  name.setAttribute("aria-label", "뷰 이름");
+  nameRow.append(name);
+  saveHelp.id = elementId("view-save-help");
+  registration.setAttribute("aria-describedby", saveHelp.id);
+  const peekHost = element("div", "view-peek");
+  const error = element("p", "error view-error");
+  error.setAttribute("role", "alert");
+  const footer = element("div", "filter-footer"),
+    cancel = actionButton("취소", "x"),
+    apply = actionButton("적용", "check", "");
+  const footerActions = element("div", "view-footer-actions");
+  footerActions.append(cancel, apply);
+  footer.append(registration, footerActions);
+  const viewHost = element("section", "view-settings");
+  viewHost.append(
+    element("h3", "view-section-label", "적용할 뷰"),
+    pickerHost,
+    summary,
+    editToggle,
+    peekHost,
+    editHost,
+    match,
+    saveHelp,
+    nameRow,
+  );
+  body.append(viewHost);
+  panel.append(head, body, error, footer);
   document.body.append(panel);
-  let draft = cloneFilters(callbacks.filters()),
+  let target: ViewTarget = { kind: "global" },
+    picked = views.binding(target),
+    draft = createViewDraft(views.resolve(target, false));
+  let originalBinding = picked;
+  let projects = [...callbacks.filters().projects],
     catalog = callbacks.catalog(),
-    users: UserOption[] = [],
-    userProjects = "";
-  let branchKey = "",
-    overrides: BranchOverrides = {},
-    revision = 0,
+    anchor: HTMLElement | null = null;
+  let revision = 0,
+    editing = false,
+    registering = false,
     loading = false,
-    error = "";
-  let sort = createSortEditor();
-  let compactDone = true;
-  let metadataTimer: ReturnType<typeof setTimeout> | undefined;
+    metadataFailed = false,
+    alive = true,
+    restoring = false;
+  let editor: ReturnType<typeof createViewEditor> | null = null,
+    picker: ReturnType<typeof createViewPicker> | null = null;
+  const options = createViewOptions(api, () => ({
+    projects: callbacks.catalogProjects?.() ?? callbacks.filters().projects,
+    catalog: callbacks.catalog(),
+  }));
+  const manager = createViewManager(
+    views,
+    () => options.load(projects),
+    me,
+    () => {
+      if (!alive || !restoring) return;
+      if (anchor && !anchor.isConnected) {
+        const label = anchor.getAttribute("aria-label");
+        anchor =
+          [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+            (button) => button.getAttribute("aria-label") === label,
+          ) ?? null;
+      }
+      if (!anchor?.isConnected) return;
+      restoring = false;
+      if (!draft.dirty) {
+        if (JSON.stringify(picked) === JSON.stringify(originalBinding)) {
+          picked = views.binding(target);
+          draft = createViewDraft(views.resolve(target, false));
+        } else if (
+          picked.kind === "saved" &&
+          !views.state.saved.some(
+            (view) =>
+              view.id === (picked.kind === "saved" ? picked.viewId : ""),
+          )
+        ) {
+          picked = { kind: "inline", definition: draft.value };
+        } else draft = createViewDraft(resolveBinding(views.state, picked));
+      }
+      renderPicker();
+      hints();
+      panel.showPopover();
+      if (editing) void startEditing();
+      else
+        picker?.element
+          .querySelector<HTMLButtonElement>(".select-trigger")
+          ?.focus();
+    },
+  );
+  function close() {
+    revision++;
+    if (panel.matches(":popover-open")) panel.hidePopover();
+    if (anchor?.isConnected) anchor.focus();
+  }
   panel.addEventListener("beforetoggle", (event) => {
     if ((event as ToggleEvent).newState === "closed") {
-      clearTimeout(metadataTimer);
       revision++;
     }
   });
-  function close() {
-    clearTimeout(metadataTimer);
-    revision++;
-    if (panel.matches(":popover-open")) panel.hidePopover();
-  }
-  function scheduleMetadata() {
-    clearTimeout(metadataTimer);
-    revision++;
-    loading = true;
-    error = "";
-    metadataTimer = setTimeout(() => void metadata(), 200);
-  }
-  async function metadata() {
-    const version = ++revision,
-      keys = draft.projects.join(",");
-    loading = true;
-    error = "";
-    render();
-    try {
-      const [statuses, people, types] = keys
-        ? await Promise.all([
-            api.statuses(draft.projects),
-            api.users(draft.projects),
-            api.types(draft.projects).catch(() => []),
-          ])
-        : [[], [], []];
-      if (version !== revision) return;
-      catalog = { ...catalog, statuses, types };
-      normalizeDone();
-      users = people;
-      userProjects = keys;
-      if (!users.some((user) => user.id === me.accountId))
-        users.unshift({ id: me.accountId, name: me.displayName, avatar: "" });
-    } catch (reason) {
-      if (version === revision)
-        error =
-          reason instanceof Error
-            ? reason.message
-            : "선택지를 불러오지 못했어요.";
-    } finally {
-      if (version === revision) {
-        loading = false;
-        render();
-      }
-    }
-  }
-  function section(
-    title: string,
-    items: readonly Choice[],
-    selected: SelectionFilter,
-    renderValue: (choice: Choice) => Node,
-    shortcuts: readonly [string, SelectionFilter][],
-    change: (value: SelectionFilter) => void,
-  ): HTMLElement {
-    const section = element("section", "filter-section");
-    const head = element("div", "filter-section-head");
-    head.append(element("h3", "", title));
-    const actions = element("div", "status-actions");
-    for (const [label, value] of [
-      ["전체 선택", null],
-      ["선택 해제", []],
-      ...shortcuts,
-    ] as [string, SelectionFilter][]) {
-      const button = element("button", "", label);
-      button.type = "button";
-      button.addEventListener("click", () => {
-        change(value);
-        render();
-      });
-      actions.append(button);
-    }
-    head.append(actions);
-    section.append(head);
-    const checks = element(
-      "div",
-      title === "담당자"
-        ? "status-checks people-checks"
-        : title === "프로젝트"
-          ? "project-checks"
-          : "status-checks",
-    );
-    for (const choice of items) {
-      const label = element("label", "status-check");
-      const input = element("input");
-      input.type = "checkbox";
-      input.value = choice.id;
-      input.checked = selected === null || selected.includes(choice.id);
-      input.setAttribute("aria-label", `${title}: ${choice.name}`);
-      input.addEventListener("change", () => {
-        const next = new Set(selected ?? items.map((item) => item.id));
-        if (input.checked) next.add(choice.id);
-        else next.delete(choice.id);
-        change([...next]);
-        render();
-      });
-      label.append(input, renderValue(choice));
-      checks.append(label);
-    }
-    section.append(checks);
-    return section;
-  }
-  function inheritRow(
-    title: string,
-    field: "statuses" | "assignees",
-  ): HTMLElement | null {
-    if (!branchKey) return null;
-    const label = element("label", "filter-check");
-    const input = element("input");
-    input.type = "checkbox";
-    input.checked =
-      overrides[field] === undefined || overrides[field] === "inherit";
-    input.setAttribute("aria-label", `${title} 글로벌 필터 적용`);
-    input.addEventListener("change", () => {
-      overrides[field] = input.checked ? "inherit" : draft[field];
-      render();
-    });
-    label.append(input, document.createTextNode("글로벌 필터 적용"));
-    return label;
-  }
-  function normalizeDone() {
-    if (!draft.excludeDone) return;
-    draft.statuses = withoutDone(draft.statuses, catalog.statuses);
-    draft.excludeDone = false;
-  }
-  function render() {
-    const focused = document.activeElement;
-    const focusLabel =
-      focused instanceof HTMLElement && panel.contains(focused)
-        ? focused.getAttribute("aria-label")
-        : null;
-    const previousSort = sort.value;
-    sort.destroy();
-    sort = createSortEditor(previousSort, Boolean(branchKey), draft.sort);
-    const title = element(
-      "h2",
-      "",
-      branchKey ? `${branchKey} 하위 이슈` : "필터 및 정렬",
-    );
-    panel.replaceChildren(title);
-    if (!branchKey)
-      panel.append(
-        section(
-          "프로젝트",
-          catalog.projects.map((project) => ({
-            id: project.key,
-            name: project.name,
-          })),
-          draft.projects,
-          (choice) => {
-            const copy = element("span", "project-choice");
-            const project = catalog.projects.find(
-              (project) => project.key === choice.id,
-            );
-            const icon = project ? projectIcon(project) : null;
-            if (icon) copy.append(icon);
-            copy.append(
-              document.createTextNode(`${choice.name} (${choice.id})`),
-            );
-            return copy;
-          },
-          [],
-          (value) => {
-            draft.projects =
-              value === null
-                ? catalog.projects.map((project) => project.key)
-                : [...value];
-            scheduleMetadata();
-          },
-        ),
-      );
-    if (loading || error) {
-      const status = element(
-        "p",
-        error ? "error" : "empty",
-        error || "선택지를 불러오는 중…",
-      );
-      status.setAttribute("role", "status");
-      panel.append(status);
-    }
-    const peopleSection = element("section", "filter-section");
-    const peopleInherit = inheritRow("담당자", "assignees");
-    if (peopleInherit)
-      peopleSection.append(element("h3", "", "담당자"), peopleInherit);
-    if (
-      !peopleInherit ||
-      (overrides.assignees !== undefined && overrides.assignees !== "inherit")
-    ) {
-      const selected = branchKey
-        ? overrides.assignees === "inherit" || overrides.assignees === undefined
-          ? draft.assignees
-          : overrides.assignees
-        : draft.assignees;
-      const choices = [
-        { id: "unassigned", name: "미지정", avatar: "" },
-        ...users,
-      ];
-      const related = element("label", "filter-check");
-      const check = element("input");
-      check.type = "checkbox";
-      check.checked = draft.scope === "related";
-      check.addEventListener("change", () => {
-        draft.scope = check.checked ? "related" : "all";
-      });
-      related.append(check, document.createTextNode("내 관련 항목만"));
-      if (!branchKey) peopleSection.append(related);
-      peopleSection.append(
-        section(
-          "담당자",
-          choices,
-          selected,
-          (choice) =>
-            personPill({
-              name: choice.id === "unassigned" ? "" : choice.name,
-              avatar: users.find((user) => user.id === choice.id)?.avatar ?? "",
-            }),
-          [
-            ["나 또는 미지정", [me.accountId, "unassigned"]],
-            ["나만", [me.accountId]],
-            ["미지정만", ["unassigned"]],
-          ],
-          (value) => {
-            if (branchKey) overrides.assignees = value;
-            else {
-              draft.assignees = value;
-              draft.scope = "all";
-            }
-          },
-        ),
-      );
-    }
-    panel.append(peopleSection);
-    const statusSection = element("section", "filter-section");
-    const statusInherit = inheritRow("단계", "statuses");
-    if (statusInherit)
-      statusSection.append(element("h3", "", "단계"), statusInherit);
-    if (
-      !statusInherit ||
-      (overrides.statuses !== undefined && overrides.statuses !== "inherit")
-    ) {
-      const selected = branchKey
-        ? overrides.statuses === "inherit" || overrides.statuses === undefined
-          ? draft.statuses
-          : overrides.statuses
-        : draft.statuses;
-      const statuses = catalog.statuses.filter((status) =>
-        status.projects.some((key) => draft.projects.includes(key)),
-      );
-      const current = selected ?? statuses.map((status) => status.id);
-      statusSection.append(
-        section(
-          "단계",
-          statuses,
-          selected,
-          (choice) =>
-            statusPill(
-              choice.name,
-              catalog.statuses.map((status) => status.name),
-            ),
-          [
-            [
-              "완료 제외",
-              current.filter(
-                (id) =>
-                  statuses.find((status) => status.id === id)?.category !==
-                  "done",
-              ),
-            ],
-          ],
-          (value) => {
-            if (branchKey) overrides.statuses = value;
-            else draft.statuses = value;
-          },
-        ),
-      );
-    }
-    panel.append(statusSection);
-    if (!branchKey) {
-      const row = element("label", "setting-row");
-      const check = element("input");
-      check.type = "checkbox";
-      check.checked = compactDone;
-      check.addEventListener("change", () => {
-        compactDone = check.checked;
-      });
-      row.append(check, document.createTextNode("완료 항목 간단히 보기"));
-      panel.append(row);
-    }
-    const order = element("section", "filter-section sort-section");
-    order.append(element("h3", "", "정렬"), sort.element);
-    panel.append(order);
-    const footer = element("div", "filter-footer");
-    const cancel = actionButton("취소", "x");
-    cancel.addEventListener("click", close);
-    const apply = actionButton("적용", "check", "");
-    apply.disabled = loading || Boolean(error);
-    apply.addEventListener("click", () => {
-      if (!draft.projects.length) {
-        error = "프로젝트를 하나 이상 선택하세요.";
-        render();
-        return;
-      }
-      if (branchKey)
-        callbacks.onBranch(branchKey, {
-          ...overrides,
-          sort: sort.value,
-          people:
-            overrides.assignees !== undefined &&
-            overrides.assignees !== "inherit"
-              ? "all"
-              : "inherit",
-          done:
-            overrides.statuses !== undefined && overrides.statuses !== "inherit"
-              ? "include"
-              : "inherit",
-        });
-      else
-        callbacks.onApply(
-          { ...cloneFilters(draft), excludeDone: false, sort: sort.value },
-          catalog,
-          compactDone,
-        );
-      close();
-    });
-    footer.append(cancel, apply);
-    panel.append(footer);
-    if (focusLabel)
-      Array.from(panel.querySelectorAll<HTMLElement>("[aria-label]"))
-        .find((node) => node.getAttribute("aria-label") === focusLabel)
-        ?.focus();
-  }
-  function open(anchor: HTMLElement, key = "", setting: BranchOverrides = {}) {
+  dismiss.addEventListener("click", close);
+  cancel.addEventListener("click", close);
+  manage.addEventListener("click", () => {
+    restoring = true;
     close();
-    branchKey = key;
-    overrides = { ...setting };
-    draft = cloneFilters(callbacks.filters());
-    compactDone = callbacks.compactDone?.() ?? true;
-    catalog = callbacks.catalog();
-    sort.destroy();
-    sort = createSortEditor(
-      key ? (setting.sort ?? "inherit") : draft.sort,
-      Boolean(key),
-      draft.sort,
+    manager.open();
+  });
+  function hints() {
+    const found = views.match(
+      draft.value,
+      picked.kind === "saved" ? picked.viewId : undefined,
     );
-    if (key && setting.done === "exclude")
-      overrides.statuses = (
-        draft.statuses ?? catalog.statuses.map((status) => status.id)
-      ).filter(
-        (id) =>
-          catalog.statuses.find((status) => status.id === id)?.category !==
-          "done",
-      );
-    if (key && setting.people === "mine")
-      overrides.assignees = [me.accountId, "unassigned"];
+    summary.textContent = viewSummary(draft.value);
+    match.textContent =
+      editing && found
+        ? `‘${found.name}’과 같은 조건입니다. 적용하면 기존 뷰를 참조합니다.`
+        : "";
+    match.hidden = !match.textContent;
+    registration.hidden = !editing;
+    saveHelp.hidden = !editing;
+    registration.disabled = Boolean(found) || loading || metadataFailed;
+    nameRow.hidden = !editing || !registering || Boolean(found);
+    name.disabled = loading;
+    const applyLabel = apply.querySelector("span");
+    if (applyLabel)
+      applyLabel.textContent = registering && !found ? "저장하고 적용" : "적용";
+    apply.disabled =
+      projects.length === 0 || (editing && (loading || metadataFailed));
+    error.hidden = !error.textContent;
+    editHost.hidden = !editing;
+    editToggle.hidden = picked.kind !== "inline";
+    editToggle.setAttribute("aria-expanded", String(editing));
+    const editLabel = editToggle.querySelector("span");
+    if (editLabel) editLabel.textContent = editing ? "조건 접기" : "조건 편집";
+  }
+  function renderPicker() {
+    picker?.destroy();
+    picker = createViewPicker(
+      views.state,
+      target,
+      picked,
+      () => draft.value,
+      (binding) => {
+        revision++;
+        loading = false;
+        metadataFailed = false;
+        picked = binding;
+        const definition = resolveBinding(views.state, binding);
+        draft = createViewDraft(definition);
+        registering = false;
+        error.textContent = "";
+        editor?.destroy();
+        editor = null;
+        editing = false;
+        editHost.replaceChildren();
+        hints();
+        if (binding.kind === "inline") void startEditing();
+      },
+    );
+    pickerHost.replaceChildren(picker.element);
+  }
+  function renderPeek() {
+    peekHost.replaceChildren();
+    peekHost.hidden = target.kind === "global";
+    if (target.kind !== "branch") return;
+    const key = target.key,
+      current = views.temporary(key);
+    peekHost.append(
+      element(
+        "small",
+        "view-help view-peek-caption",
+        "이번 화면에서만 넓혀 보기",
+      ),
+    );
+    for (const [field, label] of [
+      ["done", "완료도 보기"],
+      ["people", "다른 사람도 보기"],
+    ] as const) {
+      const choice = element("label", "filter-check"),
+        check = element("input");
+      check.type = "checkbox";
+      check.checked = Boolean(current[field]);
+      check.setAttribute("aria-label", label);
+      check.addEventListener("change", () => {
+        try {
+          views.peek(key, { ...views.temporary(key), [field]: check.checked });
+        } catch (reason) {
+          error.textContent = messageOf(reason);
+          hints();
+        }
+        renderPeek();
+      });
+      choice.append(check, document.createTextNode(label));
+      peekHost.append(choice);
+    }
+    if (current.done || current.people) {
+      const reset = actionButton("원래 뷰로", "undo-2");
+      reset.addEventListener("click", () => {
+        try {
+          views.clearPeek(key);
+        } catch (reason) {
+          error.textContent = messageOf(reason);
+          hints();
+        }
+        renderPeek();
+      });
+      peekHost.append(reset);
+    }
+  }
+  async function startEditing() {
+    if (picked.kind !== "inline") return;
+    editing = true;
+    metadataFailed = false;
+    error.textContent = "";
+    loading = true;
+    editor?.destroy();
+    editor = null;
+    editHost.replaceChildren(
+      element("p", "view-help", "선택지를 불러오는 중…"),
+    );
+    hints();
+    const generation = ++revision;
+    try {
+      const choices = await options.load(projects);
+      if (generation !== revision || !alive || !panel.matches(":popover-open"))
+        return;
+      catalog = {
+        ...catalog,
+        statuses: choices.statuses,
+        types: choices.types,
+      };
+      callbacks.onCatalog?.(catalog, projects);
+      editor = createViewEditor(draft, choices, me, () => {
+        if (draft.dirty) {
+          picked = { kind: "inline", definition: draft.value };
+          picker?.set(picked);
+        }
+        hints();
+      });
+      editHost.replaceChildren(editor.element);
+    } catch (reason) {
+      if (generation === revision) {
+        metadataFailed = true;
+        error.textContent = messageOf(reason);
+        editHost.replaceChildren();
+      }
+    } finally {
+      if (generation === revision) {
+        loading = false;
+        hints();
+      }
+    }
+  }
+  editToggle.addEventListener("click", () => {
+    if (!editing) void startEditing();
+    else {
+      revision++;
+      editing = false;
+      loading = false;
+      editor?.destroy();
+      editor = null;
+      editHost.replaceChildren();
+      hints();
+    }
+  });
+  registration.addEventListener("click", () => {
+    registering = !registering;
+    hints();
+    if (registering) name.focus();
+  });
+  apply.addEventListener("click", () => {
+    const found = views.match(
+      draft.value,
+      picked.kind === "saved" ? picked.viewId : undefined,
+    );
+    const commit = () => {
+      if (registering && !found)
+        views.register(target, draft.value, name.value);
+      else if (!draft.dirty && picked.kind !== "inline")
+        views.select(target, picked);
+      else views.apply(target, draft.value);
+    };
+    try {
+      if (target.kind === "global")
+        callbacks.onApply(
+          { ...cloneFilters(callbacks.filters()), ...draft.value },
+          catalog,
+          commit,
+        );
+      else commit();
+      close();
+    } catch (reason) {
+      error.textContent = messageOf(reason);
+      hints();
+    }
+  });
+  function open(nextAnchor: HTMLElement, key = "") {
+    restoring = false;
+    close();
+    editor?.destroy();
+    editor = null;
+    target = key ? { kind: "branch", key } : { kind: "global" };
+    anchor = nextAnchor;
+    picked = views.binding(target);
+    originalBinding = picked;
+    draft = createViewDraft(views.resolve(target, false));
+    projects = [...callbacks.filters().projects];
+    catalog = callbacks.catalog();
+    editing = false;
+    registering = false;
     loading = false;
-    error = "";
-    if (userProjects === draft.projects.join(",")) normalizeDone();
-    render();
-    const width = Math.min(960, innerWidth - 24),
-      rect = anchor.getBoundingClientRect();
-    const top =
-      rect.bottom < innerHeight - 220
-        ? Math.max(12, Math.min(rect.bottom + 6, 64))
-        : 12;
+    metadataFailed = false;
+    name.value = "";
+    error.textContent = "";
+    editHost.replaceChildren();
+    scope.textContent = key ? `${key}의 하위 목록에 적용` : "전체 목록에 적용";
+    renderPicker();
+    renderPeek();
+    hints();
+    const rect = nextAnchor.getBoundingClientRect();
+    const top = Math.max(12, Math.min(rect.bottom + 6, 64));
+    const width = Math.min(960, innerWidth - 24);
     Object.assign(panel.style, {
       width: `${width}px`,
       left: `${Math.max(12, Math.min(rect.right - width, innerWidth - width - 12))}px`,
@@ -423,17 +381,26 @@ export function createFilterPanel(
       maxHeight: `calc(100dvh - ${top + 12}px)`,
     });
     panel.showPopover();
-    panel.scrollTop = 0;
-    if (userProjects !== draft.projects.join(",")) void metadata();
+    picker?.element
+      .querySelector<HTMLButtonElement>(".select-trigger")
+      ?.focus();
+    body.scrollTop = 0;
+    if (picked.kind === "inline") void startEditing();
   }
   return {
     element: panel,
     open,
     close,
-    destroy: () => {
+    destroy() {
+      alive = false;
+      restoring = false;
       close();
-      sort.destroy();
+      editor?.destroy();
+      picker?.destroy();
+      manager.destroy();
       panel.remove();
     },
   };
 }
+const messageOf = (reason: unknown) =>
+  reason instanceof Error ? reason.message : "뷰를 적용하지 못했어요.";

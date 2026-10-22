@@ -90,6 +90,9 @@ export function decodeIssue(value: unknown): Issue {
     priorityIcon: wireString(item.priorityIcon),
     assignee: wireString(item.assignee),
     assigneeId: wireString(item.assigneeId),
+    ...(item.relatedUserIds === undefined
+      ? {}
+      : { relatedUserIds: wireArray(item.relatedUserIds, wireString) }),
     assigneeAvatar: wireString(item.assigneeAvatar),
     updated: wireString(item.updated),
     dueDate: wireString(item.dueDate),

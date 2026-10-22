@@ -1,3 +1,10 @@
+let nextElementId = 0;
+
+/** 화면 내 접근성 연결용 ID에는 보안 컨텍스트나 난수가 필요하지 않다. */
+export function elementId(prefix: string): string {
+  return `fast-jira-${prefix}-${++nextElementId}`;
+}
+
 export function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className = "",

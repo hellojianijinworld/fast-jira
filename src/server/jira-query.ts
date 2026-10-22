@@ -1,6 +1,8 @@
-import type { Issue } from "../domain/issue.ts";
+import { MAX_FILTER_SELECTION } from "../domain/filters.ts";
+import type { Issue, PeopleFilter } from "../domain/issue.ts";
 import { sortOrder, sortRules, validSort } from "../domain/sort.ts";
 import { parseIssueKey, record } from "../domain/validation.ts";
+import { createPromiseCache } from "./cache.ts";
 import { type JiraClient, JiraError } from "./jira-client.ts";
 import {
   arrayValue,
@@ -35,16 +37,22 @@ export function statusCondition(value: string): string {
   if (!value) return "";
   if (value === "none") return "project is EMPTY";
   const ids = value.split(",");
-  if (ids.length > 200 || ids.some((id) => !/^\d{1,20}$/.test(id)))
+  if (
+    ids.length > MAX_FILTER_SELECTION ||
+    ids.some((id) => !/^\d{1,20}$/.test(id))
+  )
     throw invalid("단계 필터가 올바르지 않습니다.");
   return `status in (${ids.join(", ")})`;
 }
-export function assigneeCondition(value: string): string {
+export function assigneeCondition(
+  value: string,
+  fields: readonly string[] = ["assignee"],
+): string {
   if (!value) return "";
   if (value === "none") return "project is EMPTY";
   const ids = value.split(",");
   if (
-    ids.length > 200 ||
+    ids.length > MAX_FILTER_SELECTION ||
     ids.some((id) => id !== "unassigned" && !/^[A-Za-z0-9:-]{5,128}$/.test(id))
   )
     throw invalid("담당자 필터가 올바르지 않습니다.");
@@ -53,48 +61,55 @@ export function assigneeCondition(value: string): string {
     "(" +
     [
       accounts.length
-        ? `assignee in (${accounts.map((id) => JSON.stringify(id)).join(", ")})`
+        ? fields
+            .map(
+              (field) =>
+                `${field} in (${accounts.map((id) => JSON.stringify(id)).join(", ")})`,
+            )
+            .join(" OR ")
         : "",
-      ids.includes("unassigned") ? "assignee is EMPTY" : "",
+      ids.includes("unassigned")
+        ? fields.length === 1
+          ? `${fields[0]} is EMPTY`
+          : `(${fields.map((field) => `${field} is EMPTY`).join(" AND ")})`
+        : "",
     ]
       .filter(Boolean)
       .join(" OR ") +
     ")"
   );
 }
-function decodeIssuePage(value: unknown): IssuePage {
+function decodeIssuePage(value: unknown, fields: readonly string[]): IssuePage {
   const page = record(value);
   return {
-    issues: arrayValue(page.issues).map(decodeIssue),
+    issues: arrayValue(page.issues).map((issue) => decodeIssue(issue, fields)),
     nextPageToken: stringValue(page.nextPageToken) || null,
   };
 }
 export function createJiraQuery(
   client: JiraClient,
   metadata: ReturnType<typeof createJiraMetadata>,
-  relatedFieldNames: readonly string[],
+  relatedFieldNames?: readonly string[],
 ) {
-  let relatedFieldsPromise: Promise<string[]> | undefined;
+  const fieldCache = createPromiseCache<string[]>();
   function relatedFields(): Promise<string[]> {
-    relatedFieldsPromise ??= client
-      .json("/rest/api/3/field", (value) =>
+    return fieldCache("people-fields", () =>
+      client.json("/rest/api/3/field", (value) =>
         arrayValue(value).flatMap((value) => {
           const field = record(value),
             schema = optionalRecord(field.schema);
           if (
-            !relatedFieldNames.includes(stringValue(field.name)) ||
+            (relatedFieldNames !== undefined &&
+              !relatedFieldNames.includes(stringValue(field.name))) ||
+            field.searchable === false ||
             (schema.type !== "user" && schema.items !== "user")
           )
             return [];
           const id = stringValue(field.id).match(/^customfield_(\d+)$/)?.[1];
-          return id ? [`cf[${id}]`] : [];
+          return id ? [`customfield_${id}`] : [];
         }),
-      )
-      .catch((error) => {
-        relatedFieldsPromise = undefined;
-        throw error;
-      });
-    return relatedFieldsPromise;
+      ),
+    );
   }
   async function browseConditions(options: BrowseOptions): Promise<string[]> {
     const { q, projects, scope, excludeDone, statuses, assignees } = options;
@@ -105,19 +120,20 @@ export function createJiraQuery(
     )
       throw invalid("필터가 올바르지 않습니다.");
     const conditions = [projectCondition(projects)];
-    if (scope !== "all") {
-      const fields = scope === "related" ? await relatedFields() : [];
+    const fields =
+      scope === "related"
+        ? [
+            "assignee",
+            ...(await relatedFields()).map((id) => `cf[${id.slice(12)}]`),
+          ]
+        : ["assignee"];
+    if (assignees) conditions.push(assigneeCondition(assignees, fields));
+    else if (scope !== "all")
       conditions.push(
-        "(" +
-          ["assignee", ...fields]
-            .map((field) => `${field} = currentUser()`)
-            .join(" OR ") +
-          ")",
+        `(${fields.map((field) => `${field} = currentUser()`).join(" OR ")})`,
       );
-    }
     if (excludeDone) conditions.push("statusCategory != Done");
     if (statuses) conditions.push(statusCondition(statuses));
-    if (assignees) conditions.push(assigneeCondition(assignees));
     if (q) {
       if (/^[A-Z][A-Z0-9_]*-\d+$/i.test(q))
         conditions.push(`key = ${q.toUpperCase()}`);
@@ -134,13 +150,16 @@ export function createJiraQuery(
     token = "",
     maxResults = 100,
   ): Promise<IssuePage> {
+    const fields = await relatedFields();
     const params = new URLSearchParams({
       jql,
-      fields: listFields,
+      fields: [listFields, ...fields].join(","),
       maxResults: String(maxResults),
     });
     if (token) params.set("nextPageToken", token);
-    return client.json(`/rest/api/3/search/jql?${params}`, decodeIssuePage);
+    return client.json(`/rest/api/3/search/jql?${params}`, (value) =>
+      decodeIssuePage(value, fields),
+    );
   }
   async function sortedPage(
     conditions: string[],
@@ -247,11 +266,14 @@ export function createJiraQuery(
       )
       .map((status) => status.id);
   }
-  async function ancestors(issues: readonly Issue[]): Promise<Issue[]> {
+  async function ancestors(
+    issues: readonly Issue[],
+    maxDepth = 5,
+  ): Promise<Issue[]> {
     const known = new Map(issues.map((issue) => [issue.key, issue]));
     const added: Issue[] = [];
-    // 부모는 이슈마다 호출하지 않고 단계별 최대 100개씩 조회한다. 원본과 동일하게 5단계까지만 보강한다.
-    for (let depth = 0; depth < 5; depth++) {
+    // 목록은 5단계까지, 상세 경로는 연결이 끝날 때까지 보강한다. 같은 부모는 다시 조회하지 않는다.
+    for (let depth = 0; depth < maxDepth; depth++) {
       const missing = new Map<string, string>();
       for (const issue of known.values())
         if (issue.parent && !known.has(issue.parent))
@@ -288,13 +310,16 @@ export function createJiraQuery(
     options: BrowseOptions,
     sort = "recent",
     pageToken = "",
+    pageSize = 30,
   ) {
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100)
+      throw invalid("페이지 크기가 올바르지 않습니다.");
     const conditions = await browseConditions(options);
     const page = await sortedPage(
       conditions,
       sort,
       pageToken,
-      30,
+      pageSize,
       await orderedStatusIds(
         options.projects,
         sort,
@@ -312,28 +337,34 @@ export function createJiraQuery(
   async function childrenPage(
     key: string,
     options: BrowseOptions,
-    people: "all" | "mine",
+    people: PeopleFilter,
     sort: string,
     pageToken = "",
+    pageSize = 25,
   ): Promise<IssuePage> {
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100)
+      throw invalid("페이지 크기가 올바르지 않습니다.");
     key = parseIssueKey(key, "");
     if (
-      !["all", "mine"].includes(people) ||
+      !["all", "mine", "assigned", "related"].includes(people) ||
       typeof options.excludeDone !== "boolean"
     )
       throw invalid("하위 조회 조건이 올바르지 않습니다.");
-    const conditions = [`parent = ${key}`, projectCondition(options.projects)];
-    if (options.excludeDone) conditions.push("statusCategory != Done");
+    const conditions = [
+      `parent = ${key}`,
+      ...(await browseConditions({
+        ...options,
+        q: "",
+        scope: people === "assigned" || people === "related" ? people : "all",
+      })),
+    ];
     if (people === "mine")
       conditions.push("(assignee = currentUser() OR assignee is EMPTY)");
-    if (options.statuses) conditions.push(statusCondition(options.statuses));
-    if (options.assignees)
-      conditions.push(assigneeCondition(options.assignees));
     const page = await sortedPage(
       conditions,
       sort,
       pageToken,
-      25,
+      pageSize,
       await orderedStatusIds(
         options.projects,
         sort,
@@ -454,12 +485,18 @@ export function createJiraQuery(
     };
   }
   return {
+    relatedFieldIds: relatedFields,
     browseConditions,
     sortedPage,
     browse,
     childrenPage,
     directChildren,
     ancestors,
+    ancestorPath: async (input: string) => {
+      const key = parseIssueKey(input, "");
+      const page = await search(`key = ${key}`);
+      return [...page.issues, ...(await ancestors(page.issues, Infinity))];
+    },
     matchesIssue,
     matchesIssues,
     recentChanges,

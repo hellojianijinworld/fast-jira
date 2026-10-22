@@ -1,4 +1,6 @@
 import type { TreeCatalog } from "../domain/catalog.ts";
+import { branchDefaults } from "../domain/filters.ts";
+import { listCacheKey } from "../domain/list-snapshot.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
@@ -9,12 +11,19 @@ import { createFilterPanel } from "../ui/filter-panel.ts";
 import { helpContent } from "../ui/help.ts";
 import { issueCard } from "../ui/issue-card.ts";
 import { issueDetail } from "../ui/issue-detail.ts";
+import { keyedContent } from "../ui/keyed-content.ts";
 import { refreshRelativeTimes } from "../ui/meta.ts";
 import { showModal } from "../ui/modal.ts";
 import { createNotice } from "../ui/notice.ts";
+import { createProjectPanel } from "../ui/project-panel.ts";
 import { settingsContent } from "../ui/settings.ts";
 import { createSplitPane } from "../ui/split-pane.ts";
+import { createTreeContext } from "../ui/tree-context.ts";
 import { createTreeView } from "../ui/tree-view.ts";
+import {
+  captureViewportAnchor,
+  restoreViewportAnchor,
+} from "../ui/viewport-anchor.ts";
 import { type Api, subscribeLogs } from "./api.ts";
 import { createListController } from "./list-controller.ts";
 import { createLiveUpdates } from "./live-updates.ts";
@@ -24,6 +33,7 @@ import {
   readPreferences,
   writePreferences,
 } from "./preferences.ts";
+import { createViewController } from "./view-controller.ts";
 
 /** 시작과 화면 간 연결만 담당한다. 필터와 상세의 판단은 각 모듈에서 검증한다. */
 export async function createApp(
@@ -34,32 +44,25 @@ export async function createApp(
     listener: (entry: LogEntry) => void,
   ) => () => void = subscribeLogs,
 ) {
-  root.replaceChildren(element("p", "empty", "Jira 연결을 확인하는 중…"));
-  const bootstrap = await api.bootstrap(),
-    store = createAccountStore(storage, bootstrap.site, bootstrap.me.accountId);
-  let preferences = readPreferences(storage),
-    selectedKey = "",
-    detailRevision = 0,
-    destroyed = false;
-  let detailView: ReturnType<typeof issueDetail> | null = null;
-  let recent = store.recent();
-  const changedVersions = new Map<string, number>();
-  const saved = store.filters(bootstrap.projects.map((project) => project.key));
-  let catalog: TreeCatalog = {
-    projects: bootstrap.projects,
-    priorities: bootstrap.priorities,
-    statuses: [],
-    types: [],
-  };
   const nav = element("header", "top-nav"),
     tools = element("div", "nav-tools");
   const searchToggle = iconButton("검색", "search"),
-    filters = iconButton("필터 및 정렬", "list-filter"),
+    projects = iconButton("프로젝트 선택", "folder"),
+    filters = iconButton("필터 및 뷰", "list-filter"),
     help = iconButton("도움말", "circle-help"),
     settings = iconButton("설정", "settings"),
     selection = iconButton("이슈 선택 모드", "check"),
     logToggle = iconButton("개발자 로그 켜기", "code-xml");
-  tools.append(searchToggle, filters, selection, help, settings, logToggle);
+  logToggle.hidden = true;
+  tools.append(
+    searchToggle,
+    projects,
+    filters,
+    selection,
+    help,
+    settings,
+    logToggle,
+  );
   nav.append(element("h1", "", "Fast Jira"), tools);
   const workspace = element("main", "workspace"),
     browse = element("section", "browse"),
@@ -76,7 +79,9 @@ export async function createApp(
   search.append(input, submit, reset);
   const searchInfo = element("div", "search-info"),
     listHost = element("div", "browse-list");
-  browse.append(search, searchInfo, listHost);
+  const browseContent = element("div", "browse-content");
+  browseContent.append(search, searchInfo, listHost);
+  browse.append(browseContent);
   const side = element("aside", "detail-pane"),
     splitter = element("div", "splitter"),
     dashboard = element("section", "dashboard"),
@@ -95,17 +100,80 @@ export async function createApp(
     notice = createNotice(noticeHost);
   workspace.append(browse, splitter, side);
   root.replaceChildren(nav, workspace, noticeHost, mobile, popup);
+  nav.setAttribute("aria-busy", "true");
+  for (const button of tools.querySelectorAll("button")) button.disabled = true;
+  const checking = element("p", "empty", "Jira 연결을 확인하는 중…");
+  checking.setAttribute("role", "status");
+  listHost.append(checking);
+  const bootstrap = await api.bootstrap(),
+    store = createAccountStore(storage, bootstrap.site, bootstrap.me.accountId);
+  let preferences = readPreferences(storage),
+    selectedKey = "",
+    detailRevision = 0,
+    destroyed = false;
+  let detailView: ReturnType<typeof issueDetail> | null = null;
+  let recent = store.recent();
+  const changedVersions = new Map<string, number>();
+  const saved = store.filters(bootstrap.projects.map((project) => project.key));
+  const globalView = { kind: "global" } as const;
+  let syncingViews = false;
+  const views = createViewController(store.views(saved.filters), {
+    beforeChange: () => {
+      if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
+    },
+    save: store.saveViews,
+    statuses: () => catalog.statuses,
+    changed: (conditionsChanged) => {
+      if (syncingViews || destroyed) return;
+      if (conditionsChanged) bulk.reset();
+      const next = { ...list.filters, ...views.resolve(globalView, false) };
+      store.saveFilters(next, true);
+      if (JSON.stringify(next) !== JSON.stringify(list.filters)) {
+        bulk.reset();
+        void list.load(next);
+      } else render();
+    },
+  });
+  const initialFilters = {
+    ...saved.filters,
+    ...views.resolve(globalView, false),
+  };
+  let catalogProjects = [...saved.filters.projects];
+
+  let catalog: TreeCatalog = {
+    projects: bootstrap.projects,
+    priorities: bootstrap.priorities,
+    statuses: [],
+    types: [],
+  };
+  nav.removeAttribute("aria-busy");
+  for (const button of tools.querySelectorAll("button"))
+    button.disabled = false;
+
   const debug = developerLog(root, logToggle, connectLog);
   const layout = matchMedia("(max-width: 900px)");
   const split = createSplitPane(workspace, splitter, layout, storage);
   let render = () => {};
   const list = createListController(
     api,
-    saved.filters,
+    initialFilters,
     bootstrap.me.accountId,
-    () => render(),
-    { ...store.tree(), branches: store.branches() },
+    () => {
+      render();
+    },
+    store.tree(),
+    (key, current) =>
+      branchDefaults({ ...current, ...views.resolve({ kind: "branch", key }) }),
   );
+  let positionQuery = listCacheKey(initialFilters);
+  const listScroller = () => (layout.matches ? workspace : browse);
+  function persistPosition() {
+    if (list.cacheDenied) return;
+    const anchors = captureViewportAnchor(listHost, listScroller());
+    if (listHost.querySelector("a.list-title"))
+      store.savePosition(listCacheKey(list.filters), anchors);
+  }
+  window.addEventListener("pagehide", persistPosition);
   const bulk = createBulkSelection({
     host: root,
     mount: side,
@@ -181,15 +249,20 @@ export async function createApp(
     writePreferences(storage, preferences);
   }
   applyPreferences();
+  const renderDashboard = keyedContent(dashboard);
+  dashboard.classList.add("issue-list-container");
   function dashboardView() {
-    dashboard.classList.add("issue-list-container");
-    dashboard.replaceChildren(element("h2", "", "최근 본 이슈"));
+    const entries: [string, HTMLElement][] = [
+      ["heading", element("h2", "", "최근 본 이슈")],
+    ];
     if (!recent.length)
-      dashboard.append(
+      entries.push([
+        "empty",
         element("p", "empty", "이슈를 열면 최근 본 5개가 여기에 남아요."),
-      );
+      ]);
     for (const issue of recent)
-      dashboard.append(
+      entries.push([
+        issue.key,
         bulk.decorate(
           issue,
           issueCard(issue, {
@@ -202,7 +275,8 @@ export async function createApp(
             },
           }),
         ),
-      );
+      ]);
+    renderDashboard(entries);
   }
   function placeDetail() {
     if (layout.matches) {
@@ -243,7 +317,13 @@ export async function createApp(
     detailHost.hidden = false;
     dashboard.hidden = true;
     detailLoading = true;
-    if (!silent) detailHost.replaceChildren();
+    if (!silent) {
+      const pending = element("div", "detail-pending");
+      const close = iconButton("이슈 상세 닫기", "x");
+      close.addEventListener("click", closeDetail);
+      pending.append(close);
+      detailHost.replaceChildren(pending);
+    }
     placeDetail();
     render();
     if (updateUrl) {
@@ -288,6 +368,13 @@ export async function createApp(
         (childKey) => {
           void select(childKey);
         },
+        list.visibleItems(),
+        {
+          list,
+          catalog: () => catalog,
+          onFilter: (key, anchor) => panel.open(anchor, key),
+          viewInfo: (key) => views.info({ kind: "branch", key }),
+        },
       );
       detailHost.replaceChildren(detailView.element);
       recent = [
@@ -331,46 +418,93 @@ export async function createApp(
     copied: notice.show,
     catalog: () => catalog,
     decorate: bulk.decorate,
+    compactDone: () => preferences.compactDone,
+    compactDoneParents: () => preferences.compactDoneParents,
     selectedKey: () => selectedKey,
     onSelect: (key) => {
       void select(key);
     },
-    onBranch: (key, anchor) =>
-      panel.open(anchor, key, list.tree.branches.get(key)),
+    onBranch: (key, anchor) => panel.open(anchor, key),
+    viewInfo: (key) => views.info({ kind: "branch", key }),
     onTreeChange: () => store.saveTree(list.tree.states, list.tree.version),
+  });
+  const treeContext = createTreeContext(browse, listHost, {
+    scroller: () => (layout.matches ? workspace : browse),
+    items: list.visibleItems,
+    projects: () => catalog.projects,
+    select: (key) => {
+      void select(key);
+    },
   });
   const panel = createFilterPanel(api, bootstrap.me, {
     filters: () => list.filters,
     catalog: () => catalog,
-    compactDone: () => preferences.compactDone,
-    onApply: (filters, next, compactDone) => {
-      if (bulk.busy) return;
-      bulk.reset();
-      catalog = next;
-      preferences.compactDone = compactDone;
-      applyPreferences();
-      store.saveFilters(filters, true);
-      if (JSON.stringify(filters) === JSON.stringify(list.filters)) {
-        render();
+    catalogProjects: () => catalogProjects,
+    views,
+    onCatalog: (next, projects) => {
+      if (
+        [...projects].sort().join(",") !==
+        [...list.filters.projects].sort().join(",")
+      )
         return;
-      }
-      void list.load(filters);
+      catalog = next;
+      catalogProjects = [...projects];
+      render();
     },
-    onBranch: (key, overrides) => {
-      if (bulk.busy) return;
+    onApply: (filters, nextCatalog, commit) => {
+      if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
+      syncingViews = true;
+      try {
+        commit();
+      } finally {
+        syncingViews = false;
+      }
+      const next = { ...filters, ...views.resolve(globalView, false) };
+      catalog = nextCatalog;
+      store.saveFilters(next, true);
+      if (JSON.stringify(next) !== JSON.stringify(list.filters)) {
+        bulk.reset();
+        void list.load(next);
+      } else render();
+    },
+  });
+  const projectPanel = createProjectPanel({
+    projects: () => catalog.projects,
+    selected: () => list.filters.projects,
+    apply: (projects) => {
+      if (bulk.busy)
+        throw new Error("일괄 변경이 끝난 뒤 프로젝트를 변경하세요.");
+      if (
+        [...projects].sort().join(",") ===
+        [...list.filters.projects].sort().join(",")
+      )
+        return;
+      const next = { ...list.filters, projects };
+      store.saveFilters(next, true);
       bulk.reset();
-      list.setBranch(key, overrides);
-      store.saveBranches(list.tree.branches);
+      void list.load(next);
+      void refreshCatalog(projects);
     },
   });
   render = () => {
     if (destroyed) return;
+    const queryKey = listCacheKey(list.filters);
+    const anchors =
+      queryKey === positionQuery
+        ? captureViewportAnchor(listHost, listScroller())
+        : [];
+    positionQuery = queryKey;
     loadingIndicator.hidden = !detailLoading;
     loadingIndicator.setAttribute("aria-label", "상세 불러오는 중");
     const detailHeading = detailHost.querySelector(".detail-identity");
     if (detailHeading) detailHeading.append(loadingIndicator);
-    else detailHost.prepend(loadingIndicator);
+    else {
+      const pending = detailHost.querySelector(".detail-pending");
+      (pending ?? detailHost).prepend(loadingIndicator);
+    }
     tree.render();
+    treeContext.refresh();
+    detailView?.refreshChildren();
     dashboardView();
     dashboard.hidden = bulk.active || Boolean(selectedKey);
     detailHost.hidden = bulk.active || !selectedKey;
@@ -382,15 +516,20 @@ export async function createApp(
       clear.addEventListener("click", clearSearch);
       searchInfo.append(element("span", "", `검색: ${query}`), clear);
     }
+    projects.classList.toggle(
+      "active",
+      list.filters.projects.length !== catalog.projects.length,
+    );
     filters.classList.toggle(
       "active",
       list.filters.scope !== "all" ||
-        list.filters.projects.length !== catalog.projects.length ||
         list.filters.excludeDone ||
         list.filters.statuses !== null ||
         list.filters.assignees !== null ||
         list.filters.sort !== "recent",
     );
+    if (anchors.length)
+      restoreViewportAnchor(listHost, listScroller(), anchors);
   };
   function clearSearch() {
     if (bulk.busy) return;
@@ -423,34 +562,30 @@ export async function createApp(
       void list.load({ ...list.filters, q: query });
     }
   });
+  projects.addEventListener("click", () => projectPanel.open(projects));
   filters.addEventListener("click", () => panel.open(filters));
   let firstSetup = !saved.configured;
-  popup.addEventListener("cancel", (event) => {
-    if (firstSetup) event.preventDefault();
+  popup.addEventListener("close", () => {
+    if (!firstSetup) return;
+    firstSetup = false;
+    store.saveFilters(list.filters, true);
   });
-  function showSettings(start?: () => void) {
+  function showSettings() {
     const content = settingsContent(
       preferences,
-      `Jira 사이트: ${bootstrap.site} · 나: ${bootstrap.me.displayName} (로그인 계정)`,
+      `현재 인증된 계정: ${bootstrap.me.displayName} · Jira 사이트: ${bootstrap.site}`,
       (next) => {
         preferences = next;
         applyPreferences();
+        render();
       },
-      start
-        ? () => {
-            firstSetup = false;
-            store.saveFilters(list.filters, true);
-            popup.close();
-            start();
-          }
-        : undefined,
+      firstSetup ? () => popup.close() : undefined,
+      connectionForm(api, () => location.reload()),
     );
-    content.element.append(connectionForm(api, () => location.reload()));
     showModal(popup, {
-      title: start ? "처음 설정" : "설정",
+      title: firstSetup ? "처음 설정" : "설정",
       content: content.element,
       actions: content.actions,
-      dismissible: !start,
     });
   }
   settings.addEventListener("click", () => showSettings());
@@ -501,18 +636,6 @@ export async function createApp(
           issue.key === selectedKey,
       );
       if (!relevant.length) return;
-      // 첫 보이는 카드의 위치를 기준으로 재정렬을 보정한다. 모바일은 workspace가 스크롤을 가진다.
-      const scroller = layout.matches ? workspace : browse;
-      const top = scroller.getBoundingClientRect().top;
-      const visibleCards = [
-        ...listHost.querySelectorAll<HTMLAnchorElement>("a.list-title"),
-      ].filter((card) => card.getBoundingClientRect().bottom > top);
-      // 스티키 부모는 스크롤해도 같은 위치다. 실제 흐름에 있는 카드를 먼저 고른다.
-      const anchor =
-        visibleCards.find((card) => !card.closest(".sticky-parent")) ??
-        visibleCards[0];
-      const href = anchor?.getAttribute("href"),
-        before = anchor?.getBoundingClientRect().top;
       for (const issue of relevant) {
         changedVersions.set(
           issue.key,
@@ -524,14 +647,6 @@ export async function createApp(
       }
       store.saveRecent(recent);
       list.applyChanges({ ...batch, issues: relevant });
-      if (href && before !== undefined) {
-        const after = [
-          ...listHost.querySelectorAll<HTMLAnchorElement>("a.list-title"),
-        ]
-          .find((card) => card.getAttribute("href") === href)
-          ?.getBoundingClientRect().top;
-        if (after !== undefined) scroller.scrollBy(0, after - before);
-      }
       notice.show(`새 변경 ${relevant.length}건 반영`);
       if (
         relevant.some((issue) => issue.key === selectedKey) &&
@@ -549,25 +664,30 @@ export async function createApp(
     if (!document.hidden) void live.check();
   };
   document.addEventListener("visibilitychange", visible);
-  if (firstSetup) await new Promise<void>((resolve) => showSettings(resolve));
+  if (firstSetup) showSettings();
   render();
-  const metadata = Promise.all([
-    api.statuses(list.filters.projects),
-    api.types(list.filters.projects),
-  ])
-    .then(([statuses, types]) => {
-      if (destroyed) return;
+  let metadataRevision = 0;
+  async function refreshCatalog(projects: readonly string[]) {
+    const revision = ++metadataRevision;
+    try {
+      const [statuses, types] = await Promise.all([
+        api.statuses(projects),
+        api.types(projects),
+      ]);
+      if (destroyed || revision !== metadataRevision) return;
+      catalogProjects = [...projects];
       catalog = { ...catalog, statuses, types };
       render();
-    })
-    .catch((reason) => {
-      if (!destroyed)
+    } catch (reason) {
+      if (!destroyed && revision === metadataRevision)
         notice.show(
           reason instanceof Error
             ? reason.message
             : "단계 정보를 불러오지 못했어요.",
         );
-    });
+    }
+  }
+  const metadata = refreshCatalog(list.filters.projects);
   await Promise.all([list.load(), metadata]);
   const initialKey = new URL(location.href).searchParams.get("issue");
   if (initialKey) {
@@ -579,11 +699,15 @@ export async function createApp(
   }
   return {
     list,
+    views,
     select,
     closeDetail,
     checkChanges: live.check,
     destroy() {
+      persistPosition();
       destroyed = true;
+      list.destroy();
+      window.removeEventListener("pagehide", persistPosition);
       detailView?.destroy();
       bulk.destroy();
       detailRevision++;
@@ -593,6 +717,8 @@ export async function createApp(
       layout.removeEventListener("change", placeDetail);
       window.removeEventListener("popstate", popstate);
       panel.destroy();
+      projectPanel.destroy();
+      treeContext.destroy();
       tree.destroy();
       split.destroy();
       debug.destroy();

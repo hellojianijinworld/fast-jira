@@ -1,12 +1,17 @@
-import type { Filters } from "../domain/filters.ts";
+import { type Filters, MAX_FILTER_SELECTION } from "../domain/filters.ts";
 import type {
   BranchOverrides,
   Issue,
   SelectionFilter,
 } from "../domain/issue.ts";
+import {
+  decodeViewportAnchors,
+  type ViewportAnchor,
+} from "../domain/list-snapshot.ts";
 import { validSort } from "../domain/sort.ts";
 import type { CollapseState } from "../domain/tree.ts";
 import { isRecord } from "../domain/validation.ts";
+import { decodeViews, migrateViews, type ViewState } from "../domain/views.ts";
 import { decodeIssue, emptyIssue } from "../domain/wire.ts";
 
 export type LocalStore = Pick<Storage, "getItem" | "setItem">;
@@ -15,6 +20,7 @@ export interface Preferences {
   developerMode: boolean;
   compactView: boolean;
   compactDone: boolean;
+  compactDoneParents: boolean;
 }
 export function readPreferences(storage: LocalStore): Preferences {
   try {
@@ -23,6 +29,8 @@ export function readPreferences(storage: LocalStore): Preferences {
       developerMode: storage.getItem("fastJira:developerMode") === "true",
       compactView: storage.getItem("fastJira:compactView") === "true",
       compactDone: storage.getItem("fastJira:compactDone") !== "false",
+      compactDoneParents:
+        storage.getItem("fastJira:compactDoneParents") !== "false",
     };
   } catch {
     return {
@@ -30,6 +38,7 @@ export function readPreferences(storage: LocalStore): Preferences {
       developerMode: false,
       compactView: false,
       compactDone: true,
+      compactDoneParents: true,
     };
   }
 }
@@ -45,6 +54,10 @@ export function writePreferences(
     );
     storage.setItem("fastJira:compactView", String(preferences.compactView));
     storage.setItem("fastJira:compactDone", String(preferences.compactDone));
+    storage.setItem(
+      "fastJira:compactDoneParents",
+      String(preferences.compactDoneParents),
+    );
   } catch {
     /* 저장을 거부해도 현재 화면 설정은 적용한다. */
   }
@@ -86,7 +99,7 @@ function selection(
             (id): id is string => typeof id === "string" && valid(id),
           ),
         ),
-      ].slice(0, 200)
+      ].slice(0, MAX_FILTER_SELECTION)
     : null;
 }
 const issueKey = (key: unknown): key is string =>
@@ -224,9 +237,20 @@ export function createAccountStore(
   }
   return {
     scope,
+    position: (query: string): ViewportAnchor[] => {
+      const value = read("position");
+      return isRecord(value) && value.query === query
+        ? decodeViewportAnchors(value.anchors)
+        : [];
+    },
+    savePosition: (query: string, anchors: readonly ViewportAnchor[]) =>
+      write("position", { query, anchors }),
+    views: (filters: Filters) =>
+      decodeViews(read("views")) ?? migrateViews(filters, branches()),
+    saveViews: (state: ViewState) =>
+      storage.setItem(`fastJira:views:${scope}`, JSON.stringify(state)),
     filters,
     tree,
-    branches,
     recent,
     saveFilters: (filters: Filters, configured: boolean) =>
       write("filters", {
@@ -236,8 +260,6 @@ export function createAccountStore(
       }),
     saveTree: (states: ReadonlyMap<string, CollapseState>, version: number) =>
       write("tree", { states: [...states], version }),
-    saveBranches: (branches: ReadonlyMap<string, BranchOverrides>) =>
-      write("branches", [...branches]),
     saveRecent: (issues: readonly Issue[]) =>
       write("recent", issues.slice(0, 5)),
   };

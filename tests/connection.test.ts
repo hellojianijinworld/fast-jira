@@ -37,6 +37,7 @@ test("미인증 화면에서 토큰을 검증·저장하면 재시작 없이 연
         : Response.json({ values: [], isLast: true });
     },
   });
+  assert.equal(connection.settings().tokenConfigured, false);
   const server = createHttpServer(
     connection.service,
     () => () => {},
@@ -95,5 +96,6 @@ test("미인증 화면에서 토큰을 검증·저장하면 재시작 없이 연
   assert.deepEqual(await settings.json(), {
     site: "example.atlassian.net",
     email: "test@example.com",
+    tokenConfigured: true,
   });
 });

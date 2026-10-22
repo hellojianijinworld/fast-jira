@@ -1,6 +1,8 @@
 import type { StatusOption } from "./catalog.ts";
 import type { BranchDefaults, SelectionFilter } from "./issue.ts";
 
+export const MAX_FILTER_SELECTION = 200;
+
 export interface Filters {
   projects: string[];
   scope: "all" | "assigned" | "related";
@@ -27,8 +29,7 @@ export function filterParameters(filters: Filters): URLSearchParams {
 export function branchDefaults(filters: Filters): BranchDefaults {
   return {
     sort: filters.sort,
-    people:
-      filters.assignees !== null || filters.scope === "all" ? "all" : "mine",
+    people: filters.scope === "all" ? "all" : filters.scope,
     excludeDone: filters.excludeDone,
     statuses: filters.statuses,
     assignees: filters.assignees,

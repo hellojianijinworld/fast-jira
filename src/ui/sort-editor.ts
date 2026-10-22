@@ -10,17 +10,17 @@ import { enhanceSelect, type SelectMenu } from "./select-menu.ts";
 /** 필터의 초안만 변경한다. 실제 적용 시점은 부모 팝오버가 결정한다. */
 export function createSortEditor(
   initial = "recent",
-  inherit = false,
-  defaultSort = "recent",
+  onChange: (value: string) => void = () => {},
 ) {
   const root = element("div", "sort-rules");
   let value = initial;
   let menus: SelectMenu[] = [];
   function set(next: string) {
-    if (!(inherit && next === "inherit") && !validSort(next))
-      throw new Error("정렬 조건이 올바르지 않습니다.");
+    if (!validSort(next)) throw new Error("정렬 조건이 올바르지 않습니다.");
+    const previous = value;
     value = next;
     render();
+    if (previous !== next) onChange(next);
   }
   function button(
     label: string,
@@ -40,18 +40,6 @@ export function createSortEditor(
     for (const menu of menus) menu.destroy();
     menus = [];
     root.replaceChildren();
-    if (inherit) {
-      const label = element("label", "filter-check");
-      const check = element("input");
-      check.type = "checkbox";
-      check.checked = value === "inherit";
-      check.addEventListener("change", () =>
-        set(check.checked ? "inherit" : defaultSort),
-      );
-      label.append(check, document.createTextNode("글로벌 필터 적용"));
-      root.append(label);
-      if (check.checked) return;
-    }
     const rules: SortRule[] = sortRules(value);
     function move(index: number, direction: number) {
       const other = rules[index + direction],

@@ -99,7 +99,10 @@ export function decodePage<T>(
 }
 
 /** 목록·하위·최근 변경에서 같은 필드 정규화를 사용한다. 상세는 여기에 본문을 더한다. */
-export function decodeIssue(value: unknown): Issue {
+export function decodeIssue(
+  value: unknown,
+  relatedFields?: readonly string[],
+): Issue {
   const issue = record(value);
   const key = parseIssueKey(issue.key, "");
   const fields = record(issue.fields);
@@ -128,6 +131,23 @@ export function decodeIssue(value: unknown): Issue {
     defaultPriorityId: "",
     assignee: stringValue(assignee.displayName),
     assigneeId: stringValue(assignee.accountId),
+    ...(relatedFields === undefined
+      ? {}
+      : {
+          relatedUserIds: [
+            ...new Set(
+              [
+                stringValue(assignee.accountId),
+                ...relatedFields.flatMap((id) => {
+                  const value = fields[id];
+                  return (
+                    value == null ? [] : Array.isArray(value) ? value : [value]
+                  ).map((user) => stringValue(optionalRecord(user).accountId));
+                }),
+              ].filter(Boolean),
+            ),
+          ],
+        }),
     assigneeAvatar: avatarValue(assignee.avatarUrls),
     updated: stringValue(fields.updated),
     dueDate: stringValue(fields.duedate),

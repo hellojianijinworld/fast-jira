@@ -1,6 +1,6 @@
 import type { Issue } from "../domain/issue.ts";
-import { copyText } from "./clipboard.ts";
-import { element, iconButton, uiIcon } from "./dom.ts";
+import { issueKeyCopy } from "./clipboard.ts";
+import { element, uiIcon } from "./dom.ts";
 import {
   dueTime,
   issueTypeIcon,
@@ -17,6 +17,7 @@ export interface CardOptions {
   now?: Date;
   site?: string;
   copied?: (message: string) => void;
+  metaAction?: HTMLButtonElement;
 }
 /** 목록·최근 본 이슈·상세 하위 목록은 동일한 카드와 배지 순서를 사용한다. */
 export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
@@ -29,21 +30,15 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
     link.setAttribute("aria-current", "true");
   const identity = element("span", "issue-identity");
   if (issue.issueType) identity.append(issueTypeIcon(issue));
-  const copy = iconButton(`${issue.key} 이슈 링크 복사`, "copy");
-  copy.classList.add("key", "card-copy");
-  copy.prepend(document.createTextNode(issue.key));
-  identity.append(copy);
-  copy.disabled = !options.site;
-  copy.addEventListener("click", async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!options.site) return;
-    await copyText(
-      `https://${options.site}/browse/${issue.key}`,
+  identity.append(
+    issueKeyCopy(
+      issue.key,
+      options.site ? `https://${options.site}/browse/${issue.key}` : null,
       options.copied,
-    );
-  });
+    ),
+  );
   const meta = element("span", "list-meta");
+  if (options.metaAction) meta.append(options.metaAction);
   if (issue.commentCount > 0) {
     const comments = element("span", "comment-pill");
     comments.setAttribute("aria-label", `댓글 ${issue.commentCount}개`);
@@ -72,14 +67,6 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
     );
   if (issue.status) meta.append(statusPill(issue.status, options.statusOrder));
   link.append(identity, title, meta);
-  if (issue.statusCategory === "done") {
-    link.classList.add("completed-card");
-    const done = element("span", "completed-check");
-    done.setAttribute("aria-label", `${issue.status} · 완료 범주`);
-    done.title = `${issue.status} · 완료 범주`;
-    done.append(uiIcon("check"));
-    link.append(done);
-  }
   root.append(link);
   root.addEventListener("click", (event) => {
     if (

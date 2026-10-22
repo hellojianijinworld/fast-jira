@@ -251,3 +251,100 @@ test("담당자 조회는 프로젝트 순서와 무관하게 합치고 5분 후
   await metadata.projectAssignees("AA,BB");
   assert.equal(paths.length, 2);
 });
+
+test("필터 사용자는 담당 가능 여부로 제한하지 않고 모든 사용자 페이지를 캐시한다", async () => {
+  const requests: URL[] = [];
+  const client = createJiraClient(
+    { site: "example.atlassian.net", email: "test@example.com", token: "fake" },
+    async (input) => {
+      const url = new URL(String(input));
+      requests.push(url);
+      assert.equal(url.pathname, "/rest/api/3/users/search");
+      return Response.json(
+        url.searchParams.get("startAt") === "0"
+          ? [
+              {
+                accountId: "designer-id",
+                displayName: "디자인 관계자",
+                active: true,
+              },
+              { accountId: "old-id", active: false },
+              { accountId: "app-id", active: true, accountType: "app" },
+            ]
+          : [],
+      );
+    },
+  );
+  const metadata = createJiraMetadata(client);
+  assert.deepEqual(
+    (await metadata.filterUsers("AA")).map((user) => user.id),
+    ["designer-id"],
+  );
+  await metadata.filterUsers("BB");
+  assert.equal(requests.length, 2);
+});
+
+test("새 세션의 계정 확인은 이전 인증 결과를 재사용하지 않는다", async () => {
+  let allowed = true;
+  const { metadata } = setup(() =>
+    allowed
+      ? Response.json({ accountId: "me", displayName: "나" })
+      : Response.json({}, { status: 401 }),
+  );
+  await metadata.currentUser();
+  allowed = false;
+  await assert.rejects(metadata.currentUser(true));
+});
+
+test("프로젝트 목록은 동시·반복 조회를 합치고 만료·실패 뒤 다시 읽는다", async () => {
+  let time = 0,
+    attempts = 0;
+  const { metadata, paths } = setup(
+    () => {
+      attempts++;
+      if (attempts === 2) return Response.json({}, { status: 503 });
+      return Response.json({
+        values: [
+          {
+            key: "AA",
+            name: attempts === 1 ? "이전 프로젝트" : "최신 프로젝트",
+          },
+        ],
+        isLast: true,
+      });
+    },
+    () => time,
+  );
+  const [a, b] = await Promise.all([metadata.projects(), metadata.projects()]);
+  assert.equal(a[0]?.name, "이전 프로젝트");
+  assert.deepEqual(a, b);
+  await metadata.projects();
+  assert.equal(paths.length, 1);
+  time = 300000;
+  await assert.rejects(metadata.projects());
+  assert.equal((await metadata.projects())[0]?.name, "최신 프로젝트");
+  assert.equal(paths.length, 3);
+});
+test("새로고침 인증은 진행 중 요청만 합치고 다음 확인에는 자격증명을 다시 검증한다", async () => {
+  let finish: (() => void) | undefined;
+  let waiting = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let authorized = true;
+  const { metadata, paths } = setup(async () => {
+    await waiting;
+    return authorized
+      ? Response.json({ accountId: "current", displayName: "현재 사용자" })
+      : Response.json({}, { status: 401 });
+  });
+  const a = metadata.currentUser(true),
+    b = metadata.currentUser(true);
+  await Promise.resolve();
+  finish?.();
+  await Promise.all([a, b]);
+  assert.equal(paths.length, 1);
+  waiting = Promise.resolve();
+  authorized = false;
+  await assert.rejects(metadata.currentUser(true));
+  assert.equal(paths.length, 2);
+});

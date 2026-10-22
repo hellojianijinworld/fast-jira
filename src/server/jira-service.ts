@@ -5,6 +5,7 @@ import { type Credentials, createJiraClient } from "./jira-client.ts";
 import { createJiraContent } from "./jira-content.ts";
 import { createJiraEdit } from "./jira-edit.ts";
 import { createJiraMetadata } from "./jira-metadata.ts";
+import { createParentOptions } from "./jira-parents.ts";
 import { createJiraQuery } from "./jira-query.ts";
 import { createJiraRead } from "./jira-read.ts";
 import { loggedFetch } from "./network-log.ts";
@@ -23,26 +24,24 @@ export function createJiraService(options: {
       : fetcher,
   );
   const metadata = createJiraMetadata(client);
-  const read = createJiraRead(client, metadata, options.credentials.site);
+  const query = createJiraQuery(client, metadata, options.relatedFieldNames);
+  const read = createJiraRead(
+    client,
+    metadata,
+    options.credentials.site,
+    query.relatedFieldIds,
+  );
   const edit = createJiraEdit(client, metadata, read);
   return {
     site: options.credentials.site,
+    parentOptions: createParentOptions(client, metadata),
     issueKey: (input: unknown) =>
       parseIssueKey(input, options.credentials.site),
     ...metadata,
     ...read,
     ...edit,
     ...createJiraContent(client, metadata),
-    ...createJiraQuery(
-      client,
-      metadata,
-      options.relatedFieldNames ?? [
-        "디자인 담당자",
-        "보조 디자인 담당자",
-        "프론트엔드 개발 담당자",
-        "백엔드 개발 담당자",
-      ],
-    ),
+    ...query,
     bulk: createBulkService({ ...read, ...edit }),
   };
 }

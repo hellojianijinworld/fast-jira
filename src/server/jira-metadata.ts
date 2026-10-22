@@ -1,6 +1,7 @@
 import type {
   CurrentUser,
   PriorityOption,
+  ProjectOption,
   StatusOption,
 } from "../domain/catalog.ts";
 import type { Issue, IssueType, UserOption } from "../domain/issue.ts";
@@ -30,18 +31,27 @@ export function createJiraMetadata(
   client: JiraClient,
   now: () => number = Date.now,
 ) {
+  const cacheProjects = createPromiseCache<ProjectOption[]>(now);
   const cachePriorities = createPromiseCache<PriorityOption[]>(now);
+  const cacheFilterUsers = createPromiseCache<UserOption[]>(now);
   const cacheAssignees = createPromiseCache<UserOption[]>(now);
   const cacheTypes = createPromiseCache<IssueType[]>(now);
   const cacheDefaults = createPromiseCache<string>(now);
   const cacheStatuses = createPromiseCache<StatusOption[]>(now);
   let selfPromise: Promise<CurrentUser> | undefined;
-  function currentUser(): Promise<CurrentUser> {
-    selfPromise ??= client
+  let verifyingSelf = false;
+  function currentUser(refresh = false): Promise<CurrentUser> {
+    if (refresh && !verifyingSelf) selfPromise = undefined;
+    if (selfPromise) return selfPromise;
+    verifyingSelf = true;
+    selfPromise = client
       .json("/rest/api/3/myself", decodeCurrentUser)
       .catch((error) => {
         selfPromise = undefined;
         throw error;
+      })
+      .finally(() => {
+        verifyingSelf = false;
       });
     return selfPromise;
   }
@@ -63,10 +73,12 @@ export function createJiraMetadata(
         return values;
     }
   }
-  async function projects() {
-    return (
-      await pages("/rest/api/3/project/search", "values", decodeProject)
-    ).sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  function projects() {
+    return cacheProjects("all", async () =>
+      (await pages("/rest/api/3/project/search", "values", decodeProject)).sort(
+        (a, b) => a.name.localeCompare(b.name, "ko"),
+      ),
+    );
   }
   function priorities() {
     return cachePriorities("all", () =>
@@ -133,6 +145,28 @@ export function createJiraMetadata(
         )
       ).sort((a, b) => a.name.localeCompare(b.name, "ko")),
     );
+  }
+  function filterUsers(value: string) {
+    if (!projectKeys(value).length) return Promise.resolve<UserOption[]>([]);
+    return cacheFilterUsers("members", async () => {
+      const members = new Map<string, UserOption>();
+      let startAt = 0;
+      for (;;) {
+        const page = await client.json(
+          `/rest/api/3/users/search?${new URLSearchParams({ startAt: String(startAt), maxResults: "1000" })}`,
+          arrayValue,
+        );
+        if (!page.length) break;
+        for (const user of decodeUsers(
+          page.filter((value) => record(value).accountType !== "app"),
+        ))
+          members.set(user.id, user);
+        startAt += page.length;
+      }
+      return [...members.values()].sort((a, b) =>
+        a.name.localeCompare(b.name, "ko"),
+      );
+    });
   }
   function projectStatuses(value: string) {
     const keys = projectKeys(value);
@@ -215,6 +249,7 @@ export function createJiraMetadata(
     projectTypes,
     withDefaultPriorities,
     projectAssignees,
+    filterUsers,
     projectStatuses,
   };
 }

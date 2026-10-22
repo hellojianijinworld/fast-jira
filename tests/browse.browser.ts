@@ -316,6 +316,8 @@ const api = createApi(async (input, init) => {
         issues.filter((issue) => issue.parent === url.searchParams.get("key")),
       );
     case "/api/children":
+      if (failChildren)
+        return Response.json({ error: "모의 하위 조회 실패" }, { status: 503 });
       return Response.json({
         issues: issues.filter(
           (issue) => issue.parent === url.searchParams.get("key"),
@@ -408,25 +410,29 @@ checks.push([
       root.querySelector(".project-count")?.textContent === "1",
       "상위 컨텍스트를 직접 일치 개수로 세지 않는다",
     );
-    const sticky = root.querySelector<HTMLElement>(".sticky-parent");
+    const parent = root.querySelector<HTMLElement>(
+      '[data-tree-key="TEST-1"] > .tree-row',
+    );
     assert(
-      sticky && getComputedStyle(sticky).position === "sticky",
-      "부모 sticky가 다른 CSS로 덮였다",
+      parent && getComputedStyle(parent).position !== "sticky",
+      "부모 카드 전체가 고정되어 읽을 공간을 차지한다",
+    );
+    assert(
+      root.querySelector(
+        '.tree-context[aria-label="현재 읽는 목록의 상위 경로"]',
+      ),
+      "공통 부모 경로 영역이 없다",
     );
     const actions = root.querySelector(".tree-actions");
     assert(actions, "카드 액션 누락");
-    const filterRect = actions.firstElementChild?.getBoundingClientRect();
-    const toggleRect = actions.lastElementChild?.getBoundingClientRect();
     assert(
-      filterRect &&
-        toggleRect &&
-        filterRect.right <= toggleRect.left &&
-        filterRect.top === toggleRect.top,
-      "카드 필터·접기 버튼 가로 정렬 불일치",
+      actions.children.length === 1 &&
+        actions.firstElementChild?.classList.contains("tree-toggle"),
+      "카드 바깥에 필터 버튼이 남음",
     );
     assert(
-      actions?.lastElementChild?.classList.contains("tree-toggle"),
-      "필터가 접기 버튼 왼쪽에 있지 않다",
+      !root.querySelector(".browse .card-view-button"),
+      "전체 뷰 상속 카드의 뷰 버튼이 표시됨",
     );
   },
 ]);
@@ -452,7 +458,7 @@ checks.push([
 checks.push([
   "필터 체크는 초안만 바꾸고 적용 버튼이 목록을 한 번 조회한다",
   async () => {
-    button("필터 및 정렬").click();
+    button("필터 및 뷰").click();
     await tick();
     const panel = document.querySelector<HTMLElement>(".filter-panel");
     assert(panel, "팝오버 없음");
@@ -501,20 +507,32 @@ checks.push([
 checks.push([
   "하위 필터는 글로벌 상속과 명시적 빈 선택을 구분한다",
   async () => {
+    app.views.apply(
+      { kind: "branch", key: "TEST-1" },
+      app.views.resolve({ kind: "global" }, false),
+    );
+    await tick();
     button("TEST-1 하위 정렬·필터").click();
     await tick();
     const panel = document.querySelector<HTMLElement>(".filter-panel");
-    const inherit = panel?.querySelector<HTMLInputElement>(
-      '[aria-label="담당자 글로벌 필터 적용"]',
+    assert(
+      panel?.querySelector('[aria-label="사용할 뷰"]'),
+      "보기 선택기 누락",
     );
-    assert(inherit?.checked, "상속 기본값 누락");
-    inherit.click();
+    await tick();
+    const mode = panel?.querySelector<HTMLSelectElement>(
+      '[aria-label="표시할 사람"]',
+    );
+    assert(mode, "하위 사람 선택기 없음");
+    mode.value = "custom";
+    mode.dispatchEvent(new Event("change", { bubbles: true }));
+    await tick();
     const section = Array.from(
       panel?.querySelectorAll<HTMLElement>(".filter-section") ?? [],
-    ).find(
-      (section) =>
-        section.querySelector(".filter-section-head h3")?.textContent ===
-        "담당자",
+    ).find((section) =>
+      ["담당자", "작업 관계자"].includes(
+        section.querySelector(".filter-section-head h3")?.textContent ?? "",
+      ),
     );
     const clear = Array.from(
       section?.querySelectorAll<HTMLButtonElement>("button") ?? [],
@@ -558,6 +576,11 @@ checks.push([
       "상세 본문 누락",
     );
     assert(
+      root.querySelectorAll(".detail-breadcrumbs a").length === 2 &&
+        !calls.some((call) => call.pathname === "/api/ancestors"),
+      "목록 상위 경로 재사용 누락",
+    );
+    assert(
       root.querySelector(".reported-at") instanceof HTMLTimeElement,
       "공통 상대 시각 누락",
     );
@@ -591,10 +614,12 @@ checks.push([
     const checks = root.querySelectorAll<HTMLInputElement>(
       ".settings-modal .setting-row input",
     );
-    assert(checks.length === 3, "설정 체크 누락");
+    assert(checks.length === 5, "설정 체크 누락");
     for (const label of ["다크 모드", "간단히 보기"]) {
       const check = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-        .find((row) => row.textContent === label)
+        .find(
+          (row) => row.querySelector(".setting-label")?.textContent === label,
+        )
         ?.querySelector<HTMLInputElement>("input");
       assert(check, "설정 필드 누락");
       check.click();
@@ -617,6 +642,51 @@ checks.push([
         root.getBoundingClientRect().width ===
           document.documentElement.clientWidth,
       "전체 너비에 제한이 남는다",
+    );
+    button("닫기").click();
+  },
+]);
+checks.push([
+  "설정 탭은 크기·연결 입력을 유지하고 키보드로 이동하며 도움말을 연결한다",
+  () => {
+    button("설정").click();
+    const modal = root.querySelector<HTMLDialogElement>(".settings-modal");
+    assert(modal, "설정 모달 누락");
+    const tabs = [...modal.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    assert(
+      tabs.length === 3 && tabs[1]?.getAttribute("aria-selected") === "true",
+      "설정 카테고리 누락",
+    );
+    const height = modal.getBoundingClientRect().height;
+    button("Jira 연결").click();
+    const email = modal.querySelector<HTMLInputElement>('input[type="email"]');
+    assert(
+      email && !email.closest<HTMLElement>('[role="tabpanel"]')?.hidden,
+      "연결 탭 내용 누락",
+    );
+    email.value = "fixture@example.com";
+    button("개발자").click();
+    assert(
+      Math.abs(modal.getBoundingClientRect().height - height) < 1,
+      "탭 이동으로 모달 크기 변경",
+    );
+    const developer = modal.querySelector<HTMLInputElement>(
+      'input[aria-label="개발자 모드"]',
+    );
+    assert(
+      developer &&
+        document
+          .getElementById(developer.getAttribute("aria-describedby") ?? "")
+          ?.textContent?.includes("저장하지"),
+      "설정 도움말 연결 누락",
+    );
+    tabs[2]?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
+    );
+    assert(
+      tabs[0]?.getAttribute("aria-selected") === "true" &&
+        email.value === "fixture@example.com",
+      "키보드 이동 또는 연결 초안 보존 누락",
     );
     button("닫기").click();
   },
@@ -1015,6 +1085,55 @@ checks.push([
   },
 ]);
 checks.push([
+  "부모 조건 변경은 보이지 않는 일괄 선택을 해제하고 이름 변경은 유지한다",
+  async () => {
+    button("이슈 선택 모드").click();
+    const choose = () => {
+      const check = root.querySelector<HTMLInputElement>(
+        '[data-select-key="TEST-3"]',
+      );
+      assert(check, "회귀 검사 선택 카드 누락");
+      check.click();
+    };
+    choose();
+    const target = { kind: "branch" as const, key: "TEST-2" };
+    const original = app.views.resolve(target, false);
+    app.views.register(target, original, "회귀 검사 보기");
+    assert(
+      root.querySelector(".bulk-head strong")?.textContent === "1개 선택",
+      "동일 조건 등록이 선택을 해제함",
+    );
+    const saved = app.views.state.saved.find(
+      (view) => view.name === "회귀 검사 보기",
+    );
+    assert(saved, "등록 보기 누락");
+    app.views.update(saved.id, "이름만 수정", saved.definition);
+    assert(
+      root.querySelector(".bulk-head strong")?.textContent === "1개 선택",
+      "이름 변경이 선택을 해제함",
+    );
+    app.views.update(saved.id, "조건 수정", {
+      ...saved.definition,
+      statuses: [],
+    });
+    assert(
+      root.querySelector(".bulk-head strong")?.textContent === "0개 선택",
+      "숨겨진 이슈가 일괄 대상에 남음",
+    );
+    app.views.apply(target, original);
+    await tick();
+    choose();
+    app.views.peek(target.key, { people: true });
+    assert(
+      root.querySelector(".bulk-head strong")?.textContent === "0개 선택",
+      "일시 범위 변경이 선택을 유지함",
+    );
+    app.views.clearPeek(target.key);
+    app.views.delete(saved.id);
+    button("선택 종료").click();
+  },
+]);
+checks.push([
   "선택 모드는 명시적 체크·공통 상태 순서·부분 성공·되돌리기를 지원한다",
   async () => {
     app.closeDetail();
@@ -1159,7 +1278,18 @@ checks.push([
         app.list.items.get("TEST-3")?.dueDate === "2026-12-24",
       "부분 성공 목록·실패 표시 누락",
     );
-    button("되돌리기").click();
+    assert(
+      !root.querySelector('.bulk-bar button[aria-label="되돌리기"]') &&
+        ![...root.querySelectorAll(".bulk-bar button")].some(
+          (button) => button.textContent === "되돌리기",
+        ),
+      "메인 액션에 되돌리기가 남는다",
+    );
+    const undo = root.querySelector<HTMLButtonElement>(
+      ".notice button.secondary",
+    );
+    assert(undo?.textContent === "되돌리기", "결과 토스트에 되돌리기 누락");
+    undo.click();
     await tick();
     assert(
       app.list.items.get("TEST-3")?.dueDate === previous,
@@ -1214,6 +1344,41 @@ checks.push([
   },
 ]);
 checks.push([
+  "상세를 불러오는 중에도 닫을 수 있고 늦은 응답은 다시 열지 않는다",
+  async () => {
+    app.closeDetail();
+    let release = () => {};
+    pendingRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pending = app.select("TEST-1");
+    try {
+      await tick();
+      const close = root.querySelector<HTMLButtonElement>(
+        '.detail-pending [aria-label="이슈 상세 닫기"]',
+      );
+      assert(close !== null && !close.hidden, "조회 중 닫기가 없다");
+      close.click();
+      assert(
+        root.querySelector<HTMLDialogElement>(".detail-modal")?.open === false,
+        "조회 중 모달을 닫지 못한다",
+      );
+    } finally {
+      pendingRead = null;
+      release();
+      await pending;
+    }
+    assert(
+      root.querySelector<HTMLDialogElement>(".detail-modal")?.open === false,
+      "늦은 응답이 상세를 다시 연다",
+    );
+    assert(
+      root.querySelector<HTMLElement>(".detail-content")?.hidden === true,
+      "늦은 상세가 남는다",
+    );
+  },
+]);
+checks.push([
   "최근 변경 묶음은 신규 부모·필터 이탈·최근 카드에 반영하고 동일 결과는 재렌더하지 않는다",
   async () => {
     const child = issues[2];
@@ -1258,6 +1423,17 @@ checks.push([
         ?.textContent?.includes("최근 변경된 제목"),
       "최근 카드 변경 누락",
     );
+    const recentCard = root.querySelector<HTMLElement>(
+      ".dashboard .issue-card",
+    );
+    const copy = recentCard?.querySelector<HTMLButtonElement>("button");
+    copy?.focus();
+    app.list.updateMany([], new Set());
+    assert(
+      recentCard === root.querySelector(".dashboard .issue-card"),
+      "동일 데이터의 최근 카드를 다시 만들었다",
+    );
+    assert(document.activeElement === copy, "최근 카드의 포커스를 잃었다");
     const card = root.querySelector(".browse-list a.list-title");
     await app.checkChanges();
     assert(
@@ -1327,7 +1503,7 @@ checks.push([
       ...root.querySelectorAll<HTMLAnchorElement>(".browse-list a.list-title"),
     ].find(
       (card) =>
-        !card.closest(".sticky-parent") &&
+        !card.closest(".tree-parent") &&
         card.getBoundingClientRect().bottom > top,
     );
     assert(card && scroller.scrollTop > 0, "스크롤 검사 카드 누락");
@@ -1415,8 +1591,12 @@ checks.push([
       "기본 로그 구독 발생",
     );
     button("설정").click();
+    button("개발자").click();
     const setting = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-      .find((label) => label.textContent === "개발자 모드")
+      .find(
+        (label) =>
+          label.querySelector(".setting-label")?.textContent === "개발자 모드",
+      )
       ?.querySelector<HTMLInputElement>("input");
     assert(setting, "개발자 설정 누락");
     setting.click();
@@ -1482,8 +1662,12 @@ checks.push([
       "로그 닫기 정리 누락",
     );
     button("설정").click();
+    button("개발자").click();
     const disable = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-      .find((label) => label.textContent === "개발자 모드")
+      .find(
+        (label) =>
+          label.querySelector(".setting-label")?.textContent === "개발자 모드",
+      )
       ?.querySelector<HTMLInputElement>("input");
     assert(disable, "개발자 설정 재열기 누락");
     disable.click();
@@ -1518,29 +1702,44 @@ checks.push([
   },
 ]);
 checks.push([
-  "상세 하위 목록은 펼칠 때 조회하고 실패를 재시도하며 공통 카드로 이동한다",
+  "상세 하위 목록은 트리 필터·캐시를 공유하고 실패 재시도와 개별 필터 편집을 지원한다",
   async () => {
+    app.list.toggle("TEST-1", true);
+    app.views.apply(
+      { kind: "branch", key: "TEST-1" },
+      {
+        ...app.views.resolve({ kind: "global" }),
+        scope: "all",
+        assignees: null,
+        statuses: ["2"],
+        sort: "oldest",
+      },
+    );
     await app.select("TEST-1");
     const before = calls.filter(
-      (call) => call.pathname === "/api/issue-children",
+      (call) => call.pathname === "/api/children",
     ).length;
     const children = root.querySelector<HTMLDetailsElement>(".detail-children");
     assert(children && !children.open, "상세 하위 펼침 누락");
     assert(
-      calls.filter((call) => call.pathname === "/api/issue-children").length ===
+      calls.filter((call) => call.pathname === "/api/children").length ===
         before,
       "펼치기 전에 하위 조회",
     );
     failChildren = true;
     children.open = true;
-    for (let attempt = 0; children.open && attempt < 100; attempt++)
+    for (
+      let attempt = 0;
+      !children.textContent?.includes("다시 시도") && attempt < 100;
+      attempt++
+    )
       await new Promise((resolve) => setTimeout(resolve, 10));
     assert(
-      !children.open && children.textContent?.includes("다시 불러오기"),
+      children.textContent?.includes("다시 시도"),
       "하위 조회 실패 복구 누락",
     );
     failChildren = false;
-    children.open = true;
+    children.querySelector<HTMLButtonElement>("button")?.click();
     for (
       let attempt = 0;
       !children.querySelector(".list-item") && attempt < 100;
@@ -1553,18 +1752,42 @@ checks.push([
       card.textContent?.includes("TEST-2") && card.querySelector(".list-meta"),
       "공통 하위 카드 누락",
     );
+    app.list.updateMany([], new Set());
+    assert(
+      card === children.querySelector(".list-item"),
+      "동일 데이터의 상세 하위 카드를 다시 만들었다",
+    );
     const loaded = calls.filter(
-      (call) => call.pathname === "/api/issue-children",
+      (call) => call.pathname === "/api/children",
     ).length;
     children.open = false;
     await tick();
     children.open = true;
     await tick();
     assert(
-      calls.filter((call) => call.pathname === "/api/issue-children").length ===
+      calls.filter((call) => call.pathname === "/api/children").length ===
         loaded,
       "같은 상세에서 하위 중복 조회",
     );
+    const filter = root.querySelector<HTMLButtonElement>(
+      ".detail-child-filter",
+    );
+    assert(filter !== null, "상세 필터 버튼 누락");
+    assert(filter.classList.contains("active"), "상세 개별 필터 표시 누락");
+    filter.click();
+    const panel = document.querySelector<HTMLElement>(
+      ".filter-panel:popover-open",
+    );
+    assert(panel !== null, "상세 필터 팝오버 누락");
+    assert(
+      panel.textContent?.includes("TEST-1"),
+      "상세에서 동일한 하위 필터 편집 누락",
+    );
+    panel
+      .querySelector<HTMLButtonElement>(
+        ".filter-footer .view-footer-actions button",
+      )
+      ?.click();
     card.click();
     await tick();
     assert(
@@ -1572,6 +1795,7 @@ checks.push([
       "하위 상세 이동 누락",
     );
     app.closeDetail();
+    app.list.toggle("TEST-1", false);
   },
 ]);
 checks.push([
@@ -1595,7 +1819,7 @@ checks.push([
   },
 ]);
 checks.push([
-  "처음 설정은 계정을 표시하고 시작하며 일반 설정은 즉시 저장한다",
+  "새 브라우저의 첫 설정은 닫을 수 있고 목록 조회를 막지 않는다",
   async () => {
     const host = element("div"),
       localValues = new Map<string, string>();
@@ -1612,70 +1836,99 @@ checks.push([
     const pending = createApp(host, api, localStore, () => () => {});
     await tick();
     const popup = host.querySelector<HTMLDialogElement>(".settings-modal");
-    assert(
-      popup?.open && popup.textContent?.includes("처음 설정"),
-      "첫 설정 누락",
-    );
-    assert(
-      popup.textContent.includes("fixture.atlassian.net") &&
-        popup.textContent.includes("로그인 계정"),
-      "연결 계정 안내 누락",
-    );
-    assert(
-      !popup.dispatchEvent(new Event("cancel", { cancelable: true })),
-      "첫 설정 Escape 허용",
-    );
-    assert(
-      calls.filter((call) => call.pathname === "/api/issues").length === before,
-      "시작 전 목록 조회",
-    );
-    const start = [...popup.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "시작하기",
-    );
-    assert(start, "첫 시작 버튼 누락");
-    start.click();
-    const fresh = await pending;
     try {
       assert(
-        !popup.open &&
-          localStore
-            .getItem("fastJira:filters:fixture.atlassian.net:my-account")
-            ?.includes('"configured":true'),
-        "첫 설정 저장 누락",
+        popup?.open && popup.textContent?.includes("처음 설정"),
+        "첫 설정 누락",
       );
-      host.querySelector<HTMLButtonElement>('[aria-label="설정"]')?.click();
-      const theme = [...popup.querySelectorAll<HTMLLabelElement>("label")]
-        .find((label) => label.textContent === "다크 모드")
-        ?.querySelector<HTMLInputElement>("input");
-      assert(theme, "설정 재열기 누락");
-      theme.click();
-      [...popup.querySelectorAll<HTMLButtonElement>("button")]
-        .find((button) => button.getAttribute("aria-label") === "닫기")
-        ?.click();
+      const close = popup.querySelector<HTMLButtonElement>(
+        '[aria-label="닫기"]',
+      );
+      assert(close && !close.hidden, "첫 설정 닫기가 숨겨져 있다");
       assert(
-        localStore.getItem("fastJira:theme") === "dark",
-        "닫은 뒤 즉시 적용 설정이 유지되지 않는다",
+        popup.dispatchEvent(new Event("cancel", { cancelable: true })),
+        "Escape를 차단한다",
       );
-    } finally {
+      assert(
+        calls.filter((call) => call.pathname === "/api/issues").length > before,
+        "설정이 목록 조회를 막는다",
+      );
+      close.click();
+      await tick();
+      assert(!popup.open, "첫 설정이 닫히지 않는다");
+      assert(
+        localStore
+          .getItem("fastJira:filters:fixture.atlassian.net:my-account")
+          ?.includes('"configured":true'),
+        "닫은 첫 설정을 기억하지 않는다",
+      );
+      const fresh = await pending;
+      host.querySelector<HTMLButtonElement>('[aria-label="설정"]')?.click();
+      assert(
+        popup.open && !popup.querySelector(".modal-footer"),
+        "일반 설정에도 시작 푸터가 남는다",
+      );
+      popup.close();
       fresh.destroy();
+    } finally {
+      // 실패한 이전 구현의 초기화 대기도 해제해 검사 자원을 정리한다.
+      [...host.querySelectorAll<HTMLButtonElement>("button")]
+        .find((button) => button.textContent === "시작하기")
+        ?.click();
+      const fresh = await pending;
+      fresh.destroy();
+      popup?.close();
       host.remove();
       document.documentElement.dataset.theme = "dark";
     }
   },
 ]);
 checks.push([
-  "링크 복사는 상시 작은 버튼이며 좁은 화면 로그도 요청·응답을 나눈다",
+  "상세 키는 호버 복사를 공유하고 현재 경로 중복 없이 우측 액션을 유지한다",
   async () => {
     await app.select("TEST-3");
-    const copy = root.querySelector<HTMLButtonElement>(".detail-copy");
-    assert(
-      copy?.textContent === "이슈 링크 복사" &&
-        getComputedStyle(copy).opacity === "1",
-      "복사 버튼 상시 표시 누락",
+    const copy = root.querySelector<HTMLButtonElement>(
+      ".breadcrumb-current .card-copy",
     );
+    assert(
+      copy &&
+        copy.textContent === "TEST-3" &&
+        !root.querySelector(".detail-copy"),
+      "현재 이슈 키 복사 통합 누락",
+    );
+    assert(
+      root.querySelectorAll(".detail-head .key").length === 1 &&
+        !root.querySelector(".breadcrumb-current a"),
+      "현재 이슈 중복 또는 이동 링크가 남음",
+    );
+    assert(
+      getComputedStyle(copy.querySelector(".ui-icon") as HTMLElement)
+        .opacity === (matchMedia("(max-width: 600px)").matches ? "1" : "0"),
+      "뷰포트에 맞는 복사 아이콘 표시 누락",
+    );
+    const head = root.querySelector<HTMLElement>(".detail-head");
+    const identity = root.querySelector<HTMLElement>(".detail-identity");
+    const actions = root.querySelector<HTMLElement>(".detail-head-actions");
+    const label = root.querySelector<HTMLElement>(".breadcrumb-label");
+    assert(head && identity && actions && label, "상세 경로·우측 액션 누락");
+    const original = label.textContent;
+    head.style.width = "300px";
+    label.textContent = "아주 긴 상위 이슈 이름 ".repeat(12);
+    assert(
+      identity.getBoundingClientRect().right <=
+        actions.getBoundingClientRect().left,
+      "긴 경로가 기록·닫기 영역을 침범함",
+    );
+    assert(head.scrollWidth <= head.clientWidth, "긴 경로가 가로로 넘침");
+    label.textContent = original;
+    head.style.removeProperty("width");
     button("설정").click();
+    button("개발자").click();
     const input = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-      .find((label) => label.textContent === "개발자 모드")
+      .find(
+        (label) =>
+          label.querySelector(".setting-label")?.textContent === "개발자 모드",
+      )
       ?.querySelector<HTMLInputElement>("input");
     assert(input, "개발자 설정 누락");
     if (!input.checked) input.click();
@@ -1807,26 +2060,24 @@ checks.push([
   },
 ]);
 checks.push([
-  "완료 표시 옵션은 적용 전까지 유지하고 목록 재조회 없이 로컬에 저장한다",
+  "완료 표시 설정은 즉시 적용하고 목록 재조회 없이 로컬에 저장한다",
   async () => {
-    button("필터 및 정렬").click();
+    button("설정").click();
     await tick();
     const check = [
-      ...document.querySelectorAll<HTMLLabelElement>(".filter-panel label"),
+      ...document.querySelectorAll<HTMLLabelElement>(".settings-content label"),
     ]
-      .find((row) => row.textContent === "완료 항목 간단히 보기")
+      .find(
+        (row) =>
+          row.querySelector(".setting-label")?.textContent ===
+          "완료된 하위 항목 타일로 보기",
+      )
       ?.querySelector<HTMLInputElement>("input");
     assert(check, "완료 표시 옵션 누락");
-    const before = document.documentElement.dataset.compactDone;
-    check.click();
-    assert(
-      document.documentElement.dataset.compactDone === before,
-      "적용 전 표시가 바뀜",
-    );
     const count = calls.filter(
       (call) => call.pathname === "/api/issues",
     ).length;
-    button("적용").click();
+    check.click();
     await tick();
     assert(
       document.documentElement.dataset.compactDone === String(check.checked),
@@ -1840,8 +2091,166 @@ checks.push([
       calls.filter((call) => call.pathname === "/api/issues").length === count,
       "표시 변경에 불필요한 목록 조회",
     );
+    button("닫기").click();
   },
 ]);
+checks.push([
+  "프로젝트 선택은 별도 팝오버에서 적용하며 뷰와 검색 조건을 유지한다",
+  async () => {
+    const beforeViews = JSON.stringify(app.views.state);
+    const beforeFilters = {
+      ...app.list.filters,
+      projects: [...app.list.filters.projects],
+    };
+    const beforeCalls = calls.filter(
+      (call) => call.pathname === "/api/issues",
+    ).length;
+    button("프로젝트 선택").click();
+    const projects = document.querySelector<HTMLElement>(".project-panel");
+    assert(projects, "프로젝트 팝오버 없음");
+    assert(projects.matches(":popover-open"), "프로젝트 팝오버 닫힘");
+    const check = projects.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    assert(check?.checked, "기존 선택 미반영");
+    check.click();
+    assert(
+      app.list.filters.projects.length === beforeFilters.projects.length,
+      "초안이 즉시 적용됨",
+    );
+    assert(
+      calls.filter((call) => call.pathname === "/api/issues").length ===
+        beforeCalls,
+      "체크할 때 API 조회",
+    );
+    button("취소").click();
+    button("프로젝트 선택").click();
+    assert(
+      projects.querySelector<HTMLInputElement>('input[type="checkbox"]')
+        ?.checked,
+      "취소된 초안이 남음",
+    );
+    button("선택 해제").click();
+    button("적용").click();
+    await tick();
+    assert(app.list.filters.projects.length === 0, "프로젝트 선택 해제 실패");
+    assert(
+      calls.filter((call) => call.pathname === "/api/issues").length ===
+        beforeCalls,
+      "빈 프로젝트를 API로 조회",
+    );
+    button("프로젝트 선택").click();
+    button("전체 선택").click();
+    button("적용").click();
+    await tick();
+    assert(
+      calls.filter((call) => call.pathname === "/api/issues").length ===
+        beforeCalls + 1,
+      "프로젝트 적용 중복 조회",
+    );
+    assert(
+      JSON.stringify(app.views.state) === beforeViews,
+      "프로젝트 변경이 뷰 정의를 바꿈",
+    );
+    assert(
+      JSON.stringify(app.list.filters) === JSON.stringify(beforeFilters),
+      "프로젝트 적용이 다른 조건을 바꿈",
+    );
+    button("필터 및 뷰").click();
+    assert(
+      !document.querySelector('.view-settings input[aria-label^="프로젝트:"]'),
+      "뷰 안에 프로젝트 선택 잔존",
+    );
+    button("취소").click();
+  },
+]);
+
+checks.push([
+  "하위 뷰는 상세에서 설정하고 카드 배지 맨 앞에서 아이콘으로 구분한다",
+  async () => {
+    const target = { kind: "branch" as const, key: "TEST-1" };
+    const original = app.views.binding(target);
+    app.views.select(target, { kind: "default" });
+    await tick();
+    assert(
+      !root.querySelector(
+        '[data-tree-key="TEST-1"] > .tree-row .card-view-button',
+      ),
+      "상속 버튼 잔존",
+    );
+    await app.select("TEST-1");
+    const filter = root.querySelector<HTMLButtonElement>(
+      ".detail-child-filter",
+    );
+    assert(filter, "상속된 카드의 상세에 설정 진입점 없음");
+    filter.click();
+    const panel = document.querySelector<HTMLElement>(
+      ".filter-panel:not(.project-panel)",
+    );
+    const select = panel?.querySelector<HTMLSelectElement>(
+      ".view-picker select",
+    );
+    assert(select && panel, "상세 뷰 선택 없음");
+    select.value = "inline";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    await tick();
+    button("적용").click();
+    await tick();
+    app.closeDetail();
+    const getAction = () =>
+      root.querySelector<HTMLButtonElement>(
+        '[data-tree-key="TEST-1"] > .tree-row .card-view-button',
+      );
+    const action = getAction();
+    assert(action, "カード 뷰 버튼 없음");
+    assert(
+      action.parentElement?.classList.contains("list-meta") &&
+        action === action.parentElement.firstElementChild,
+      "뷰 버튼이 카드 오른쪽 정보의 맨 앞에 있지 않음",
+    );
+    assert(
+      action
+        .querySelector("use")
+        ?.getAttribute("href")
+        ?.endsWith("#list-filter-plus") &&
+        root.querySelector(".card-view-label")?.textContent ===
+          "이 하위 목록만 설정",
+      "직접 설정 아이콘 불일치",
+    );
+    const expanded = root
+      .querySelector('[data-issue-key="TEST-1"]')
+      ?.getAttribute("aria-expanded");
+    action.click();
+    assert(
+      !new URL(location.href).searchParams.get("issue"),
+      "뷰 버튼 클릭이 이슈를 열었음",
+    );
+    assert(
+      root
+        .querySelector('[data-issue-key="TEST-1"]')
+        ?.getAttribute("aria-expanded") === expanded,
+      "뷰 클릭이 아코디언을 바꿈",
+    );
+    button("취소").click();
+    app.views.register(
+      target,
+      app.views.resolve(target, false),
+      "카드 뷰 검사",
+    );
+    const saved = app.views.binding(target);
+    assert(saved.kind === "saved", "저장된 뷰 연결 실패");
+    assert(
+      getAction()
+        ?.querySelector("use")
+        ?.getAttribute("href")
+        ?.endsWith("#user"),
+      "저장한 뷰 아이콘 불일치",
+    );
+    app.views.delete(saved.viewId);
+    app.views.select(target, original);
+  },
+]);
+
 let failures = 0;
 for (const [name, check] of checks) {
   try {

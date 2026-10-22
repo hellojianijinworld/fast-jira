@@ -36,6 +36,8 @@ async function setup() {
         return path.includes("/comment")
           ? Response.json(comment)
           : new Response(null, { status: 204 });
+      if (path.endsWith("/users/search")) return Response.json([]);
+      if (path.endsWith("/field")) return Response.json([]);
       if (path.endsWith("/myself"))
         return Response.json({ accountId: "my-account", displayName: "나" });
       if (path.endsWith("/project/search"))

@@ -6,16 +6,24 @@ export function passesChild(
   settings: ChildSettings,
   accountId: string,
 ): boolean {
+  const accounts =
+    settings.people === "related"
+      ? (issue.relatedUserIds ?? [issue.assigneeId]).filter(Boolean)
+      : [issue.assigneeId].filter(Boolean);
+  const peoplePass =
+    settings.assignees !== null
+      ? settings.assignees.some((id) =>
+          id === "unassigned" ? accounts.length === 0 : accounts.includes(id),
+        )
+      : settings.people === "all" ||
+        (settings.people === "mine" && !issue.assigneeId) ||
+        accounts.includes(accountId);
   return (
     (!settings.projects.length || settings.projects.includes(issue.project)) &&
     (!settings.excludeDone || issue.statusCategory !== "done") &&
     (settings.statuses === null ||
       settings.statuses.includes(issue.statusId)) &&
-    (settings.people === "all" ||
-      !issue.assigneeId ||
-      issue.assigneeId === accountId) &&
-    (settings.assignees === null ||
-      settings.assignees.includes(issue.assigneeId || "unassigned"))
+    peoplePass
   );
 }
 export function compareIssues(
