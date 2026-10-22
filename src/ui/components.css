@@ -301,6 +301,10 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tree-section-toggle .ui-icon {
+  width: 12px;
+  height: 12px;
+}
 .tree-toggle[aria-expanded="true"] .ui-icon {
   transform: rotate(90deg);
 }
@@ -1309,10 +1313,20 @@ a {
   max-width: 50%;
   gap: 4px;
 }
+.tree-context-ancestors:only-child {
+  max-width: 100%;
+}
 .tree-context-project {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--secondary-text);
+}
+.tree-context-group {
+  display: flex;
+  align-items: center;
   min-width: 0;
   font-size: 12px;
   color: var(--secondary-text);
@@ -1350,4 +1364,26 @@ a {
   .tree-context-ancestors {
     max-width: 100%;
   }
+}
+
+.tree-section {
+  min-width: 0;
+}
+.tree-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.tree-section-toggle[aria-expanded="true"] .ui-icon {
+  transform: rotate(90deg);
+}
+.tree-section-toggle:hover {
+  color: var(--text);
 }

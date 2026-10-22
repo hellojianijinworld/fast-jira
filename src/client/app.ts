@@ -123,6 +123,7 @@ export async function createApp(
   let detailOpener: { host: HTMLElement; href: string } | null = null;
   let recent = store.recent();
   let favorites = store.favorites();
+  const collapsedGroups = store.collapsedGroups();
   const changedVersions = new Map<string, number>();
   const saved = store.filters(bootstrap.projects.map((project) => project.key));
   const globalView = { kind: "global" } as const;
@@ -591,6 +592,11 @@ export async function createApp(
     }
   }
   const tree = createTreeView(listHost, list, {
+    collapsedGroups,
+    onGroupChange: () => {
+      store.saveCollapsedGroups(collapsedGroups);
+      treeContext.refresh();
+    },
     favorites: cardFavorites,
     site: bootstrap.site,
     copied: notice.show,

@@ -264,6 +264,23 @@ export function createAccountStore(
       storage.setItem(`fastJira:views:${scope}`, JSON.stringify(state)),
     filters,
     tree,
+    collapsedGroups: (): Set<string> => {
+      const value = read("collapsedGroups");
+      return new Set(
+        Array.isArray(value)
+          ? value.filter(
+              (key): key is string =>
+                typeof key === "string" &&
+                key.length <= 200 &&
+                /^(?:unparented|completed):[A-Z][A-Z0-9_]*(?:-\d+)?(?::(?:tree|standalone))?$/.test(
+                  key,
+                ),
+            )
+          : [],
+      );
+    },
+    saveCollapsedGroups: (groups: ReadonlySet<string>) =>
+      write("collapsedGroups", [...groups]),
     recent: () => savedIssues("recent", 5),
     favorites: () => savedIssues("favorites"),
     saveFavorites: (issues: readonly Issue[]) =>

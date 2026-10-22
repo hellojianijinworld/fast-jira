@@ -46,6 +46,16 @@ export function createTreeContext(
     });
     return anchor;
   }
+  function breadcrumb(item: Issue | string, ancestor: boolean) {
+    if (typeof item !== "string") return link(item, ancestor);
+    const label = element(
+      "span",
+      `tree-context-group${ancestor ? "" : " tree-context-current"}`,
+    );
+    label.title = item;
+    label.append(element("span", "tree-context-label", item));
+    return label;
+  }
   function update() {
     frame = 0;
     const scroller = options.scroller(),
@@ -59,7 +69,33 @@ export function createTreeContext(
       })),
       edge,
     );
-    const nextPathKey = JSON.stringify(path);
+    const activeProject = [
+      ...host.querySelectorAll<HTMLElement>(".project-group"),
+    ].find((group) => {
+      const heading = group.querySelector(".project-heading");
+      return (
+        heading &&
+        heading.getBoundingClientRect().bottom <= edge &&
+        group.getBoundingClientRect().bottom > edge
+      );
+    })?.dataset.treeKey;
+    const groups = [...host.querySelectorAll<HTMLElement>(".tree-section")]
+      .filter((section) => {
+        const rect = section.getBoundingClientRect();
+        return (
+          !section.closest("[hidden]") &&
+          !section.lastElementChild?.hasAttribute("hidden") &&
+          rect.top < edge &&
+          rect.bottom > edge
+        );
+      })
+      .map((section) => ({
+        key: section.dataset.treeKey ?? "",
+        label:
+          section.querySelector(":scope > * > .tree-section-toggle")
+            ?.textContent ?? "",
+      }));
+    const nextPathKey = JSON.stringify([activeProject, path, groups]);
     if (force || pathKey !== nextPathKey) {
       pathKey = nextPathKey;
       force = false;
@@ -68,12 +104,24 @@ export function createTreeContext(
           const issue = items.get(key);
           return issue ? [issue] : [];
         });
+      const trail: (Issue | string)[] = [
+        ...groups
+          .filter((group) => group.key.startsWith("unparented:"))
+          .map((group) => group.label),
+        ...known,
+        ...groups
+          .filter((group) => group.key.startsWith("completed:"))
+          .map((group) => group.label),
+      ];
       const current = known.at(-1);
+      const projectKey = current?.project ?? activeProject;
       const project = options
         .projects()
-        .find((project) => project.key === current?.project);
+        .find((project) => project.key === projectKey);
       const next = JSON.stringify([
+        projectKey,
         project,
+        groups,
         known.map((issue) => [
           issue.key,
           issue.summary,
@@ -84,27 +132,25 @@ export function createTreeContext(
       if (signature !== next) {
         signature = next;
         const ancestors = element("div", "tree-context-ancestors");
-        ancestors.hidden = !current;
-        if (current) {
+        ancestors.hidden = !projectKey;
+        if (projectKey) {
           const label = element("span", "tree-context-project");
           const icon = project ? projectIcon(project) : null;
           if (icon) label.append(icon);
           label.append(
-            element(
-              "span",
-              "tree-context-label",
-              project?.name ?? current.project,
-            ),
+            element("span", "tree-context-label", project?.name ?? projectKey),
           );
-          ancestors.append(label, uiIcon("chevron-right"));
+          ancestors.append(label);
+          if (trail.length) ancestors.append(uiIcon("chevron-right"));
         }
-        for (const issue of known.slice(0, -1))
-          ancestors.append(link(issue, true), uiIcon("chevron-right"));
+        for (const item of trail.slice(0, -1))
+          ancestors.append(breadcrumb(item, true), uiIcon("chevron-right"));
+        const last = trail.at(-1);
         nav.replaceChildren(
           ancestors,
-          ...(current ? [link(current, false)] : []),
+          ...(last ? [breadcrumb(last, false)] : []),
         );
-        nav.hidden = !current;
+        nav.hidden = !projectKey;
       }
     }
     const height = nav.hidden

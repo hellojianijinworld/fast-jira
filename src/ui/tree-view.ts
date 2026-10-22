@@ -9,13 +9,15 @@ import {
   searchAncestors,
 } from "../domain/tree.ts";
 import type { ViewInfo } from "../domain/view-labels.ts";
-import { element, iconButton } from "./dom.ts";
+import { element, iconButton, uiIcon } from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
 import { projectIcon } from "./meta.ts";
 
 export interface TreeCallbacks {
   catalog: () => TreeCatalog;
   favorites?: CardOptions["favorites"];
+  collapsedGroups?: Set<string>;
+  onGroupChange?: () => void;
   site: string;
   copied: (message: string) => void;
   selectedKey: () => string;
@@ -34,6 +36,7 @@ export function createTreeView(
   callbacks: TreeCallbacks,
 ) {
   host.classList.add("issue-list-container");
+  const collapsedGroups = callbacks.collapsedGroups ?? new Set<string>();
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries)
@@ -54,11 +57,12 @@ export function createTreeView(
   );
   function branchVisible(key: string) {
     return [...host.querySelectorAll<HTMLElement>(".tree-children")].some(
-      (region) => region.dataset.parent === key,
+      (region) => region.dataset.parent === key && !region.closest("[hidden]"),
     );
   }
   // 키가 같은 행과 하위 목록은 유지한다. 정렬 이동·필터 이탈만 DOM 위치에 반영한다.
   function reconcile(current: HTMLElement, next: HTMLElement) {
+    current.hidden = next.hidden;
     const existing = new Map(
       Array.from(current.children).map((node) => [
         node instanceof HTMLElement ? node.dataset.treeKey : undefined,
@@ -87,7 +91,7 @@ export function createTreeView(
           if (!(part instanceof HTMLElement)) continue;
           if (
             previous instanceof HTMLElement &&
-            part.matches(".tree-list,.project-tree") &&
+            part.matches(".tree-list,.project-tree,.tree-section") &&
             previous.className === part.className
           ) {
             reconcile(previous, part);
@@ -108,6 +112,39 @@ export function createTreeView(
       position.remove();
       position = next;
     }
+  }
+  function section(
+    key: string,
+    label: string,
+    headingClass: string,
+    content: HTMLElement,
+  ) {
+    const wrapper = element("section", "tree-section");
+    wrapper.dataset.treeKey = key;
+    const heading = element("div", headingClass);
+    const toggle = element("button", "tree-section-toggle");
+    toggle.type = "button";
+    toggle.dataset.groupKey = key;
+    const collapsed = collapsedGroups.has(key);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    toggle.setAttribute(
+      "aria-label",
+      `${label} ${collapsed ? "펼치기" : "접기"}`,
+    );
+    toggle.append(uiIcon("chevron-right"), element("span", "", label));
+    content.hidden = collapsed;
+    toggle.addEventListener("click", () => {
+      if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+      else collapsedGroups.add(key);
+      render();
+      callbacks.onGroupChange?.();
+      [...host.querySelectorAll<HTMLButtonElement>(".tree-section-toggle")]
+        .find((button) => button.dataset.groupKey === key)
+        ?.focus();
+    });
+    heading.append(toggle);
+    wrapper.append(heading, content);
+    return wrapper;
   }
   function render() {
     observer.disconnect();
@@ -323,8 +360,12 @@ export function createTreeView(
       }
       if (tiles.children.length) {
         completed.append(
-          element("h4", "completed-heading", `완료 ${tiles.children.length}개`),
-          tiles,
+          section(
+            `completed:${parent || project}:${unparented ? "standalone" : "tree"}`,
+            `완료 ${tiles.children.length}개`,
+            "completed-heading",
+            tiles,
+          ),
         );
         group.append(completed);
       }
@@ -347,8 +388,12 @@ export function createTreeView(
       const standalone = branch("", key, 0, 0, true);
       if (standalone.children.length)
         projectTree.append(
-          element("div", "unparented-heading", "상위 연결 없는 작업"),
-          standalone,
+          section(
+            `unparented:${key}`,
+            "상위 연결 없는 작업",
+            "unparented-heading",
+            standalone,
+          ),
         );
       const count = element(
         "span",

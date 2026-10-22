@@ -777,3 +777,27 @@ test("즐겨찾기는 사이트·계정별로 복원하고 손상·중복 항목
   store.saveFavorites([]);
   assert.deepEqual(store.favorites(), []);
 });
+
+test("목록 묶음 접힘은 계정별로 저장하고 티켓 펼침과 분리한다", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  const store = createAccountStore(storage, "example", "me");
+  assert.deepEqual([...store.collapsedGroups()], []);
+  store.saveCollapsedGroups(
+    new Set(["unparented:TEST", "completed:TEST-1:tree"]),
+  );
+  assert.deepEqual(
+    [...createAccountStore(storage, "example", "me").collapsedGroups()],
+    ["unparented:TEST", "completed:TEST-1:tree"],
+  );
+  assert.deepEqual(
+    [...createAccountStore(storage, "example", "other").collapsedGroups()],
+    [],
+  );
+  assert.equal(store.tree().states.size, 0);
+});

@@ -1708,6 +1708,20 @@ await check(
         ),
         "같은 행에 타일이 배치되지 않음",
       );
+      for (const tile of tiles ?? []) {
+        const label = tile.querySelector<HTMLElement>(".list-title"),
+          identity = tile.querySelector<HTMLElement>(".issue-identity");
+        assert(label !== null && identity !== null, "완료 카드 내용 누락");
+        assert(
+          getComputedStyle(label).webkitLineClamp === "2",
+          "원래의 두 줄 제목이 복원되지 않았다",
+        );
+        assert(
+          label.getBoundingClientRect().top >=
+            identity.getBoundingClientRect().bottom,
+          "제목이 번호 옆으로 압축됐다",
+        );
+      }
       const title = grid?.querySelector<HTMLAnchorElement>(".list-title");
       title?.click();
       assert(selected === "TEST-1", "타일 상세 클릭 누락");
@@ -2592,6 +2606,226 @@ await check(
       );
     } finally {
       host.remove();
+    }
+  },
+);
+
+await check(
+  "완료·상위 연결 없는 묶음은 별도로 접고 재렌더해도 상태를 유지한다",
+  () => {
+    const host = element("div", "issue-list-container");
+    fixture.append(host);
+    const list = createListController(
+      createApi(),
+      {
+        projects: ["TEST"],
+        scope: "all",
+        excludeDone: false,
+        statuses: null,
+        assignees: null,
+        sort: "recent",
+        q: "",
+      },
+      "me",
+    );
+    const parent = {
+      ...emptyIssue("TEST-1000"),
+      hierarchyLevel: 1,
+      hasChildren: true,
+    };
+    const child = {
+      ...emptyIssue("TEST-1001"),
+      parent: parent.key,
+      hierarchyLevel: -1,
+      statusCategory: "done",
+    };
+    const orphan = { ...emptyIssue("TEST-1002"), hierarchyLevel: 0 };
+    for (const item of [parent, child, orphan]) {
+      list.items.set(item.key, item);
+      list.matched.add(item.key);
+    }
+    list.childPage(parent.key).loaded = true;
+    const view = createTreeView(host, list, {
+      site: "example",
+      copied: () => {},
+      selectedKey: () => "",
+      catalog: () => ({
+        projects: [],
+        priorities: [],
+        statuses: [],
+        types: [1, 0, -1].map((level) => ({
+          id: String(level),
+          name: String(level),
+          project: "TEST",
+          hierarchyLevel: level,
+        })),
+      }),
+      onSelect: () => {},
+      onBranch: () => {},
+      onTreeChange: () => {},
+    });
+    try {
+      view.render();
+      for (const label of ["상위 연결 없는 작업", "완료 1개"]) {
+        const toggle = [
+          ...host.querySelectorAll<HTMLButtonElement>(".tree-section-toggle"),
+        ].find((button) => button.textContent === label);
+        assert(Boolean(toggle), "묶음 접기 버튼 누락");
+        toggle?.click();
+        view.render();
+        const closed = [
+          ...host.querySelectorAll<HTMLButtonElement>(".tree-section-toggle"),
+        ].find((button) => button.textContent === label);
+        assert(
+          closed?.getAttribute("aria-expanded") === "false" &&
+            Boolean(
+              closed
+                .closest(".tree-section")
+                ?.lastElementChild?.hasAttribute("hidden"),
+            ),
+          "묶음 접힘 상태가 유지되지 않는다",
+        );
+        const content = closed?.closest(".tree-section")?.lastElementChild;
+        assert(
+          Boolean(content && getComputedStyle(content).display === "none"),
+          "접힌 묶음이 실제 화면에 남아 있다",
+        );
+        closed?.click();
+      }
+      assert(
+        list.tree.states.size === 0,
+        "묶음을 접어 티켓 접힘 상태가 변경됐다",
+      );
+    } finally {
+      view.destroy();
+      host.remove();
+    }
+  },
+);
+
+await check(
+  "부모가 없는 일반·완료 목록도 현재 프로젝트 경로를 표시한다",
+  async () => {
+    const pane = element("section", "browse"),
+      content = element("div", "browse-content"),
+      host = element("div");
+    pane.style.cssText = "height:280px;width:600px;overflow:auto";
+    content.append(host);
+    pane.append(content);
+    fixture.append(pane);
+    const list = createListController(
+      createApi(),
+      {
+        projects: ["AA", "BB"],
+        scope: "all",
+        excludeDone: false,
+        statuses: null,
+        assignees: null,
+        sort: "recent",
+        q: "",
+      },
+      "me",
+    );
+    const projects = [
+      { key: "AA", name: "첫 프로젝트", avatar: "" },
+      { key: "BB", name: "다른 프로젝트", avatar: "" },
+    ];
+    for (const project of projects)
+      for (let i = 1; i <= 24; i++) {
+        const row = {
+          ...emptyIssue(`${project.key}-${i}`, `작업 ${i}`),
+          hierarchyLevel: 0,
+          statusCategory: i > 14 ? "done" : "indeterminate",
+        };
+        list.items.set(row.key, row);
+        list.matched.add(row.key);
+      }
+    const tree = createTreeView(host, list, {
+      site: "example",
+      copied: () => {},
+      selectedKey: () => "",
+      compactDoneParents: () => true,
+      catalog: () => ({
+        projects,
+        priorities: [],
+        statuses: [],
+        types: projects.flatMap((project) =>
+          [1, 0].map((level) => ({
+            id: String(level),
+            name: String(level),
+            project: project.key,
+            hierarchyLevel: level,
+          })),
+        ),
+      }),
+      onSelect: () => {},
+      onBranch: () => {},
+      onTreeChange: () => {},
+    });
+    const context = createTreeContext(pane, host, {
+      scroller: () => pane,
+      items: list.visibleItems,
+      projects: () => projects,
+      select: () => {},
+    });
+    try {
+      tree.render();
+      context.refresh();
+      await wait(60);
+      const nav = pane.querySelector<HTMLElement>(".tree-context");
+      assert(
+        Boolean(nav?.hidden),
+        "프로젝트 제목을 아직 보고 있는데 중복 경로가 나온다",
+      );
+      for (const [selector, label, expectedGroups] of [
+        [
+          '[data-tree-key="AA"] .unparented-heading',
+          "첫 프로젝트",
+          ["상위 연결 없는 작업"],
+        ],
+        [
+          '[data-tree-key="AA"] .completed-group',
+          "첫 프로젝트",
+          ["상위 연결 없는 작업", "완료 10개"],
+        ],
+        [
+          '[data-tree-key="BB"] .list-item',
+          "다른 프로젝트",
+          ["상위 연결 없는 작업"],
+        ],
+      ] as const) {
+        const target = host.querySelector<HTMLElement>(selector ?? "");
+        assert(target !== null, "스크롤 검사 대상 누락");
+        pane.scrollTop +=
+          target.getBoundingClientRect().top -
+          pane.getBoundingClientRect().top +
+          10;
+        pane.dispatchEvent(new Event("scroll"));
+        await wait(60);
+        assert(
+          Boolean(
+            nav &&
+              !nav.hidden &&
+              nav.querySelector(".tree-context-project")?.textContent === label,
+          ),
+          "현재 프로젝트 경로가 없거나 이전 프로젝트가 남는다",
+        );
+        assert(
+          nav?.querySelectorAll("a").length === 0,
+          "없는 상위 이슈 경로가 남는다",
+        );
+        const groupLabels = [
+          ...(nav?.querySelectorAll(".tree-context-group") ?? []),
+        ].map((node) => node.textContent);
+        assert(
+          JSON.stringify(groupLabels) === JSON.stringify(expectedGroups),
+          "현재 묶음 경로가 누락되거나 순서가 다르다",
+        );
+      }
+    } finally {
+      context.destroy();
+      tree.destroy();
+      pane.remove();
     }
   },
 );
