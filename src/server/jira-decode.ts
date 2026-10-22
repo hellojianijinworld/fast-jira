@@ -115,6 +115,7 @@ export function decodeIssue(
     type.hierarchyLevel == null ? null : numberValue(type.hierarchyLevel);
   const subtasks = fields.subtasks == null ? [] : arrayValue(fields.subtasks);
   return {
+    id: stringValue(issue.id),
     key,
     summary: stringValue(fields.summary),
     project: stringValue(optionalRecord(fields.project).key, key.split("-")[0]),

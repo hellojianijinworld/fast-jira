@@ -469,7 +469,7 @@ dialog::backdrop {
   padding-left: 12px;
 }
 .comment-reply {
-  padding-right: 0;
+  padding: 0;
 }
 .comment-parent-link {
   font-size: 11px;
@@ -753,9 +753,6 @@ dialog::backdrop {
   color: var(--muted);
   font-size: 13px;
   margin-bottom: 12px;
-}
-.detail-children .list-item {
-  margin-bottom: 6px;
 }
 
 /* 요청과 응답은 독립적으로 스크롤한다. 좁은 화면에서도 두 열을 유지한다. */
@@ -1308,4 +1305,87 @@ button.debug-line[aria-pressed="true"] {
   .card-copy .ui-icon {
     opacity: 1;
   }
+}
+
+.activity-feed {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.activity-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.activity-heading h2 {
+  margin-bottom: 4px;
+}
+.activity-description,
+.activity-message {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.activity-description {
+  margin: 0 0 12px;
+}
+.activity-row {
+  display: block;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 4px;
+}
+.activity-row:hover {
+  background: var(--hover);
+}
+.activity-row:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.activity-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+}
+.activity-meta time {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.activity-text {
+  display: block;
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.activity-new {
+  color: var(--blue);
+  background: var(--hover);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 10px;
+}
+
+.favorites {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.favorite-button[aria-pressed="true"] {
+  color: #b88612;
+}
+.favorite-button[aria-pressed="true"] .ui-icon {
+  fill: currentColor;
+}
+.issue-identity .favorite-button {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 3px;
+  flex: 0 0 auto;
 }

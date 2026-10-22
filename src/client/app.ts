@@ -1,12 +1,16 @@
 import type { TreeCatalog } from "../domain/catalog.ts";
+import { sameIssue, updateFavorites } from "../domain/favorites.ts";
 import { branchDefaults } from "../domain/filters.ts";
+import type { Issue } from "../domain/issue.ts";
 import { listCacheKey } from "../domain/list-snapshot.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { parseIssueKey } from "../domain/validation.ts";
+import { activityFeed } from "../ui/activity-feed.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { developerLog } from "../ui/developer-log.ts";
 import { actionButton, element, iconButton } from "../ui/dom.ts";
+import { favoriteButton, updateFavoriteButton } from "../ui/favorite-button.ts";
 import { createFilterPanel } from "../ui/filter-panel.ts";
 import { helpContent } from "../ui/help.ts";
 import { issueCard } from "../ui/issue-card.ts";
@@ -24,7 +28,9 @@ import {
   captureViewportAnchor,
   restoreViewportAnchor,
 } from "../ui/viewport-anchor.ts";
-import { type Api, subscribeLogs } from "./api.ts";
+import { createActivityController } from "./activity-controller.ts";
+import { type Api, ApiError, subscribeLogs } from "./api.ts";
+import type { ListCache } from "./list-cache.ts";
 import { createListController } from "./list-controller.ts";
 import { createLiveUpdates } from "./live-updates.ts";
 import {
@@ -33,6 +39,7 @@ import {
   readPreferences,
   writePreferences,
 } from "./preferences.ts";
+import { createRefreshLoop } from "./refresh-loop.ts";
 import { createViewController } from "./view-controller.ts";
 
 /** 시작과 화면 간 연결만 담당한다. 필터와 상세의 판단은 각 모듈에서 검증한다. */
@@ -43,6 +50,7 @@ export async function createApp(
   connectLog: (
     listener: (entry: LogEntry) => void,
   ) => () => void = subscribeLogs,
+  cache?: ListCache,
 ) {
   const nav = element("header", "top-nav"),
     tools = element("div", "nav-tools");
@@ -113,6 +121,7 @@ export async function createApp(
     destroyed = false;
   let detailView: ReturnType<typeof issueDetail> | null = null;
   let recent = store.recent();
+  let favorites = store.favorites();
   const changedVersions = new Map<string, number>();
   const saved = store.filters(bootstrap.projects.map((project) => project.key));
   const globalView = { kind: "global" } as const;
@@ -125,7 +134,9 @@ export async function createApp(
     statuses: () => catalog.statuses,
     changed: (conditionsChanged) => {
       if (syncingViews || destroyed) return;
-      if (conditionsChanged) bulk.reset();
+      if (conditionsChanged) {
+        bulk.reset();
+      }
       const next = { ...list.filters, ...views.resolve(globalView, false) };
       store.saveFilters(next, true);
       if (JSON.stringify(next) !== JSON.stringify(list.filters)) {
@@ -138,13 +149,14 @@ export async function createApp(
     ...saved.filters,
     ...views.resolve(globalView, false),
   };
+  const cached = await cache?.read(store.scope, initialFilters);
   let catalogProjects = [...saved.filters.projects];
 
   let catalog: TreeCatalog = {
     projects: bootstrap.projects,
     priorities: bootstrap.priorities,
-    statuses: [],
-    types: [],
+    statuses: cached?.catalog.statuses ?? [],
+    types: cached?.catalog.types ?? [],
   };
   nav.removeAttribute("aria-busy");
   for (const button of tools.querySelectorAll("button"))
@@ -160,12 +172,54 @@ export async function createApp(
     bootstrap.me.accountId,
     () => {
       render();
+      scheduleCache();
     },
     store.tree(),
     (key, current) =>
       branchDefaults({ ...current, ...views.resolve({ kind: "branch", key }) }),
   );
+  if (cached) list.restore(cached.data);
+  let cacheTimer: ReturnType<typeof setTimeout> | undefined;
+  let cacheWrites = Promise.resolve(),
+    deniedCache = "";
+  function persistCache() {
+    if (cacheTimer) clearTimeout(cacheTimer);
+    cacheTimer = undefined;
+    if (!cache) return;
+    if (list.cacheDenied) {
+      const query = { ...list.filters },
+        key = listCacheKey(query);
+      if (deniedCache !== key) {
+        deniedCache = key;
+        cacheWrites = cacheWrites.then(() =>
+          cache.remove(store.scope, query).catch(() => {}),
+        );
+      }
+      return;
+    }
+    deniedCache = "";
+    if (!list.loaded) return;
+    const query = { ...list.filters },
+      snapshot = {
+        data: list.snapshot(),
+        catalog: { statuses: catalog.statuses, types: catalog.types },
+      };
+    cacheWrites = cacheWrites.then(() =>
+      cache.write(store.scope, query, snapshot).catch(() => {}),
+    );
+  }
+  function scheduleCache() {
+    if (!cache || destroyed) return;
+    if (list.cacheDenied) {
+      persistCache();
+      return;
+    }
+    if (!list.loaded) return;
+    if (cacheTimer) clearTimeout(cacheTimer);
+    cacheTimer = setTimeout(persistCache, 500);
+  }
   let positionQuery = listCacheKey(initialFilters);
+  let restoredPosition = cached ? store.position(positionQuery) : [];
   const listScroller = () => (layout.matches ? workspace : browse);
   function persistPosition() {
     if (list.cacheDenied) return;
@@ -173,6 +227,7 @@ export async function createApp(
     if (listHost.querySelector("a.list-title"))
       store.savePosition(listCacheKey(list.filters), anchors);
   }
+  window.addEventListener("pagehide", persistCache);
   window.addEventListener("pagehide", persistPosition);
   const bulk = createBulkSelection({
     host: root,
@@ -199,6 +254,7 @@ export async function createApp(
         );
       }
       store.saveRecent(recent);
+      refreshFavorites(issues);
       if (!issues.length) return;
       const filters = list.filters,
         visible = list.visibleItems();
@@ -249,7 +305,54 @@ export async function createApp(
     writePreferences(storage, preferences);
   }
   applyPreferences();
+  function refreshFavorites(
+    incoming: readonly Issue[],
+    removed: readonly string[] = [],
+  ) {
+    const next = updateFavorites(favorites, incoming, removed);
+    if (
+      next.length !== favorites.length ||
+      next.some((issue, index) => issue !== favorites[index])
+    ) {
+      favorites = next;
+      store.saveFavorites(favorites);
+    }
+  }
+  function setFavorite(issue: Issue, selected: boolean) {
+    favorites = favorites.filter((saved) => !sameIssue(saved, issue));
+    if (selected) favorites.unshift(issue);
+    store.saveFavorites(favorites);
+    render();
+  }
+  const cardFavorites = {
+    has: (issue: Issue) => favorites.some((saved) => sameIssue(saved, issue)),
+    change: setFavorite,
+  };
+  function renderCard(issue: Issue) {
+    return bulk.decorate(
+      issue,
+      issueCard(issue, {
+        site: bootstrap.site,
+        copied: notice.show,
+        statusOrder: catalog.statuses.map((status) => status.name),
+        selectedKey,
+        onSelect: (key) => {
+          void select(key);
+        },
+        favorites: cardFavorites,
+      }),
+    );
+  }
   const renderDashboard = keyedContent(dashboard);
+  const activity = createActivityController(api, () => render());
+  const activities = activityFeed(
+    (key) => {
+      void select(key);
+    },
+    () => {
+      void activity.check(list.filters.projects);
+    },
+  );
   dashboard.classList.add("issue-list-container");
   function dashboardView() {
     const entries: [string, HTMLElement][] = [
@@ -260,22 +363,39 @@ export async function createApp(
         "empty",
         element("p", "empty", "이슈를 열면 최근 본 5개가 여기에 남아요."),
       ]);
-    for (const issue of recent)
-      entries.push([
-        issue.key,
-        bulk.decorate(
-          issue,
-          issueCard(issue, {
-            site: bootstrap.site,
-            copied: notice.show,
-            statusOrder: catalog.statuses.map((status) => status.name),
-            selectedKey,
-            onSelect: (key) => {
-              void select(key);
-            },
-          }),
-        ),
-      ]);
+    const current = list.visibleItems();
+    const byId = new Map(
+      [...current.values()]
+        .filter((issue) => issue.id)
+        .map((issue) => [issue.id, issue]),
+    );
+    if (favorites.length) {
+      const section = element("section", "favorites");
+      section.setAttribute("aria-label", "즐겨찾기");
+      section.append(element("h2", "", "즐겨찾기"));
+      for (const saved of favorites) {
+        const currentIssue = current.get(saved.key) ?? byId.get(saved.id);
+        const issue =
+          currentIssue &&
+          (Date.parse(currentIssue.updated) || 0) >=
+            (Date.parse(saved.updated) || 0)
+            ? currentIssue
+            : saved;
+        section.append(renderCard(issue));
+      }
+      entries.unshift(["favorites", section]);
+    }
+    for (const saved of recent) {
+      const issue = current.get(saved.key) ?? byId.get(saved.id) ?? saved;
+      entries.push([issue.key, renderCard(issue)]);
+    }
+    activities.render(
+      activity.entries,
+      activity.newIds,
+      activity.loading,
+      activity.error,
+    );
+    entries.push(["activity-feed", activities.element]);
     renderDashboard(entries);
   }
   function placeDetail() {
@@ -338,6 +458,7 @@ export async function createApp(
       // 조회 중 편집을 시작했어도 초안을 지킨다. 종료 후 최신 내용을 다시 확인한다.
       if (silent && detailView && !detailView.canRefresh()) return;
       detailView?.destroy();
+      refreshFavorites([result.parent]);
       detailView = issueDetail(
         result,
         catalog.statuses.map((status) => status.name),
@@ -352,6 +473,7 @@ export async function createApp(
             item.key === updated.key ? updated : item,
           );
           store.saveRecent(recent);
+          refreshFavorites([updated]);
           const filters = list.filters;
           list.update(updated, list.direct.has(updated.key));
           const matches = await api.matches(updated.key, filters);
@@ -371,10 +493,17 @@ export async function createApp(
         list.visibleItems(),
         {
           list,
+          favorites: cardFavorites,
           catalog: () => catalog,
           onFilter: (key, anchor) => panel.open(anchor, key),
           viewInfo: (key) => views.info({ kind: "branch", key }),
         },
+        favoriteButton(
+          favorites.some((saved) => sameIssue(saved, result.parent)),
+          (selected) => {
+            setFavorite(detailView?.issue ?? result.parent, selected);
+          },
+        ),
       );
       detailHost.replaceChildren(detailView.element);
       recent = [
@@ -414,6 +543,7 @@ export async function createApp(
     }
   }
   const tree = createTreeView(listHost, list, {
+    favorites: cardFavorites,
     site: bootstrap.site,
     copied: notice.show,
     catalog: () => catalog,
@@ -484,15 +614,18 @@ export async function createApp(
       bulk.reset();
       void list.load(next);
       void refreshCatalog(projects);
+      void activity.check(projects);
     },
   });
   render = () => {
     if (destroyed) return;
     const queryKey = listCacheKey(list.filters);
-    const anchors =
-      queryKey === positionQuery
+    const anchors = restoredPosition.length
+      ? restoredPosition
+      : queryKey === positionQuery
         ? captureViewportAnchor(listHost, listScroller())
         : [];
+    restoredPosition = [];
     positionQuery = queryKey;
     loadingIndicator.hidden = !detailLoading;
     loadingIndicator.setAttribute("aria-label", "상세 불러오는 중");
@@ -504,6 +637,11 @@ export async function createApp(
     }
     tree.render();
     treeContext.refresh();
+    const detailFavorite = detailHost.querySelector<HTMLButtonElement>(
+      ".detail-head-actions > .favorite-button",
+    );
+    if (detailFavorite && detailView)
+      updateFavoriteButton(detailFavorite, cardFavorites.has(detailView.issue));
     detailView?.refreshChildren();
     dashboardView();
     dashboard.hidden = bulk.active || Boolean(selectedKey);
@@ -618,9 +756,13 @@ export async function createApp(
       !bulk.busy
         ? list.filters
         : null,
+    checkpoint: () => list.checkpoint,
+    syncKnown: () => list.syncKnown(),
     versions: () => changedVersions,
     known: () => {
-      const known = new Map(recent.map((issue) => [issue.key, issue]));
+      const known = new Map(
+        [...favorites, ...recent].map((issue) => [issue.key, issue]),
+      );
       for (const [key, issue] of list.visibleItems()) known.set(key, issue);
       if (detailView) known.set(detailView.issue.key, detailView.issue);
       return known;
@@ -633,9 +775,10 @@ export async function createApp(
           known.has(issue.key) ||
           known.has(issue.parent) ||
           recent.some((item) => item.key === issue.key) ||
+          favorites.some((item) => sameIssue(item, issue)) ||
           issue.key === selectedKey,
       );
-      if (!relevant.length) return;
+      if (!relevant.length && !batch.checkedAt) return;
       for (const issue of relevant) {
         changedVersions.set(
           issue.key,
@@ -645,25 +788,52 @@ export async function createApp(
           item.key === issue.key ? { ...item, ...issue } : item,
         );
       }
+      if (batch.removed?.length) {
+        for (const key of batch.removed)
+          changedVersions.set(key, (changedVersions.get(key) ?? 0) + 1);
+        recent = recent.filter((issue) => !batch.removed?.includes(issue.key));
+        if (batch.removed.includes(selectedKey)) closeDetail();
+      }
       store.saveRecent(recent);
+      refreshFavorites(relevant, batch.removed ?? []);
       list.applyChanges({ ...batch, issues: relevant });
-      notice.show(`새 변경 ${relevant.length}건 반영`);
+      if (relevant.length) notice.show(`새 변경 ${relevant.length}건 반영`);
+      else if (batch.removed?.length)
+        notice.show(`열 수 없는 이슈 ${batch.removed.length}개 반영`);
       if (
         relevant.some((issue) => issue.key === selectedKey) &&
         detailView?.canRefresh()
       )
         await select(selectedKey, false, true);
     },
-    failed: () => notice.show("변경 확인이 지연되고 있어요."),
+    failed: (reason) => {
+      if (reason instanceof ApiError && reason.status === 409) {
+        void list.revalidate();
+        return;
+      }
+      list.syncFailed(reason);
+      notice.show("변경 확인이 지연되고 있어요.");
+    },
   });
-  const clock = setInterval(() => {
-    if (!document.hidden) refreshRelativeTimes(root);
-    void live.check();
-  }, 60000);
-  const visible = () => {
-    if (!document.hidden) void live.check();
+  const checkListChanges = async () => {
+    if (
+      !destroyed &&
+      !document.hidden &&
+      list.loaded &&
+      !list.loading &&
+      !bulk.busy &&
+      list.needsReconcile
+    )
+      await list.revalidate();
+    else await live.check();
   };
-  document.addEventListener("visibilitychange", visible);
+  const checkChanges = async () => {
+    if (destroyed || document.hidden) return;
+    await Promise.all([
+      checkListChanges(),
+      activity.check(list.filters.projects),
+    ]);
+  };
   if (firstSetup) showSettings();
   render();
   let metadataRevision = 0;
@@ -678,6 +848,7 @@ export async function createApp(
       catalogProjects = [...projects];
       catalog = { ...catalog, statuses, types };
       render();
+      scheduleCache();
     } catch (reason) {
       if (!destroyed && revision === metadataRevision)
         notice.show(
@@ -688,7 +859,11 @@ export async function createApp(
     }
   }
   const metadata = refreshCatalog(list.filters.projects);
-  await Promise.all([list.load(), metadata]);
+  await Promise.all([
+    list.load(),
+    metadata,
+    activity.check(list.filters.projects),
+  ]);
   const initialKey = new URL(location.href).searchParams.get("issue");
   if (initialKey) {
     try {
@@ -697,23 +872,45 @@ export async function createApp(
       notice.show("이슈 키를 확인하세요.");
     }
   }
+  const active = () => !destroyed && !document.hidden && document.hasFocus();
+  const polling = createRefreshLoop({
+    active,
+    refresh: async () => {
+      refreshRelativeTimes(root);
+      await checkChanges();
+    },
+    failed: () => notice.show("변경 확인이 지연되고 있어요."),
+  });
+  const resume = () => {
+    if (active()) refreshRelativeTimes(root);
+    polling.update();
+  };
+  document.addEventListener("visibilitychange", resume);
+  window.addEventListener("focus", resume);
+  window.addEventListener("blur", resume);
+  resume();
   return {
     list,
     views,
     select,
     closeDetail,
-    checkChanges: live.check,
+    checkChanges,
     destroy() {
       persistPosition();
       destroyed = true;
+      persistCache();
       list.destroy();
+      window.removeEventListener("pagehide", persistCache);
       window.removeEventListener("pagehide", persistPosition);
       detailView?.destroy();
       bulk.destroy();
       detailRevision++;
-      clearInterval(clock);
+      polling.destroy();
       live.destroy();
-      document.removeEventListener("visibilitychange", visible);
+      activity.destroy();
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("blur", resume);
       layout.removeEventListener("change", placeDetail);
       window.removeEventListener("popstate", popstate);
       panel.destroy();

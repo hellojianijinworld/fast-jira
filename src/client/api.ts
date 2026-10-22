@@ -5,6 +5,7 @@ import type { Filters } from "../domain/filters.ts";
 import { filterParameters, selectionParameter } from "../domain/filters.ts";
 import type { BranchDefaults, EditableField } from "../domain/issue.ts";
 import type { LogEntry } from "../domain/log.ts";
+import { decodeSync, type KnownIssue } from "../domain/sync.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import {
   decodeBootstrap,
@@ -26,7 +27,10 @@ import {
   decodeWireComment,
   wireArray,
   wireBoolean,
+  wireString,
 } from "../domain/wire.ts";
+
+import { parseActivityFeed } from "./activity-parser.ts";
 
 export class ApiError extends Error {
   constructor(
@@ -73,6 +77,11 @@ export function createApi(fetcher: typeof fetch = fetch) {
   };
   return {
     request,
+    activity: (projects: readonly string[]) =>
+      request(
+        `/api/activity?${new URLSearchParams({ projects: projects.join(",") })}`,
+        (value) => parseActivityFeed(wireString(record(value).feed), projects),
+      ),
     connection: () => request("/api/connection", decodeConnection),
     saveConnection: (credentials: Credentials) =>
       request("/api/connection", decodeConnection, {
@@ -191,6 +200,16 @@ export function createApi(fetcher: typeof fetch = fetch) {
       ),
     lookup: (key: string) =>
       request(`/api/issue?key=${encodeURIComponent(key)}`, decodeLookup),
+    sync: (filters: Filters, known: KnownIssue[], since: string) =>
+      request("/api/sync", decodeSync, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: filterParameters(filters).toString(),
+          since,
+          known,
+        }),
+      }),
     bootstrap: () => request("/api/projects", decodeBootstrap),
     statuses: (projects: readonly string[]) =>
       request(

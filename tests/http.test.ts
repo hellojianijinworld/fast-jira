@@ -65,6 +65,10 @@ async function setup() {
       if (path.endsWith("/comment/10")) return Response.json(comment);
       if (path.endsWith("/comment"))
         return Response.json({ total: 0, startAt: 0, comments: [] });
+      if (path === "/activity")
+        return new Response('<feed xmlns="http://www.w3.org/2005/Atom"/>', {
+          headers: { "Content-Type": "application/atom+xml" },
+        });
       if (path.endsWith("/changelog"))
         return Response.json(
           url.searchParams.get("maxResults") === "1"
@@ -283,4 +287,19 @@ test("개발자 로그는 SSE로 전달하고 토큰을 포함하지 않는다",
   const projects = await fetch(`${app.base}/api/projects`);
   const body: unknown = await projects.json();
   assert.equal(record(record(body).me).accountId, "my-account");
+});
+
+test("HTTP 활동 조회는 프로젝트만 받아 단일 Atom 피드를 반환한다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const before = app.count();
+  const response = await fetch(`${app.base}/api/activity?projects=AA`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    feed: '<feed xmlns="http://www.w3.org/2005/Atom"/>',
+  });
+  assert.equal(app.count() - before, 1);
+  const invalid = await fetch(`${app.base}/api/activity?projects=AA%26bad`);
+  assert.equal(invalid.status, 400);
+  assert.equal(app.count() - before, 1);
 });

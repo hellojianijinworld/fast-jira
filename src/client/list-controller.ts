@@ -6,6 +6,7 @@ import {
 import type { BranchDefaults, Issue } from "../domain/issue.ts";
 import { passesChild, setMembership } from "../domain/list.ts";
 import type { ListSnapshot } from "../domain/list-snapshot.ts";
+import { knownIssues, type SyncBatch } from "../domain/sync.ts";
 import { type CollapseState, setBranchState } from "../domain/tree.ts";
 import type { ChangeBatch } from "../domain/wire.ts";
 import type { Api } from "./api.ts";
@@ -20,6 +21,7 @@ export interface ChildPageState {
   error: string;
   pending: Promise<void> | null;
   restored?: { count: number; complete: boolean } | undefined;
+  resumeCount?: number | undefined;
 }
 export interface TreeSettings {
   states: Map<string, CollapseState>;
@@ -39,7 +41,7 @@ const message = (reason: unknown) =>
 
 /** 필터·커서·요청 세대만 조정한다. DOM과 저장소는 호출자가 연결한다. */
 export function createListController(
-  api: Pick<Api, "issues" | "children">,
+  api: Pick<Api, "issues" | "children"> & Partial<Pick<Api, "sync">>,
   initial: Filters,
   accountId: string,
   onChange: () => void = () => {},
@@ -54,6 +56,10 @@ export function createListController(
     nextPageToken = "",
     cacheDenied = false,
     alive = true;
+  let checkedAt = "",
+    reconciledAt = "",
+    syncPending = false;
+  let resumeRoot: number | null = null;
   let restoredRoot: { count: number; complete: boolean } | null = null;
   const items = new Map<string, Issue>(),
     matched = new Set<string>(),
@@ -87,6 +93,8 @@ export function createListController(
     matched.clear();
     readValues.clear();
     restoredRoot = null;
+    checkedAt = reconciledAt = "";
+    syncPending = false;
   }
   function syncPages(issue: Issue) {
     for (const page of pages.values())
@@ -139,6 +147,103 @@ export function createListController(
     }
     return page;
   }
+  function syncKnown() {
+    return knownIssues([
+      // 키·제목만 보강한 부모는 표시만 한다. 실제 조회 항목의 구캐시는 재검증 대상으로 남긴다.
+      ...[...items.values()].filter(
+        (issue) =>
+          issue.id ||
+          issue.updated ||
+          direct.has(issue.key) ||
+          matched.has(issue.key),
+      ),
+      ...[...pages.values()].flatMap((page) => [...page.issues.values()]),
+    ]);
+  }
+  function canSync() {
+    const known = syncKnown();
+    return Boolean(
+      api.sync &&
+        checkedAt &&
+        reconciledAt &&
+        Date.now() >= Date.parse(checkedAt) &&
+        Date.parse(reconciledAt) <= Date.parse(checkedAt) &&
+        Date.now() - Date.parse(reconciledAt) < 6 * 3600000 &&
+        known.length <= 10000 &&
+        known.every(
+          (issue) => issue.id && Number.isFinite(Date.parse(issue.updated)),
+        ),
+    );
+  }
+  function acceptSync(batch: SyncBatch, started = changeVersion) {
+    const before = syncKnown();
+    const beforeById = new Map(before.map((issue) => [issue.id, issue]));
+    const blockedKeys = new Set(
+      [...changedAt]
+        .filter(([, version]) => version > started)
+        .map(([key]) => key),
+    );
+    const blockedIds = new Set(
+      before
+        .filter((issue) => blockedKeys.has(issue.key))
+        .map((issue) => issue.id),
+    );
+    for (const issue of batch.issues)
+      if (
+        Date.parse(beforeById.get(issue.id)?.updated ?? "") >
+        Date.parse(issue.updated)
+      )
+        blockedIds.add(issue.id);
+    for (const key of batch.removed) {
+      if (
+        blockedKeys.has(key) ||
+        before.some((issue) => issue.key === key && blockedIds.has(issue.id))
+      )
+        continue;
+      for (const issue of batch.issues) {
+        if (items.get(key)?.id === issue.id && issue.key !== key) {
+          const state = tree.states.get(key);
+          if (state) tree.states.set(issue.key, state);
+          tree.states.delete(key);
+        }
+      }
+      items.delete(key);
+      matched.delete(key);
+      direct.delete(key);
+      readValues.delete(key);
+      changedAt.set(key, ++changeVersion);
+      for (const page of pages.values()) page.issues.delete(key);
+    }
+    for (const issue of batch.ancestors)
+      if (!items.has(issue.key)) items.set(issue.key, issue);
+    for (const issue of batch.issues) {
+      if (blockedKeys.has(issue.key) || blockedIds.has(issue.id)) continue;
+      apply(issue, issue.matches);
+      const page = pages.get(
+        JSON.stringify([
+          issue.parent,
+          [...filters.projects].sort(),
+          effectiveBranch(issue.parent),
+        ]),
+      );
+      if (page?.loaded && childPasses(issue)) page.issues.set(issue.key, issue);
+    }
+    for (const page of pages.values()) {
+      if (
+        page.restored?.complete === false ||
+        (!page.restored && page.nextPageToken)
+      ) {
+        page.resumeCount = page.issues.size;
+        page.nextPageToken = "resume";
+      }
+      page.restored = undefined;
+    }
+    if (nextPageToken) {
+      resumeRoot = direct.size;
+      nextPageToken = "resume";
+    }
+    checkedAt = batch.checkedAt;
+  }
   async function load(reset?: Filters): Promise<void> {
     if (!alive || (!reset && loading)) return;
     if (reset) {
@@ -167,6 +272,9 @@ export function createListController(
       loaded = false;
       cacheDenied = false;
       restoredRoot = null;
+      resumeRoot = null;
+      checkedAt = reconciledAt = "";
+      syncPending = false;
       nextPageToken = "";
     }
     const generation = epoch,
@@ -180,7 +288,34 @@ export function createListController(
         loaded = true;
         return;
       }
-      const cached = restoredRoot;
+      const cached =
+        restoredRoot ??
+        (resumeRoot === null
+          ? null
+          : { count: resumeRoot + 30, complete: false });
+      if (restoredRoot && canSync() && api.sync) {
+        let batch: SyncBatch | null = null;
+        try {
+          batch = await api.sync(query, syncKnown(), checkedAt);
+        } catch (reason) {
+          if (
+            !(reason instanceof ApiError && [404, 409].includes(reason.status))
+          )
+            throw reason;
+          checkedAt = "";
+          syncPending = false;
+        }
+        if (generation !== epoch) return;
+        if (batch) {
+          acceptSync(batch, started);
+          resumeRoot = cached?.complete ? null : direct.size;
+          nextPageToken = cached?.complete ? "" : "resume";
+          restoredRoot = null;
+          loaded = true;
+          return;
+        }
+      }
+      const requestedAt = new Date().toISOString();
       let token = cached ? "" : nextPageToken;
       const fresh = new Map<string, Issue>(),
         ancestors = new Map<string, Issue>(),
@@ -235,6 +370,8 @@ export function createListController(
         matched.add(issue.key);
         direct.add(issue.key);
       }
+      resumeRoot = null;
+      if (!checkedAt || cached) checkedAt = reconciledAt = requestedAt;
       nextPageToken = data.nextPageToken ?? "";
       loaded = true;
       cacheDenied = false;
@@ -247,6 +384,7 @@ export function createListController(
       }
     } finally {
       if (generation === epoch) {
+        syncPending = false;
         loading = false;
         onChange();
       }
@@ -256,7 +394,10 @@ export function createListController(
     const { key, page, settings } = job;
     const started = changeVersion;
     try {
-      const cached = page.restored;
+      const cached =
+        page.resumeCount === undefined
+          ? page.restored
+          : { count: page.resumeCount + 25, complete: false };
       let token = cached ? "" : page.nextPageToken;
       const fresh = new Map<string, Issue>(),
         seenTokens = new Set<string>();
@@ -286,6 +427,7 @@ export function createListController(
         for (const old of page.issues.keys())
           if ((changedAt.get(old) ?? 0) <= started) page.issues.delete(old);
         page.restored = undefined;
+        page.resumeCount = undefined;
       }
       if (job.epoch !== epoch || page !== childPage(key)) return;
       for (const value of data.issues) {
@@ -341,7 +483,7 @@ export function createListController(
     key: string,
     interested: () => boolean = () => true,
   ): Promise<void> {
-    if (!alive) return Promise.resolve();
+    if (!alive || syncPending) return Promise.resolve();
     const page = childPage(key);
     if (page.pending) {
       requests.get(page)?.interested.add(interested);
@@ -399,6 +541,15 @@ export function createListController(
     onChange();
   }
   function applyChanges(batch: ChangeBatch) {
+    if (batch.checkedAt && batch.removed) {
+      acceptSync({
+        ...batch,
+        checkedAt: batch.checkedAt,
+        removed: batch.removed,
+      });
+      onChange();
+      return;
+    }
     for (const issue of batch.ancestors)
       if (!items.has(issue.key)) items.set(issue.key, issue);
     for (const issue of batch.issues) apply(issue, issue.matches);
@@ -442,6 +593,34 @@ export function createListController(
       onChange();
     },
     applyChanges,
+    syncKnown,
+    syncFailed(reason: unknown) {
+      if (reason instanceof ApiError && [401, 403].includes(reason.status)) {
+        denyCache();
+        error = message(reason);
+        onChange();
+      }
+    },
+    get checkpoint() {
+      return canSync() ? checkedAt : "";
+    },
+    get needsReconcile() {
+      return Boolean(
+        reconciledAt && Date.now() - Date.parse(reconciledAt) >= 6 * 3600000,
+      );
+    },
+    async revalidate() {
+      if (loading || !alive) return;
+      restoredRoot = { count: direct.size, complete: !nextPageToken };
+      checkedAt = "";
+      for (const page of pages.values())
+        if (page.loaded)
+          page.restored = {
+            count: page.issues.size,
+            complete: !page.nextPageToken,
+          };
+      await load();
+    },
     restore(snapshot: ListSnapshot) {
       if (loading || loaded) return;
       for (const issue of snapshot.items) {
@@ -450,6 +629,8 @@ export function createListController(
       }
       for (const key of snapshot.matched) if (items.has(key)) matched.add(key);
       for (const key of snapshot.direct) if (items.has(key)) direct.add(key);
+      checkedAt = snapshot.checkedAt ?? "";
+      reconciledAt = snapshot.reconciledAt ?? "";
       restoredRoot = { count: direct.size, complete: snapshot.complete };
       for (const [id, page] of snapshot.pages) {
         pages.set(id, {
@@ -475,9 +656,12 @@ export function createListController(
           syncPages(latest);
         }
       }
+      syncPending = canSync();
     },
     snapshot(): ListSnapshot {
       return {
+        ...(checkedAt ? { checkedAt } : {}),
+        ...(reconciledAt ? { reconciledAt } : {}),
         items: [...items.values()],
         matched: [...matched],
         direct: [...direct],

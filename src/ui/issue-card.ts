@@ -1,6 +1,7 @@
 import type { Issue } from "../domain/issue.ts";
 import { issueKeyCopy } from "./clipboard.ts";
 import { element, uiIcon } from "./dom.ts";
+import { favoriteButton } from "./favorite-button.ts";
 import {
   dueTime,
   issueTypeIcon,
@@ -18,8 +19,12 @@ export interface CardOptions {
   site?: string;
   copied?: (message: string) => void;
   metaAction?: HTMLButtonElement;
+  favorites?: {
+    has: (issue: Issue) => boolean;
+    change: (issue: Issue, selected: boolean) => void;
+  };
 }
-/** 목록·최근 본 이슈·상세 하위 목록은 동일한 카드와 배지 순서를 사용한다. */
+/** 모든 이슈 목록은 카드·즐겨찾기·배지 표시 규칙을 공유한다. */
 export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
   const root = element("div", "issue-card");
   const link = element("div", "list-item");
@@ -39,6 +44,12 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
   );
   const meta = element("span", "list-meta");
   if (options.metaAction) meta.append(options.metaAction);
+  if (options.favorites?.has(issue))
+    identity.append(
+      favoriteButton(true, (selected) =>
+        options.favorites?.change(issue, selected),
+      ),
+    );
   if (issue.commentCount > 0) {
     const comments = element("span", "comment-pill");
     comments.setAttribute("aria-label", `댓글 ${issue.commentCount}개`);

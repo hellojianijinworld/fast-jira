@@ -661,3 +661,119 @@ test("읽던 위치는 계정·조회별로 분리하고 손상 좌표를 무시
   mine.savePosition("query", []);
   assert.deepEqual(mine.position("query"), []);
 });
+
+test("주기 동기화는 저장된 확인 시점과 ID를 사용하고 삭제만 있어도 반영한다", async () => {
+  const stamp = new Date().toISOString();
+  const issue = { ...emptyIssue("TEST-1"), id: "1", updated: stamp };
+  let applied: ChangeBatch | undefined;
+  let checkpoint = stamp;
+  const live = createLiveUpdates({
+    api: {
+      changes: async () => {
+        throw new Error("기존 변경 조회 중복");
+      },
+      sync: async (_filters, known, since) => {
+        assert.equal(since, stamp);
+        assert.equal(known[0]?.id, "1");
+        return {
+          issues: [],
+          ancestors: [],
+          removed: [issue.key],
+          checkedAt: stamp,
+        };
+      },
+    },
+    checkpoint: () => checkpoint,
+    syncKnown: () => [{ id: issue.id, key: issue.key, updated: issue.updated }],
+    filters: () => filters,
+    known: () => new Map([[issue.key, issue]]),
+    versions: () => new Map(),
+    apply: (batch) => {
+      applied = batch;
+      checkpoint = batch.checkedAt ?? checkpoint;
+    },
+    failed: () => {
+      throw new Error("동기화 실패");
+    },
+  });
+  await live.check();
+  assert.deepEqual(applied?.removed, ["TEST-1"]);
+});
+
+test("동기화 응답의 이전 updated는 새 상세 조회 값을 덮어쓰지 않는다", async () => {
+  const stamp = new Date().toISOString();
+  const newer = {
+    ...emptyIssue("TEST-1"),
+    id: "1",
+    summary: "새 제목",
+    updated: "2026-10-03T00:00:00Z",
+  };
+  const applied: ChangeBatch[] = [];
+  const live = createLiveUpdates({
+    api: {
+      changes: async () => ({ issues: [], ancestors: [] }),
+      sync: async () => ({
+        issues: [
+          {
+            ...newer,
+            summary: "이전 제목",
+            updated: "2026-10-02T00:00:00Z",
+            matches: true,
+          },
+        ],
+        ancestors: [],
+        removed: [],
+        checkedAt: stamp,
+      }),
+    },
+    checkpoint: () => stamp,
+    syncKnown: () => [],
+    filters: () => filters,
+    known: () => new Map([[newer.key, newer]]),
+    versions: () => new Map(),
+    apply: (batch) => {
+      applied.push(batch);
+    },
+    failed: () => {},
+  });
+  await live.check();
+  assert.deepEqual(applied[0]?.issues, []);
+});
+
+test("즐겨찾기는 사이트·계정별로 복원하고 손상·중복 항목을 제외한다", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  const store = createAccountStore(storage, "example.atlassian.net", "me");
+  assert.deepEqual(store.favorites(), []);
+  const saved = Array.from({ length: 7 }, (_, index) =>
+    emptyIssue(`TEST-${index + 1}`, `작업 ${index + 1}`),
+  );
+  store.saveFavorites(saved);
+  assert.deepEqual(
+    createAccountStore(storage, "example.atlassian.net", "me").favorites(),
+    saved,
+  );
+  assert.deepEqual(
+    createAccountStore(storage, "example.atlassian.net", "other").favorites(),
+    [],
+  );
+  assert.deepEqual(
+    createAccountStore(storage, "other.atlassian.net", "me").favorites(),
+    [],
+  );
+  storage.setItem(
+    `fastJira:favorites:${store.scope}`,
+    JSON.stringify([saved[0], { key: "BAD", summary: "잘못된 키" }, saved[0]]),
+  );
+  assert.deepEqual(
+    store.favorites().map((issue) => issue.key),
+    ["TEST-1"],
+  );
+  store.saveFavorites([]);
+  assert.deepEqual(store.favorites(), []);
+});

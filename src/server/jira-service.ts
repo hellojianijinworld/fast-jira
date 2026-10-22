@@ -1,6 +1,7 @@
 import type { LogEntry } from "../domain/log.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { createBulkService } from "./bulk-service.ts";
+import { createJiraActivity } from "./jira-activity.ts";
 import { type Credentials, createJiraClient } from "./jira-client.ts";
 import { createJiraContent } from "./jira-content.ts";
 import { createJiraEdit } from "./jira-edit.ts";
@@ -8,6 +9,7 @@ import { createJiraMetadata } from "./jira-metadata.ts";
 import { createParentOptions } from "./jira-parents.ts";
 import { createJiraQuery } from "./jira-query.ts";
 import { createJiraRead } from "./jira-read.ts";
+import { createJiraSync } from "./jira-sync.ts";
 import { loggedFetch } from "./network-log.ts";
 export function createJiraService(options: {
   credentials: Credentials;
@@ -33,6 +35,7 @@ export function createJiraService(options: {
   );
   const edit = createJiraEdit(client, metadata, read);
   return {
+    activity: createJiraActivity(client),
     site: options.credentials.site,
     parentOptions: createParentOptions(client, metadata),
     issueKey: (input: unknown) =>
@@ -42,6 +45,7 @@ export function createJiraService(options: {
     ...edit,
     ...createJiraContent(client, metadata),
     ...query,
+    sync: createJiraSync(client, metadata, query),
     bulk: createBulkService({ ...read, ...edit }),
   };
 }

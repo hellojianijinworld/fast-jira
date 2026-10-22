@@ -1,5 +1,6 @@
 /** 브라우저와 서버가 공유하는 값이다. Jira 응답 검증 후 이 형태로 정규화한다. */
 export interface Issue {
+  id: string;
   key: string;
   summary: string;
   project: string;

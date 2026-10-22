@@ -2,6 +2,7 @@ import { connectionForm } from "../ui/connection.ts";
 import { actionButton, element } from "../ui/dom.ts";
 import { createApi } from "./api.ts";
 import { createApp } from "./app.ts";
+import { createListCache } from "./list-cache.ts";
 import { type LocalStore, readPreferences } from "./preferences.ts";
 import "./styles.css";
 
@@ -16,7 +17,7 @@ document.documentElement.dataset.theme = readPreferences(storage).theme;
 async function start(root: HTMLElement) {
   const api = createApi();
   try {
-    await createApp(root, api, storage);
+    await createApp(root, api, storage, undefined, createListCache());
   } catch (reason) {
     const retry = actionButton("다시 연결", "refresh-cw");
     retry.addEventListener("click", () => {

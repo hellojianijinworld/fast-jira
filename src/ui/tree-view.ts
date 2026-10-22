@@ -10,11 +10,12 @@ import {
 } from "../domain/tree.ts";
 import type { ViewInfo } from "../domain/view-labels.ts";
 import { element, iconButton } from "./dom.ts";
-import { issueCard } from "./issue-card.ts";
+import { type CardOptions, issueCard } from "./issue-card.ts";
 import { projectIcon } from "./meta.ts";
 
 export interface TreeCallbacks {
   catalog: () => TreeCatalog;
+  favorites?: CardOptions["favorites"];
   site: string;
   copied: (message: string) => void;
   selectedKey: () => string;
@@ -216,6 +217,7 @@ export function createTreeView(
           });
         }
         const card = issueCard(issue, {
+          ...(callbacks.favorites ? { favorites: callbacks.favorites } : {}),
           site: callbacks.site,
           copied: callbacks.copied,
           selectedKey: callbacks.selectedKey(),

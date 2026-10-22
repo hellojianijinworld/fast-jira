@@ -45,6 +45,7 @@ export function issueDetail(
   select: (key: string) => void,
   known: ReadonlyMap<string, Issue> = new Map(),
   childOptions?: DetailChildOptions,
+  favorite?: HTMLButtonElement,
 ) {
   const issue = result.parent,
     root = element("article", "issue-detail");
@@ -60,6 +61,7 @@ export function issueDetail(
   const dismiss = iconButton("이슈 상세 닫기", "x");
   dismiss.addEventListener("click", close);
   const actions = element("div", "detail-head-actions");
+  if (favorite) actions.append(favorite);
   actions.append(history.trigger, dismiss);
   head.append(identity, actions);
   const titleRow = element("div", "detail-title-row");

@@ -123,6 +123,8 @@ export function createHttpServer(
           params.get("pageToken") ?? "",
           Number(params.get("pageSize") ?? 30),
         );
+      case "/api/activity":
+        return service.activity(params.get("projects") ?? "");
       case "/api/changes":
         return service.recentChanges(
           browseOptions(params),
@@ -185,6 +187,11 @@ export function createHttpServer(
       return input.keys.map((value) => inputString(value, "이슈 키"));
     };
     switch (path) {
+      case "/api/sync":
+        return service.sync(
+          browseOptions(new URLSearchParams(string("query"))),
+          input,
+        );
       case "/api/bulk-options":
         return service.bulk.options(keys(), string("field"));
       case "/api/bulk-update":
@@ -289,7 +296,11 @@ export function createHttpServer(
           throw new JiraError("로컬 화면에서 JSON으로 요청하세요.", 403);
         const input = await requestInput(
           req,
-          url.pathname === "/api/description" ? 500000 : 20000,
+          url.pathname === "/api/sync"
+            ? 2000000
+            : url.pathname === "/api/description"
+              ? 500000
+              : 20000,
         );
         json(res, await writeData(url.pathname, input));
         return;

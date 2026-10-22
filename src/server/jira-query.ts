@@ -24,9 +24,14 @@ export interface IssuePage {
   issues: Issue[];
   nextPageToken: string | null;
 }
-const listFields =
+export const listFields =
   "summary,status,assignee,updated,duedate,comment,project,parent,issuetype,priority,subtasks";
 const invalid = (message: string) => new JiraError(message, 400);
+function trackCursor(seen: Set<string>, token: string): void {
+  if (seen.has(token))
+    throw new JiraError("페이지 커서가 반복되어 조회를 멈췄어요.", 502);
+  seen.add(token);
+}
 export function projectCondition(value: string): string {
   const keys = projectKeys(value);
   return keys.length
@@ -283,8 +288,10 @@ export function createJiraQuery(
       try {
         const keys = [...missing.keys()];
         for (let offset = 0; offset < keys.length; offset += 100) {
+          const seen = new Set<string>();
           let token = "";
           do {
+            trackCursor(seen, token);
             const page = await search(
               `key in (${keys.slice(offset, offset + 100).join(", ")})`,
               token,
@@ -380,8 +387,10 @@ export function createJiraQuery(
   async function directChildren(key: string): Promise<Issue[]> {
     key = parseIssueKey(key, "");
     const issues: Issue[] = [];
+    const seen = new Set<string>();
     let token = "";
     do {
+      trackCursor(seen, token);
       const page = await search(`parent = ${key} ORDER BY created ASC`, token);
       issues.push(...page.issues);
       token = page.nextPageToken ?? "";
@@ -395,8 +404,10 @@ export function createJiraQuery(
       fields: "key",
       maxResults: "100",
     });
+    const seen = new Set<string>();
     let token = "";
     do {
+      trackCursor(seen, token);
       if (token) params.set("nextPageToken", token);
       const page = await client.json(
         `/rest/api/3/search/jql?${params}`,
@@ -449,18 +460,33 @@ export function createJiraQuery(
       ).includes(key),
     };
   }
-  async function recentChanges(options: BrowseOptions, lookback: number) {
-    if (!Number.isInteger(lookback) || lookback < 1 || lookback > 60)
+  async function recentChanges(
+    options: BrowseOptions,
+    lookback: number,
+    limit = Number.POSITIVE_INFINITY,
+  ) {
+    if (
+      !Number.isInteger(lookback) ||
+      lookback < 1 ||
+      lookback > 7 * 24 * 60 + 2
+    )
       throw invalid("변경 조회 범위가 올바르지 않습니다.");
     const conditions = await browseConditions(options);
     const changed: Issue[] = [];
+    const seen = new Set<string>();
     let token = "";
     do {
+      trackCursor(seen, token);
       const page = await search(
         `${projectCondition(options.projects)} AND updated >= -${lookback}m ORDER BY updated DESC`,
         token,
       );
       changed.push(...page.issues);
+      if (changed.length > limit)
+        throw new JiraError(
+          "변경량이 많아 목록 범위를 다시 확인해야 합니다.",
+          409,
+        );
       token = page.nextPageToken ?? "";
     } while (token);
     const matches = new Set<string>();

@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <!-- Lucide 0.468.0. See lucide-LICENSE.txt. -->
+<symbol id="star" viewBox="0 0 24 24"><path d="m12 3 2.78 5.63L21 9.54l-4.5 4.39L17.56 20 12 17.13 6.44 20l1.06-6.07L3 9.54l6.22-.91L12 3Z"/></symbol>
 <symbol id="bookmark" viewBox="0 0 24 24"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
 <symbol id="folder" viewBox="0 0 24 24"><path d="M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2Z"/></symbol>
 <symbol id="flag" viewBox="0 0 24 24"><path d="M4 22V3m0 1c4-3 8 3 12 0v12c-4 3-8-3-12 0" /></symbol>

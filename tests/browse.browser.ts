@@ -6,6 +6,7 @@ import type { LogEntry } from "../src/domain/log.ts";
 import { record } from "../src/domain/validation.ts";
 import { type ChangeBatch, emptyIssue } from "../src/domain/wire.ts";
 import { element } from "../src/ui/dom.ts";
+import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
 
 const root = document.querySelector<HTMLElement>("#app"),
@@ -26,6 +27,15 @@ const storage = {
     values.set(key, value);
   },
 };
+let activityItems = Array.from({ length: 10 }, (_, i) => ({
+  id: String(10 - i),
+  key: "TEST-1",
+  author: i === 0 ? "나" : "동료",
+  avatar: "",
+  text: i === 0 ? "나 이슈를 만들었습니다" : `동료 활동 ${10 - i}`,
+  created: new Date(Date.now() - (i + 1) * 60000).toISOString(),
+}));
+let activityFailed = false;
 const issues = [
   {
     ...emptyIssue("TEST-1", "상위 계획"),
@@ -140,6 +150,10 @@ const api = createApi(async (input, init) => {
   )
     await pendingRead;
   switch (url.pathname) {
+    case "/api/activity":
+      return activityFailed
+        ? Response.json({ error: "모의 활동 조회 실패" }, { status: 503 })
+        : Response.json({ feed: activityXML(activityItems) });
     case "/api/changes":
       return Response.json(changes);
     case "/api/bulk-options":
@@ -2248,6 +2262,280 @@ checks.push([
     );
     app.views.delete(saved.viewId);
     app.views.select(target, original);
+  },
+]);
+
+checks.push([
+  "실제 활동은 초기 10건·생성·본인 활동을 표시하며 새 2건만 구분하고 목록 필터와 독립적으로 갱신한다",
+  async () => {
+    app.closeDetail();
+    assert(
+      root.querySelectorAll(".activity-row").length === 10,
+      "초기 활동 10건 누락",
+    );
+    assert(
+      root
+        .querySelector(".activity-feed")
+        ?.textContent?.includes("이슈를 만들었습니다"),
+      "생성 활동 누락",
+    );
+    const target = { kind: "global" } as const;
+    const original = app.views.resolve(target);
+    const beforeFilter = calls.filter(
+      (call) => call.pathname === "/api/activity",
+    ).length;
+    app.views.apply(target, { ...original, statuses: [] });
+    await tick();
+    assert(
+      root.querySelectorAll(".activity-row").length === 10,
+      "목록 필터가 활동을 숨긴다",
+    );
+    assert(
+      calls.filter((call) => call.pathname === "/api/activity").length ===
+        beforeFilter,
+      "목록 필터 변경이 활동을 재조회한다",
+    );
+    const first = activityItems[0];
+    assert(first, "활동 검사 기준 누락");
+    activityItems = [
+      {
+        ...first,
+        id: "12",
+        created: new Date().toISOString(),
+        text: "나 새로운 이슈를 만들었습니다",
+      },
+      {
+        ...first,
+        id: "11",
+        created: new Date(Date.now() - 1000).toISOString(),
+        text: "나 댓글을 남겼습니다",
+      },
+      ...activityItems,
+    ];
+    const start = calls.length;
+    await app.checkChanges();
+    assert(
+      root.querySelectorAll(".activity-row").length === 10,
+      "활동 상한 초과",
+    );
+    assert(
+      root.querySelectorAll(".activity-new").length === 2,
+      "신규 두 건 구분 실패",
+    );
+    assert(
+      !root.querySelector(".activity-feed")?.textContent?.includes("활동 1"),
+      "오래된 활동이 남는다",
+    );
+    const added = calls.slice(start);
+    assert(
+      added.filter((call) => call.pathname === "/api/activity").length === 1,
+      "활동 조회가 한 번이 아니다",
+    );
+    assert(
+      !added.some((call) =>
+        ["/api/issue", "/api/comments", "/api/history"].includes(call.pathname),
+      ),
+      "활동 표시가 상세·댓글·기록 조회를 추가한다",
+    );
+    await app.checkChanges();
+    assert(
+      root.querySelectorAll(".activity-new").length === 0,
+      "같은 기록이 다시 새 활동이 된다",
+    );
+    activityFailed = true;
+    await app.checkChanges();
+    assert(
+      root.querySelectorAll(".activity-row").length === 10 &&
+        root
+          .querySelector(".activity-message")
+          ?.textContent?.includes("이전 내역"),
+      "실패 시 기존 기록 또는 오류 안내 누락",
+    );
+    activityFailed = false;
+    const retry = root.querySelector<HTMLButtonElement>(
+      ".activity-feed button",
+    );
+    assert(retry, "활동 재시도 없음");
+    retry.click();
+    await tick();
+    assert(
+      !root
+        .querySelector(".activity-message")
+        ?.textContent?.includes("조회 실패"),
+      "재시도 실패",
+    );
+    const clickStart = calls.length;
+    root.querySelector<HTMLAnchorElement>(".activity-row")?.click();
+    await tick();
+    assert(
+      calls.slice(clickStart).some((call) => call.pathname === "/api/issue"),
+      "클릭 시 기존 상세를 열지 않는다",
+    );
+    app.closeDetail();
+    app.views.apply(target, original);
+    await tick();
+  },
+]);
+
+checks.push([
+  "즐겨찾기는 상세에서 등록하고 최상단에서 해제하며 추가 조회 없이 계정별 저장한다",
+  async () => {
+    app.closeDetail();
+    assert(!root.querySelector(".favorites"), "빈 즐겨찾기 영역이 보인다");
+    await app.select("TEST-1");
+    await tick();
+    const start = calls.length;
+    button("즐겨찾기 추가").click();
+    assert(
+      button("즐겨찾기 해제").getAttribute("aria-pressed") === "true",
+      "별표 상태 누락",
+    );
+    assert(
+      root.querySelector(".detail-title")?.textContent === issues[0]?.summary,
+      "즐겨찾기가 상세를 닫았다",
+    );
+    app.closeDetail();
+    const favorites = root.querySelector(".dashboard > .favorites");
+    assert(
+      favorites &&
+        favorites === root.querySelector(".dashboard")?.firstElementChild,
+      "즐겨찾기가 최상단에 없다",
+    );
+    assert(
+      favorites.querySelector(".list-title")?.textContent ===
+        issues[0]?.summary,
+      "등록한 카드 누락",
+    );
+    const copies = [
+      ...root.querySelectorAll<HTMLElement>(".issue-card"),
+    ].filter(
+      (card) =>
+        card.querySelector(".card-copy")?.textContent?.trim() === "TEST-1",
+    );
+    assert(copies.length >= 3, "목록·최근·즐겨찾기 카드가 모두 있어야 한다");
+    for (const card of copies) {
+      assert(
+        card.querySelector('.favorite-button[aria-pressed="true"]'),
+        "같은 이슈인데 다른 목록의 즐겨찾기 별표가 빠졌다",
+      );
+      const item = card.querySelector(".list-item"),
+        favoriteItem = favorites.querySelector(".list-item");
+      assert(item && favoriteItem, "공통 카드 본문 누락");
+      const style = getComputedStyle(item);
+      const reference = getComputedStyle(favoriteItem);
+      assert(
+        style.padding === reference.padding && style.gap === reference.gap,
+        "공통 카드의 여백이 다르다",
+      );
+    }
+    assert(calls.length === start, "즐겨찾기 등록이 추가 요청을 만든다");
+    const stored = JSON.parse(
+      values.get("fastJira:favorites:fixture.atlassian.net:my-account") ??
+        "null",
+    );
+    assert(stored?.[0]?.key === "TEST-1", "즐겨찾기 저장 누락");
+    const first = issues[0];
+    assert(first, "즐겨찾기 검사 대상 누락");
+    app.list.update({ ...first, summary: "즐겨찾기의 최신 제목" }, true);
+    assert(
+      root.querySelector(".favorites .list-title")?.textContent ===
+        "즐겨찾기의 최신 제목",
+      "최신 목록 값 미반영",
+    );
+    const remove = root.querySelector<HTMLButtonElement>(
+      '[aria-label="즐겨찾기 해제"]',
+    );
+    assert(remove, "해제 버튼 누락");
+    remove.click();
+    assert(
+      !root.querySelector(".favorites"),
+      "마지막 해제 후 빈 영역이 남는다",
+    );
+    assert(
+      !root.querySelector(".issue-card .favorite-button"),
+      "해제 후 다른 카드에 별표가 남았다",
+    );
+    assert(
+      !new URL(location.href).searchParams.get("issue"),
+      "해제 클릭이 상세를 열었다",
+    );
+    assert(calls.length === start, "해제가 추가 요청을 만들었다");
+    assert(
+      JSON.parse(
+        values.get("fastJira:favorites:fixture.atlassian.net:my-account") ??
+          "null",
+      ).length === 0,
+      "해제가 저장되지 않는다",
+    );
+  },
+]);
+
+checks.push([
+  "탭 표시와 창 포커스가 모두 활성일 때만 자동 갱신하고 짧은 복귀는 재조회하지 않는다",
+  async () => {
+    const originalNow = Date.now;
+    const focusDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      "hasFocus",
+    );
+    const hiddenDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      "hidden",
+    );
+    let focused = false;
+    let hidden = false;
+    let time = originalNow() + 61000;
+    const count = () =>
+      calls.filter((call) =>
+        ["/api/changes", "/api/sync", "/api/activity"].includes(call.pathname),
+      ).length;
+    const before = count();
+    try {
+      Date.now = () => time;
+      Object.defineProperty(document, "hasFocus", {
+        configurable: true,
+        value: () => focused,
+      });
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        get: () => hidden,
+      });
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+      await tick();
+      assert(count() === before, "포커스 없는 창에서 자동 조회함");
+      focused = true;
+      hidden = true;
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+      await tick();
+      assert(count() === before, "숨겨진 탭에서 자동 조회함");
+      hidden = false;
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+      await tick();
+      assert(
+        count() === before + 2,
+        "복귀 시 목록·활동을 한 번씩 확인하지 않음",
+      );
+      focused = false;
+      window.dispatchEvent(new Event("blur"));
+      time += 1000;
+      focused = true;
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      await tick();
+      assert(count() === before + 2, "짧은 재진입에 같은 자료를 재조회함");
+    } finally {
+      Date.now = originalNow;
+      if (focusDescriptor)
+        Object.defineProperty(document, "hasFocus", focusDescriptor);
+      else Reflect.deleteProperty(document, "hasFocus");
+      if (hiddenDescriptor)
+        Object.defineProperty(document, "hidden", hiddenDescriptor);
+      else Reflect.deleteProperty(document, "hidden");
+      window.dispatchEvent(new Event("focus"));
+    }
   },
 ]);
 

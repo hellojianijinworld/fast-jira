@@ -9,6 +9,7 @@ import { type CardOptions, issueCard } from "./issue-card.ts";
 import { keyedContent } from "./keyed-content.ts";
 
 export interface DetailChildOptions {
+  favorites?: CardOptions["favorites"];
   list: ListController;
   catalog: () => TreeCatalog;
   onFilter: (key: string, anchor: HTMLButtonElement) => void;
@@ -56,7 +57,10 @@ export function detailChildren(
     summary.textContent = `하위 이슈 ${issues.length}개`;
     const entries: [string, HTMLElement][] = issues.map((issue) => [
       issue.key,
-      issueCard(issue, cards),
+      issueCard(issue, {
+        ...cards,
+        ...(options?.favorites ? { favorites: options.favorites } : {}),
+      }),
     ]);
     if (showMore) entries.push(["more", more]);
     renderCards(entries);

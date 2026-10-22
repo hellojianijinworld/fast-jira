@@ -22,6 +22,7 @@ import {
 
 function issue(changes: Partial<Issue> = {}): Issue {
   return {
+    id: "",
     key: "TEST-1",
     summary: "",
     project: "TEST",

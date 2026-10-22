@@ -1,3 +1,4 @@
+import { parseActivityFeed } from "../src/client/activity-parser.ts";
 import { createApi } from "../src/client/api.ts";
 import { createListController } from "../src/client/list-controller.ts";
 import { createViewController } from "../src/client/view-controller.ts";
@@ -13,6 +14,7 @@ import {
   captureViewportAnchor,
   restoreViewportAnchor,
 } from "../src/ui/viewport-anchor.ts";
+import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
 import { readPreferences } from "../src/client/preferences.ts";
 import type { AdfDocument, AdfNode } from "../src/domain/adf.ts";
@@ -119,6 +121,7 @@ await check(
 );
 
 const issue: Issue = {
+  id: "",
   key: "TEST-711",
   summary:
     "긴 제목에서도 상태와 담당자 태그가 카드 밖으로 삐져나오지 않고 오른쪽에 정렬되어야 합니다",
@@ -2056,6 +2059,108 @@ await check(
       detail.destroy();
       list.destroy();
       detail.element.remove();
+    }
+  },
+);
+
+await check(
+  "활동 XML은 생성·댓글 대상을 읽고 HTML을 실행하지 않으며 잘못된 응답을 거부한다",
+  () => {
+    const base = {
+      id: "one",
+      key: "TEST-1",
+      author: "나",
+      avatar: "",
+      text: "나 이슈 생성",
+      created: "2026-10-18T00:00:00Z",
+    };
+    const source = activityXML([
+      base,
+      {
+        ...base,
+        id: "two",
+        key: "TEST-2",
+        comment: true,
+        text: '<a href="javascript:alert(1)">나 댓글 작성</a><img src="/should-not-load" onerror="alert(1)">',
+        html: true,
+        created: "2026-10-18T00:01:00Z",
+      },
+      { ...base, id: "outside", key: "OTHER-1" },
+      base,
+    ]);
+    const parsed = parseActivityFeed(source, ["TEST"]);
+    assert(
+      parsed.length === 2 &&
+        parsed[0]?.key === "TEST-2" &&
+        parsed[0].text === "나 댓글 작성",
+      "활동 파싱·중복·범위 처리 실패",
+    );
+    assert(
+      !fixture.querySelector('img[src="/should-not-load"]'),
+      "피드 HTML이 문서에 삽입됨",
+    );
+    for (const bad of [
+      "<html>login</html>",
+      "<feed",
+      '<!DOCTYPE feed><feed xmlns="http://www.w3.org/2005/Atom"/>',
+      activityXML([{ ...base, created: "invalid" }]),
+    ]) {
+      let failed = false;
+      try {
+        parseActivityFeed(bad, ["TEST"]);
+      } catch {
+        failed = true;
+      }
+      assert(failed, "잘못된 XML을 빈 성공으로 취급함");
+    }
+  },
+);
+
+await check(
+  "공통 카드 별표는 높이를 늘리지 않고 완료 타일에서도 표시되며 상세 이동을 막는다",
+  () => {
+    let selected = 0,
+      removed = false;
+    const shortIssue = { ...issue, summary: "짧은 제목" };
+    const saved = issueCard(shortIssue, {
+      statusOrder: order,
+      onSelect: () => {
+        selected++;
+      },
+      favorites: {
+        has: () => true,
+        change: (_, value) => {
+          removed = !value;
+        },
+      },
+    });
+    const plain = issueCard(shortIssue, {
+      statusOrder: order,
+      onSelect: () => {},
+    });
+    const host = element("section", "issue-list-container");
+    host.style.width = "600px";
+    host.append(saved, plain);
+    fixture.append(host);
+    try {
+      assert(
+        saved.getBoundingClientRect().height ===
+          plain.getBoundingClientRect().height,
+        "별표가 카드 높이를 늘린다",
+      );
+      host.classList.add("completed-grid");
+      const star = saved.querySelector<HTMLButtonElement>(".favorite-button");
+      assert(
+        Boolean(star?.getBoundingClientRect().height),
+        "완료 타일의 별표가 숨겨진다",
+      );
+      star?.click();
+      assert(
+        removed && selected === 0,
+        "별표 해제가 상세를 열거나 상태를 전달하지 않는다",
+      );
+    } finally {
+      host.remove();
     }
   },
 );

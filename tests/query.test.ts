@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { emptyIssue } from "../src/domain/wire.ts";
 import { createJiraClient } from "../src/server/jira-client.ts";
 import { createJiraMetadata } from "../src/server/jira-metadata.ts";
 import {
@@ -240,7 +241,7 @@ test("최근 변경은 필터 밖 변경도 반환하고 일치 여부만 묶음
   assert.ok(calls[0]?.searchParams.get("jql")?.includes("updated >= -5m"));
   assert.ok(!calls[0]?.searchParams.get("jql")?.includes("statusCategory"));
   assert.ok(calls[1]?.searchParams.get("jql")?.includes("key in (AA-1, AA-2)"));
-  await assert.rejects(query.recentChanges(options, 61));
+  await assert.rejects(query.recentChanges(options, 7 * 24 * 60 + 3));
   assert.equal(calls.length, 2);
 });
 
@@ -456,4 +457,105 @@ test("새로고침 묶음 조회는 최대 100개이며 일반 하위 페이지�
     query.childrenPage("AA-1", options, "all", "recent", "", 101),
   );
   await assert.rejects(query.browse(options, "recent", "", Number.NaN));
+});
+
+test("변경분이 제한을 넘으면 필터 일치·조상 보강 전에 범위 재검증을 요청한다", async () => {
+  const { query, calls } = setup((url) => {
+    const offset = Number(url.searchParams.get("nextPageToken") ?? 0);
+    const size = offset === 1000 ? 1 : 100;
+    return Response.json({
+      issues: Array.from({ length: size }, (_, index) =>
+        rawIssue(`AA-${offset + index + 1}`),
+      ),
+      ...(offset < 1000 ? { nextPageToken: String(offset + 100) } : {}),
+    });
+  });
+  await assert.rejects(
+    query.recentChanges(options, 5, 1000),
+    (reason: unknown) =>
+      reason instanceof Error && "status" in reason && reason.status === 409,
+  );
+  assert.equal(calls.length, 11);
+});
+
+for (const [name, run] of [
+  [
+    "전체 하위",
+    (query: ReturnType<typeof createJiraQuery>) => query.directChildren("AA-1"),
+  ],
+  [
+    "필터 일치",
+    (query: ReturnType<typeof createJiraQuery>) =>
+      query.matchesIssues(["AA-1"], options),
+  ],
+  [
+    "최근 변경",
+    (query: ReturnType<typeof createJiraQuery>) =>
+      query.recentChanges(options, 5),
+  ],
+] as const)
+  for (const [cycle, tokens, requests] of [
+    ["같은 커서", ["A", "A", null], 2],
+    ["순환 커서", ["A", "B", "A", null], 3],
+  ] as const)
+    test(`${name} 조회의 ${cycle}는 부분 결과 대신 오류로 끝난다`, async () => {
+      let index = 0;
+      const { query, calls } = setup(() =>
+        Response.json({
+          issues: [rawIssue("AA-1")],
+          nextPageToken: tokens[index++] ?? null,
+        }),
+      );
+      await assert.rejects(
+        run(query),
+        (error: unknown) =>
+          error instanceof Error &&
+          "status" in error &&
+          error.status === 502 &&
+          /커서/.test(error.message),
+      );
+      assert.equal(calls.length, requests);
+    });
+
+test("조상 조회의 반복 커서는 요청을 멈추고 기존 키·제목 표시로 복구한다", async () => {
+  let index = 0;
+  const { query, calls } = setup(() =>
+    Response.json({
+      issues: [],
+      nextPageToken: ["A", "B", "A", null][index++] ?? null,
+    }),
+  );
+  const ancestors = await query.ancestors([
+    { ...emptyIssue("AA-1"), parent: "AA-9", parentSummary: "알려진 부모" },
+  ]);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(
+    ancestors.map((issue) => [issue.key, issue.summary, issue.id]),
+    [["AA-9", "알려진 부모", ""]],
+  );
+});
+
+test("조상 조회의 서로 다른 묶음에서는 같은 커서를 정상적으로 재사용한다", async () => {
+  const { query, calls } = setup((url) =>
+    Response.json(
+      url.searchParams.get("nextPageToken")
+        ? {
+            issues: (url.searchParams.get("jql")?.match(/AA-\d+/g) ?? []).map(
+              (key) => rawIssue(key),
+            ),
+          }
+        : { issues: [], nextPageToken: "shared-cursor" },
+    ),
+  );
+  const children = Array.from({ length: 101 }, (_, i) => ({
+    ...emptyIssue(`AA-${i + 1}`),
+    parent: `AA-${i + 1000}`,
+  }));
+  const ancestors = await query.ancestors(children, 1);
+  assert.equal(ancestors.length, 101);
+  assert.equal(calls.length, 4);
+  assert.deepEqual(
+    calls.map((url) => url.searchParams.get("nextPageToken")),
+    [null, "shared-cursor", null, "shared-cursor"],
+  );
 });

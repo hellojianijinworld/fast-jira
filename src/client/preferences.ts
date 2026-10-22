@@ -77,8 +77,15 @@ export function accountSettingsScope(
       for (const kind of ["filters", "tree", "branches", "recent"]) {
         const previous = storage.getItem(`fastJira:${kind}:${site}`),
           key = `fastJira:${kind}:${scope}`;
-        if (previous !== null && storage.getItem(key) === null)
-          storage.setItem(key, previous);
+        if (previous !== null) {
+          const value =
+            kind === "recent"
+              ? JSON.stringify(issueMetadata(JSON.parse(previous), 5))
+              : previous;
+          if (kind === "recent" && value !== previous)
+            storage.setItem(`fastJira:${kind}:${site}`, value);
+          if (storage.getItem(key) === null) storage.setItem(key, value);
+        }
       }
   } catch {
     /* 저장소를 사용할 수 없어도 계정별 키는 분리한다. */
@@ -115,6 +122,28 @@ function tuples(value: unknown): [string, Record<string, unknown>][] {
       ? [[entry[0], entry[1]]]
       : [],
   );
+}
+function issueMetadata(value: unknown, limit = Infinity): Issue[] {
+  if (!Array.isArray(value)) return [];
+  const found: Issue[] = [];
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      !issueKey(item.key) ||
+      typeof item.summary !== "string" ||
+      found.some((issue) => issue.key === item.key)
+    )
+      continue;
+    try {
+      found.push(
+        decodeIssue({ ...emptyIssue(item.key, item.summary), ...item }),
+      );
+    } catch {
+      /* 손상된 항목만 제외하고 나머지 이력은 사용한다. */
+    }
+    if (found.length === limit) break;
+  }
+  return found;
 }
 export function createAccountStore(
   storage: LocalStore,
@@ -212,27 +241,11 @@ export function createAccountStore(
       ]),
     );
   }
-  function recent(): Issue[] {
-    const value = read("recent");
-    if (!Array.isArray(value)) return [];
-    const found: Issue[] = [];
-    for (const item of value) {
-      if (
-        !isRecord(item) ||
-        !issueKey(item.key) ||
-        typeof item.summary !== "string" ||
-        found.some((issue) => issue.key === item.key)
-      )
-        continue;
-      try {
-        found.push(
-          decodeIssue({ ...emptyIssue(item.key, item.summary), ...item }),
-        );
-      } catch {
-        /* 손상된 항목만 제외하고 나머지 이력은 사용한다. */
-      }
-      if (found.length === 5) break;
-    }
+  function savedIssues(kind: string, limit = Infinity): Issue[] {
+    const value = read(kind);
+    const found = issueMetadata(value, limit);
+    if (Array.isArray(value) && JSON.stringify(value) !== JSON.stringify(found))
+      write(kind, found);
     return found;
   }
   return {
@@ -251,7 +264,10 @@ export function createAccountStore(
       storage.setItem(`fastJira:views:${scope}`, JSON.stringify(state)),
     filters,
     tree,
-    recent,
+    recent: () => savedIssues("recent", 5),
+    favorites: () => savedIssues("favorites"),
+    saveFavorites: (issues: readonly Issue[]) =>
+      write("favorites", issueMetadata(issues)),
     saveFilters: (filters: Filters, configured: boolean) =>
       write("filters", {
         ...filters,
@@ -261,6 +277,6 @@ export function createAccountStore(
     saveTree: (states: ReadonlyMap<string, CollapseState>, version: number) =>
       write("tree", { states: [...states], version }),
     saveRecent: (issues: readonly Issue[]) =>
-      write("recent", issues.slice(0, 5)),
+      write("recent", issueMetadata(issues, 5)),
   };
 }

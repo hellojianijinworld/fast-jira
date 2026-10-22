@@ -329,7 +329,7 @@ export function createBulkSelection(config: {
         (event) => {
           if (
             event.target instanceof Element &&
-            event.target.closest(".card-copy")
+            event.target.closest(".card-copy, .favorite-button")
           )
             return;
           event.preventDefault();

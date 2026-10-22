@@ -9,6 +9,8 @@ export interface CachedPage {
   complete: boolean;
 }
 export interface ListSnapshot {
+  checkedAt?: string;
+  reconciledAt?: string;
   items: Issue[];
   matched: string[];
   direct: string[];
@@ -31,7 +33,15 @@ export function decodeListSnapshot(value: unknown): ListSnapshot {
   const data = record(value);
   const issues = (value: unknown) => wireArray(value, decodeIssue);
   const keys = (value: unknown) => wireArray(value, wireString);
+  const time = (value: unknown) =>
+    typeof value === "string" && Number.isFinite(Date.parse(value))
+      ? value
+      : undefined;
+  const checkedAt = time(data.checkedAt),
+    reconciledAt = time(data.reconciledAt);
   return {
+    ...(checkedAt ? { checkedAt } : {}),
+    ...(reconciledAt ? { reconciledAt } : {}),
     items: issues(data.items),
     matched: keys(data.matched),
     direct: keys(data.direct),

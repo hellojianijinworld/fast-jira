@@ -32,6 +32,7 @@ export function wireArray<T>(
 }
 export function emptyIssue(key: string, summary = key): Issue {
   return {
+    id: "",
     key,
     summary,
     project: key.split("-")[0] ?? "",
@@ -71,7 +72,10 @@ export function decodeIssue(value: unknown): Issue {
     (hierarchyLevel !== null && !Number.isInteger(hierarchyLevel))
   )
     throw new Error("응답 이슈 메타정보가 올바르지 않습니다.");
+  const id = item.id === undefined ? "" : wireString(item.id);
+  if (id && !/^\d+$/.test(id)) throw new Error("이슈 ID가 올바르지 않습니다.");
   return {
+    id,
     key,
     summary: wireString(item.summary),
     project: wireString(item.project),
@@ -125,6 +129,8 @@ export interface ChangedIssue extends Issue {
   matches: boolean;
 }
 export interface ChangeBatch {
+  removed?: string[];
+  checkedAt?: string;
   issues: ChangedIssue[];
   ancestors: Issue[];
 }
