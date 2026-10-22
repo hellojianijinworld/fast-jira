@@ -589,7 +589,7 @@ checks.push([
   () => {
     button("설정").click();
     const checks = root.querySelectorAll<HTMLInputElement>(
-      ".settings-modal input",
+      ".settings-modal .setting-row input",
     );
     assert(checks.length === 3, "설정 체크 누락");
     for (const label of ["다크 모드", "간단히 보기"]) {

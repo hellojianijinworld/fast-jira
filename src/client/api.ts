@@ -1,5 +1,6 @@
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import type { BulkField } from "../domain/bulk.ts";
+import type { ConnectionSettings, Credentials } from "../domain/connection.ts";
 import type { Filters } from "../domain/filters.ts";
 import { filterParameters, selectionParameter } from "../domain/filters.ts";
 import type { BranchDefaults, EditableField } from "../domain/issue.ts";
@@ -60,8 +61,21 @@ export function createApi(fetcher: typeof fetch = fetch) {
       );
     return decode(value);
   }
+  const decodeConnection = (value: unknown): ConnectionSettings => {
+    const data = record(value);
+    if (typeof data.site !== "string" || typeof data.email !== "string")
+      throw new Error("연결 설정 응답이 올바르지 않습니다.");
+    return { site: data.site, email: data.email };
+  };
   return {
     request,
+    connection: () => request("/api/connection", decodeConnection),
+    saveConnection: (credentials: Credentials) =>
+      request("/api/connection", decodeConnection, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentials),
+      }),
     bulkOptions: (keys: string[], field: "status" | "assignee" | "priority") =>
       request("/api/bulk-options", decodeBulkOptions, {
         method: "POST",

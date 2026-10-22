@@ -1,13 +1,23 @@
+import type { Credentials } from "../domain/connection.ts";
 import type { LogEntry } from "../domain/log.ts";
+import { createConnection } from "./connection.ts";
 import { loadEnvironment, serverPort } from "./environment.ts";
 import { createHttpServer } from "./http.ts";
-import { createJiraService } from "./jira-service.ts";
 export async function startApi() {
-  const credentials = loadEnvironment(),
-    port = serverPort();
+  let credentials: Credentials | null = null;
+  try {
+    credentials = loadEnvironment();
+  } catch {
+    /* 인증 미설정이어도 화면은 제공한다. */
+  }
+  const port = serverPort();
   const listeners = new Set<(entry: LogEntry) => void>();
-  const service = createJiraService({
+  const connection = createConnection({
     credentials,
+    defaults: {
+      site: process.env.JIRA_SITE ?? "",
+      email: process.env.JIRA_EMAIL ?? "",
+    },
     ...(process.env.JIRA_RELATED_FIELDS === undefined
       ? {}
       : {
@@ -20,11 +30,15 @@ export async function startApi() {
       for (const listener of listeners) listener(entry);
     },
   });
-  await service.authenticate();
-  const server = createHttpServer(service, (listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  });
+  const server = createHttpServer(
+    connection.service,
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    undefined,
+    connection,
+  );
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => {

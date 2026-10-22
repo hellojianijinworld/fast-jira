@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { record } from "../domain/validation.ts";
+import type { Connection } from "./connection.ts";
 import { JiraError } from "./jira-client.ts";
 import type { BrowseOptions } from "./jira-query.ts";
 import type { JiraService } from "./jira-service.ts";
@@ -71,18 +72,21 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
     .end(JSON.stringify(data));
 }
 export function createHttpServer(
-  service: JiraService,
+  source: JiraService | (() => JiraService),
   subscribe: (listener: (entry: LogEntry) => void) => () => void,
   frontendOrigin = "http://127.0.0.1:5173",
+  connection?: Connection,
 ) {
+  const getService = () => (typeof source === "function" ? source() : source);
   const key = (value: unknown) => {
     try {
-      return service.issueKey(value);
+      return getService().issueKey(value);
     } catch (error) {
       throw invalid(messageOf(error));
     }
   };
   async function readData(url: URL) {
+    const service = getService();
     const params = url.searchParams;
     const issueKey = () => key(params.get("key") ?? "");
     switch (url.pathname) {
@@ -162,6 +166,8 @@ export function createHttpServer(
     }
   }
   async function writeData(path: string, input: Record<string, unknown>) {
+    if (path === "/api/connection" && connection) return connection.save(input);
+    const service = getService();
     const string = (name: string) => inputString(input[name], name);
     const keys = () => {
       if (!Array.isArray(input.keys)) throw invalid("이슈 목록을 입력하세요.");
@@ -210,6 +216,14 @@ export function createHttpServer(
     res.setHeader("X-Content-Type-Options", "nosniff");
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (
+        req.method === "GET" &&
+        url.pathname === "/api/connection" &&
+        connection
+      ) {
+        json(res, connection.settings());
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/debug") {
         res.writeHead(200, {
           "Content-Type": "text/event-stream; charset=utf-8",
@@ -227,6 +241,7 @@ export function createHttpServer(
         req.method === "GET" &&
         (url.pathname === "/api/image" || url.pathname === "/api/type-icon")
       ) {
+        const service = getService();
         const icon = url.pathname === "/api/type-icon";
         const file = icon
           ? await service.typeIcon(url.searchParams.get("url") ?? "")

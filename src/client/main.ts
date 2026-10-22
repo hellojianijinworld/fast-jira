@@ -1,3 +1,4 @@
+import { connectionForm } from "../ui/connection.ts";
 import { actionButton, element } from "../ui/dom.ts";
 import { createApi } from "./api.ts";
 import { createApp } from "./app.ts";
@@ -13,22 +14,28 @@ const storage: LocalStore = {
 };
 document.documentElement.dataset.theme = readPreferences(storage).theme;
 async function start(root: HTMLElement) {
+  const api = createApi();
   try {
-    await createApp(root, createApi(), storage);
+    await createApp(root, api, storage);
   } catch (reason) {
     const retry = actionButton("다시 연결", "refresh-cw");
     retry.addEventListener("click", () => {
       void start(root);
     });
-    root.replaceChildren(
+    const setup = element("section", "connection-setup");
+    setup.append(
       element("h1", "", "Fast Jira"),
       element(
         "p",
         "error",
         reason instanceof Error ? reason.message : "Jira에 연결하지 못했어요.",
       ),
+      connectionForm(api, () => {
+        void start(root);
+      }),
       retry,
     );
+    root.replaceChildren(setup);
   }
 }
 void start(root);

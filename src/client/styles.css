@@ -1035,3 +1035,57 @@ button.debug-line[aria-pressed="true"] {
 .settings-modal[aria-label="Fast Jira 이용 안내"] {
   width: min(760px, calc(100vw - 24px));
 }
+
+.connection-setup {
+  width: min(520px, 100%);
+  margin: 40px auto;
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.connection-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.connection-form h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.connection-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.connection-field input {
+  width: 100%;
+  min-width: 0;
+}
+.connection-guide,
+.connection-feedback {
+  margin: 0;
+  font-size: 12px;
+}
+.connection-guide {
+  color: var(--muted);
+}
+.connection-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.connection-guide p {
+  margin: 0 0 8px;
+}
+.connection-guide ol {
+  margin: 0;
+  padding-left: 20px;
+}
+.connection-guide li + li {
+  margin-top: 6px;
+}

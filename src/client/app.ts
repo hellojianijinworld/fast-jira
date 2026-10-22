@@ -2,6 +2,7 @@ import type { TreeCatalog } from "../domain/catalog.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
+import { connectionForm } from "../ui/connection.ts";
 import { developerLog } from "../ui/developer-log.ts";
 import { actionButton, element, iconButton } from "../ui/dom.ts";
 import { createFilterPanel } from "../ui/filter-panel.ts";
@@ -444,6 +445,7 @@ export async function createApp(
           }
         : undefined,
     );
+    content.element.append(connectionForm(api, () => location.reload()));
     showModal(popup, {
       title: start ? "처음 설정" : "설정",
       content: content.element,

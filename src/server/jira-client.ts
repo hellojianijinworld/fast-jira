@@ -1,3 +1,7 @@
+import type { Credentials } from "../domain/connection.ts";
+
+export type { Credentials } from "../domain/connection.ts";
+
 import {
   isRecord,
   normalizeSite,
@@ -12,11 +16,6 @@ export class JiraError extends Error {
     super(message);
     this.name = "JiraError";
   }
-}
-export interface Credentials {
-  site: string;
-  email: string;
-  token: string;
 }
 export interface JiraClient {
   request(path: string, options?: RequestInit): Promise<Response>;
