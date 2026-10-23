@@ -1,0 +1,12 @@
+{
+  "name": "fast-jira",
+  "version": "0.1.0",
+  "description": "개인 Jira 작업을 빠르게 탐색하고 수정하는 로컬 앱. Setup, Managing, Contribute를 제공합니다.",
+  "author": {
+    "name": "hellojianijinworld",
+    "url": "https://github.com/hellojianijinworld"
+  },
+  "homepage": "https://github.com/hellojianijinworld/fast-jira",
+  "repository": "https://github.com/hellojianijinworld/fast-jira",
+  "license": "MIT"
+}

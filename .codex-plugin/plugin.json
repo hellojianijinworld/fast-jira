@@ -1,0 +1,30 @@
+{
+  "name": "fast-jira",
+  "version": "0.1.0",
+  "description": "개인 Jira 작업을 빠르게 탐색하고 수정하는 로컬 앱. Setup, Managing, Contribute를 제공합니다.",
+  "author": {
+    "name": "hellojianijinworld",
+    "url": "https://github.com/hellojianijinworld"
+  },
+  "homepage": "https://github.com/hellojianijinworld/fast-jira",
+  "repository": "https://github.com/hellojianijinworld/fast-jira",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Fast Jira",
+    "shortDescription": "나의 Jira를 빠르게. 로컬에서 안전하게.",
+    "developerName": "hellojianijinworld",
+    "category": "Productivity",
+    "brandColor": "#3B82F6",
+    "defaultPrompt": [
+      "Fast Jira를 설치하고 열어줘.",
+      "Fast Jira 상태를 확인해줘.",
+      "Fast Jira 개발에 기여하고 싶어."
+    ]
+  },
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md"
+    }
+  },
+  "license": "MIT"
+}

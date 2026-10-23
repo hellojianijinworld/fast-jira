@@ -1,0 +1,92 @@
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
+
+export interface ServiceConfig {
+  version: 1;
+  port: number;
+  instance: string;
+  node: string;
+}
+
+export function nodeSupported(version: string): boolean {
+  const [major = 0, minor = 0] = version.split(".").map(Number);
+  return major > 22 || (major === 22 && minor >= 12);
+}
+
+export function installationPaths(
+  home = process.env.FAST_JIRA_HOME ??
+    join(homedir(), "Library/Application Support/Fast Jira"),
+  userHome = homedir(),
+) {
+  home = resolve(home);
+  const id = createHash("sha256").update(home).digest("hex").slice(0, 12);
+  const label = `com.hellojianijinworld.fast-jira.${id}`;
+  return {
+    home,
+    label,
+    runtime: join(home, "runtime"),
+    config: join(home, "service.json"),
+    log: join(home, "service.log"),
+    lock: join(home, "service.lock"),
+    plist: join(userHome, "Library/LaunchAgents", `${label}.plist`),
+  };
+}
+export type InstallationPaths = ReturnType<typeof installationPaths>;
+
+export function parseServiceConfig(value: unknown): ServiceConfig {
+  if (!value || typeof value !== "object")
+    throw new Error("설치 설정 형식이 올바르지 않습니다.");
+  const data = value as Record<string, unknown>;
+  if (
+    data.version !== 1 ||
+    typeof data.port !== "number" ||
+    !Number.isInteger(data.port) ||
+    data.port < 1 ||
+    data.port > 65535 ||
+    typeof data.instance !== "string" ||
+    !/^[a-zA-Z0-9-]{1,80}$/.test(data.instance) ||
+    typeof data.node !== "string" ||
+    !isAbsolute(data.node) ||
+    /[\r\n\0]/.test(data.node)
+  )
+    throw new Error(
+      "설치 설정 형식이 올바르지 않습니다. 기존 service.json을 보존하고 설정을 확인하세요.",
+    );
+  return {
+    version: 1,
+    port: data.port,
+    instance: data.instance,
+    node: data.node,
+  };
+}
+
+const xml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+export function servicePlist(
+  paths: InstallationPaths,
+  config: ServiceConfig,
+): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>${paths.label}</string>
+<key>ProgramArguments</key><array><string>${xml(config.node)}</string><string>${xml(join(paths.runtime, "dist/server/main.js"))}</string></array>
+<key>WorkingDirectory</key><string>${xml(paths.home)}</string>
+<key>EnvironmentVariables</key><dict>
+<key>PORT</key><string>${config.port}</string>
+<key>FAST_JIRA_INSTANCE</key><string>${config.instance}</string>
+</dict>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><true/>
+<key>ThrottleInterval</key><integer>10</integer>
+<key>StandardOutPath</key><string>${xml(paths.log)}</string>
+<key>StandardErrorPath</key><string>${xml(paths.log)}</string>
+</dict></plist>
+`;
+}

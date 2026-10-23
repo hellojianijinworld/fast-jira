@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server/dev.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/cli/main.ts --outDir dist/cli",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "lint": "biome check .",
@@ -20,7 +20,8 @@
     "dev:ui": "vite --host 127.0.0.1",
     "pretest": "npm run build",
     "prepare": "node scripts/install-hooks.mjs",
-    "check:commit": "node scripts/check-commit.mjs"
+    "check:commit": "node scripts/check-commit.mjs",
+    "package:plugin": "npm run build && node scripts/package-plugin.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
@@ -28,5 +29,6 @@
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.2"
-  }
+  },
+  "license": "MIT"
 }

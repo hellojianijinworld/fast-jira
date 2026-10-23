@@ -498,3 +498,16 @@ test("댓글 전송 한도가 늘어도 글자수·멘션·용량 오류는 Jira
   assert.equal(app.count(), 0);
   assert.deepEqual(app.writes, []);
 });
+
+test("설치 상태 확인은 인증 없이 서비스 식별 정보를 반환하고 Jira를 조회하지 않는다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const response = await fetch(`${app.base}/api/health`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    app: "fast-jira",
+    pid: process.pid,
+    instance: process.env.FAST_JIRA_INSTANCE ?? "",
+  });
+  assert.equal(app.count(), 0);
+});

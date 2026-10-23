@@ -991,7 +991,7 @@ test("표시용 임시 부모가 있어도 실제 자식의 변경·삭제·부�
         ],
         ancestors: [destination],
         removed: [removed.key],
-        checkedAt: stamp,
+        checkedAt: new Date().toISOString(),
       };
     },
   };

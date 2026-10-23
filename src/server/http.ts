@@ -239,6 +239,14 @@ export function createHttpServer(
     res.setHeader("X-Content-Type-Options", "nosniff");
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (req.method === "GET" && url.pathname === "/api/health") {
+        json(res, {
+          app: "fast-jira",
+          pid: process.pid,
+          instance: process.env.FAST_JIRA_INSTANCE ?? "",
+        });
+        return;
+      }
       if (
         req.method === "GET" &&
         url.pathname === "/api/connection" &&
