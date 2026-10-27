@@ -165,3 +165,24 @@ test("1,001개 이슈는 HTTP 경계에서도 가벼운 두 묶음으로만 확�
   assert.deepEqual(result.removed, []);
   assert.deepEqual(result.issues, []);
 });
+
+test("변경되지 않은 구캐시도 참여자 정보가 없으면 필드 데이터를 한 번만 보강한다", async () => {
+  const { service, calls } = setup();
+  const result = await service.sync(options, {
+    since,
+    known: [
+      {
+        id: "101",
+        key: "BB-9",
+        updated: fresh,
+        parent: "BB-1",
+        project: "BB",
+        needsParticipants: true,
+      },
+    ],
+  });
+  assert.deepEqual(result.issues[0]?.participantFields, []);
+  assert.equal(result.issues[0]?.summary, "이동된 작업");
+  const checks = calls.filter((call) => call.path.endsWith("/issue/bulkfetch"));
+  assert.equal(checks.length, 2);
+});

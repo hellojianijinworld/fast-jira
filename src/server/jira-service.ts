@@ -7,6 +7,7 @@ import { createJiraContent } from "./jira-content.ts";
 import { createJiraEdit } from "./jira-edit.ts";
 import { createJiraMetadata } from "./jira-metadata.ts";
 import { createParentOptions } from "./jira-parents.ts";
+import { createJiraParticipants } from "./jira-participants.ts";
 import { createJiraQuery } from "./jira-query.ts";
 import { createJiraRead } from "./jira-read.ts";
 import { createJiraSync } from "./jira-sync.ts";
@@ -14,7 +15,6 @@ import { loggedFetch } from "./network-log.ts";
 export function createJiraService(options: {
   credentials: Credentials;
   fetcher?: typeof fetch;
-  relatedFieldNames?: readonly string[];
   onLog?: (entry: LogEntry) => void;
   loggingEnabled?: () => boolean;
 }) {
@@ -26,12 +26,13 @@ export function createJiraService(options: {
       : fetcher,
   );
   const metadata = createJiraMetadata(client);
-  const query = createJiraQuery(client, metadata, options.relatedFieldNames);
+  const query = createJiraQuery(client, metadata);
   const read = createJiraRead(
     client,
     metadata,
     options.credentials.site,
     query.relatedFieldIds,
+    metadata.peopleFields,
   );
   const edit = createJiraEdit(client, metadata, read);
   return {
@@ -43,6 +44,12 @@ export function createJiraService(options: {
     ...metadata,
     ...read,
     ...edit,
+    ...createJiraParticipants(
+      client,
+      read,
+      options.credentials.site,
+      metadata.filterUsers,
+    ),
     ...createJiraContent(client, metadata),
     ...query,
     sync: createJiraSync(client, metadata, query),

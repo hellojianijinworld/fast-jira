@@ -1,5 +1,6 @@
 import { connectionForm } from "../ui/connection.ts";
 import { actionButton, element } from "../ui/dom.ts";
+import { startTooltips } from "../ui/tooltip.ts";
 import { createApi } from "./api.ts";
 import { createApp } from "./app.ts";
 import { createListCache } from "./list-cache.ts";
@@ -57,4 +58,5 @@ async function start(root: HTMLElement) {
   root.replaceChildren(setup);
 }
 
+startTooltips();
 void start(root);

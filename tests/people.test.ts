@@ -155,3 +155,23 @@ test("관계자 미지정에서 직접 선택으로 바꿔도 보이지 않는 �
     assignees: ["unassigned"],
   });
 });
+
+test("로컬 참여자 필터는 카드와 동일한 사람 필드를 쓰고 옛 관계자 캐시보다 우선한다", () => {
+  const issue = {
+    ...emptyIssue("TEST-2"),
+    assigneeId: "owner",
+    relatedUserIds: ["owner"],
+    participantFields: [
+      {
+        id: "customfield_99",
+        name: "역할",
+        multiple: true,
+        users: [{ id: "me", name: "나", avatar: "" }],
+      },
+    ],
+  };
+  const settings = { ...branchDefaults(filters), projects: filters.projects };
+  assert(passesChild(issue, settings, "me"));
+  assert(!passesChild(issue, { ...settings, assignees: ["unassigned"] }, "me"));
+  assert(!passesChild(issue, { ...settings, people: "assigned" }, "me"));
+});

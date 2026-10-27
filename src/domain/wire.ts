@@ -5,6 +5,7 @@ import type { Comment, CommentPage, HistoryPage } from "./content.ts";
 import type { IssueDetails, LookupResult } from "./details.ts";
 import type { Issue, IssueType, UserOption } from "./issue.ts";
 import type { LogEntry } from "./log.ts";
+import type { ParticipantField, ParticipantOption } from "./participants.ts";
 import { record } from "./validation.ts";
 
 export function wireString(value: unknown): string {
@@ -97,6 +98,9 @@ export function decodeIssue(value: unknown): Issue {
     ...(item.relatedUserIds === undefined
       ? {}
       : { relatedUserIds: wireArray(item.relatedUserIds, wireString) }),
+    ...(item.participantFields === undefined
+      ? {}
+      : { participantFields: decodeParticipantFields(item.participantFields) }),
     assigneeAvatar: wireString(item.assigneeAvatar),
     updated: wireString(item.updated),
     dueDate: wireString(item.dueDate),
@@ -202,6 +206,29 @@ export function decodeTypes(value: unknown): IssueType[] {
       project: wireString(type.project),
       hierarchyLevel:
         type.hierarchyLevel === null ? null : wireNumber(type.hierarchyLevel),
+    };
+  });
+}
+
+export function decodeParticipantFields(value: unknown): ParticipantField[] {
+  return wireArray(value, (value) => {
+    const field = record(value);
+    return {
+      id: wireString(field.id),
+      name: wireString(field.name),
+      multiple: wireBoolean(field.multiple),
+      users: decodeUsers(field.users),
+    };
+  });
+}
+export function decodeParticipantOptions(value: unknown): ParticipantOption[] {
+  return wireArray(value, (value) => {
+    const field = record(value);
+    return {
+      id: wireString(field.id),
+      name: wireString(field.name),
+      multiple: wireBoolean(field.multiple),
+      required: wireBoolean(field.required),
     };
   });
 }

@@ -260,3 +260,34 @@ test("서버가 되돌리기 충돌을 거부하면 성공 안내·화면 갱신
   assert.match(notices.at(-1) ?? "", /이후 변경/);
   assert(!notices.some((text) => text.includes("되돌렸어요")));
 });
+
+test("작업참여자 저장 응답은 본문·첨부·다른 최신 필드를 덮어쓰지 않는다", () => {
+  const editor = createIssueEditor(createApi(), initial, {
+    state() {},
+    changed() {},
+    notice() {},
+  });
+  const fields = [
+    {
+      id: "customfield_234",
+      name: "관계자",
+      multiple: true,
+      users: [{ id: "member-x", name: "사람", avatar: "" }],
+    },
+  ];
+  const merged = editor.mergeParticipants({
+    ...initial,
+    summary: "오래된 제목",
+    commentCount: 99,
+    description: null,
+    attachments: [],
+    participantFields: fields,
+    relatedUserIds: ["member-x"],
+  });
+  assert.equal(merged.summary, initial.summary);
+  assert.equal(merged.commentCount, initial.commentCount);
+  assert.deepEqual(merged.description, initial.description);
+  assert.deepEqual(merged.attachments, initial.attachments);
+  assert.deepEqual(merged.participantFields, fields);
+  assert.deepEqual(merged.relatedUserIds, ["member-x"]);
+});

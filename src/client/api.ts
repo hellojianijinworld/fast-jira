@@ -10,6 +10,7 @@ import type { Filters } from "../domain/filters.ts";
 import { filterParameters, selectionParameter } from "../domain/filters.ts";
 import type { BranchDefaults, EditableField } from "../domain/issue.ts";
 import type { LogEntry } from "../domain/log.ts";
+import type { ParticipantChange } from "../domain/participants.ts";
 import { decodeSync, type KnownIssue } from "../domain/sync.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import {
@@ -25,6 +26,7 @@ import {
   decodeListPage,
   decodeLogEntry,
   decodeLookup,
+  decodeParticipantOptions,
   decodePriorities,
   decodeStatuses,
   decodeTypes,
@@ -176,6 +178,22 @@ export function createApi(fetcher: typeof fetch = fetch) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ key, field, value, expected }),
+      }),
+    participantOptions: (key: string) =>
+      request(
+        `/api/participant-options?${new URLSearchParams({ key })}`,
+        decodeParticipantOptions,
+      ),
+    participantUsers: (key: string, field: string, q: string) =>
+      request(
+        `/api/participant-users?${new URLSearchParams({ key, field, q })}`,
+        decodeUsers,
+      ),
+    updateParticipants: (key: string, changes: ParticipantChange[]) =>
+      request("/api/participants", decodeDetails, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, changes }),
       }),
     priorities: (key: string) =>
       request(

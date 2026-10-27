@@ -14,6 +14,7 @@ export interface TreeCallbacks {
   collapsedGroups?: Set<string>;
   onGroupChange?: () => void;
   site: string;
+  currentUserId?: string;
   copied: (message: string) => void;
   selectedKey: () => string;
   compactDone?: () => boolean;
@@ -281,6 +282,7 @@ export function createTreeView(
         const card = issueCard(issue, {
           ...(callbacks.favorites ? { favorites: callbacks.favorites } : {}),
           site: callbacks.site,
+          currentUserId: callbacks.currentUserId ?? "",
           copied: callbacks.copied,
           selectedKey: callbacks.selectedKey(),
           context: context(issue),
@@ -353,11 +355,8 @@ export function createTreeView(
               });
               placeholder.append(button);
               nested.append(placeholder);
-            } else if (!descendants.some(permitted))
-              nested.append(
-                element("li", "empty", "조건에 맞는 하위 이슈가 없습니다."),
-              );
-            item.append(nested);
+            }
+            if (nested.children.length) item.append(nested);
           }
         } else {
           row.append(decorated);

@@ -5,6 +5,7 @@ import { branchDefaults } from "../domain/filters.ts";
 import type { Issue } from "../domain/issue.ts";
 import { listCacheKey } from "../domain/list-snapshot.ts";
 import type { LogEntry } from "../domain/log.ts";
+import { withParticipantHydration } from "../domain/sync.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
@@ -339,6 +340,7 @@ export async function createApp(
       issue,
       issueCard(issue, {
         site: bootstrap.site,
+        currentUserId: bootstrap.me.accountId,
         copied: notice.show,
         statusOrder: catalog.statuses.map((status) => status.name),
         selectedKey,
@@ -554,6 +556,7 @@ export async function createApp(
             setFavorite(detailView?.issue ?? result.parent, selected);
           },
         ),
+        store.people,
       );
       const focusTitle =
         keyboard && detailHost.contains(document.activeElement);
@@ -606,6 +609,7 @@ export async function createApp(
     },
     favorites: cardFavorites,
     site: bootstrap.site,
+    currentUserId: bootstrap.me.accountId,
     copied: notice.show,
     catalog: () => catalog,
     decorate: bulk.decorate,
@@ -740,6 +744,7 @@ export async function createApp(
     host: root,
     api,
     site: bootstrap.site,
+    currentUserId: bootstrap.me.accountId,
     storage,
     scope: store.scope,
     unread: (value) => {
@@ -844,7 +849,8 @@ export async function createApp(
         ? list.filters
         : null,
     checkpoint: () => list.checkpoint,
-    syncKnown: () => list.syncKnown(),
+    syncKnown: () =>
+      withParticipantHydration(list.syncKnown(), [...favorites, ...recent]),
     versions: () => changedVersions,
     known: () => {
       const known = new Map(

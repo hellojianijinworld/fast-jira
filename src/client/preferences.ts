@@ -3,16 +3,18 @@ import type {
   BranchOverrides,
   Issue,
   SelectionFilter,
+  UserOption,
 } from "../domain/issue.ts";
 import {
   decodeViewportAnchors,
   type ViewportAnchor,
 } from "../domain/list-snapshot.ts";
+import { rememberParticipant } from "../domain/participants.ts";
 import { validSort } from "../domain/sort.ts";
 import type { CollapseState } from "../domain/tree.ts";
 import { isRecord } from "../domain/validation.ts";
 import { decodeViews, migrateViews, type ViewState } from "../domain/views.ts";
-import { decodeIssue, emptyIssue } from "../domain/wire.ts";
+import { decodeIssue, decodeUsers, emptyIssue } from "../domain/wire.ts";
 
 export type LocalStore = Pick<Storage, "getItem" | "setItem">;
 export interface Preferences {
@@ -248,8 +250,22 @@ export function createAccountStore(
       write(kind, found);
     return found;
   }
+  function recentPeople(): UserOption[] {
+    try {
+      return decodeUsers(read("people") ?? [])
+        .filter((user) => /^[A-Za-z0-9:-]{5,128}$/.test(user.id) && user.name)
+        .slice(0, 12);
+    } catch {
+      return [];
+    }
+  }
   return {
     scope,
+    people: {
+      recent: recentPeople,
+      remember: (user: UserOption) =>
+        write("people", rememberParticipant(recentPeople(), user)),
+    },
     position: (query: string): ViewportAnchor[] => {
       const value = read("position");
       return isRecord(value) && value.query === query

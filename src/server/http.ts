@@ -165,6 +165,14 @@ export function createHttpServer(
         return service.editOptions(issueKey());
       case "/api/transitions":
         return service.transitionOptions(issueKey());
+      case "/api/participant-options":
+        return service.participantOptions(issueKey());
+      case "/api/participant-users":
+        return service.participantUsers(
+          issueKey(),
+          params.get("field") ?? "",
+          params.get("q")?.trim() ?? "",
+        );
       case "/api/priority-options":
         return service.priorityOptions(issueKey());
       case "/api/comments":
@@ -207,6 +215,8 @@ export function createHttpServer(
           string("value"),
           input.expected === undefined ? undefined : string("expected"),
         );
+      case "/api/participants":
+        return service.updateParticipants(key(input.key), input.changes);
       case "/api/description":
         return service.updateDescription(
           key(input.key),

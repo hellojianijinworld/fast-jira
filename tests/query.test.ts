@@ -38,7 +38,7 @@ function setup(reply: (url: URL) => Response, fields: unknown[] = []) {
     },
   );
   return {
-    query: createJiraQuery(client, createJiraMetadata(client), ["협업 담당"]),
+    query: createJiraQuery(client, createJiraMetadata(client)),
     calls,
     fieldCount: () => fieldCalls,
   };
@@ -394,7 +394,8 @@ test("관계자 필드는 이름을 고정하지 않고 사용자 스키마를 �
     "another-id",
   ]);
   assert(searches[0]?.searchParams.get("fields")?.includes("customfield_42"));
-  assert(!searches[0]?.searchParams.get("fields")?.includes("customfield_44"));
+  assert(searches[0]?.searchParams.get("fields")?.includes("customfield_44"));
+  assert(!searches[0]?.searchParams.get("jql")?.includes("cf[44]"));
   await query.childrenPage("AA-1", options, "related", "recent");
   assert.equal(fieldCalls, 1);
 });
@@ -558,4 +559,31 @@ test("조상 조회의 서로 다른 묶음에서는 같은 커서를 정상적�
     calls.map((url) => url.searchParams.get("nextPageToken")),
     [null, "shared-cursor", null, "shared-cursor"],
   );
+});
+
+test("작업참여자 조회는 역할 이름 제한 없이 검색 가능한 모든 사람 필드를 쓴다", async () => {
+  const { query } = setup(
+    () => Response.json({ issues: [] }),
+    [
+      { id: "customfield_91", name: "동적 역할 A", schema: { type: "user" } },
+      {
+        id: "customfield_92",
+        name: "동적 역할 B",
+        schema: { type: "array", items: "user" },
+      },
+      {
+        id: "customfield_93",
+        name: "검색 불가",
+        searchable: false,
+        schema: { type: "user" },
+      },
+    ],
+  );
+  const conditions = (
+    await query.browseConditions({ ...options, scope: "related" })
+  ).join(" AND ");
+  assert(conditions.includes("assignee = currentUser()"));
+  assert(conditions.includes("cf[91] = currentUser()"));
+  assert(conditions.includes("cf[92] = currentUser()"));
+  assert(!conditions.includes("cf[93]"));
 });

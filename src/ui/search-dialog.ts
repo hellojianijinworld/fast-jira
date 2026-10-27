@@ -10,6 +10,7 @@ export function createSearchDialog(config: {
   host: HTMLElement;
   api: Pick<Api, "issues" | "lookup">;
   site: string;
+  currentUserId?: string;
   context: () => { projects: readonly string[] };
   recent: () => readonly Issue[];
   localIssues: () => readonly Issue[];
@@ -61,6 +62,7 @@ export function createSearchDialog(config: {
   function searchCard(issue: Issue) {
     return issueCard(issue, {
       site: config.site,
+      currentUserId: config.currentUserId ?? "",
       statusOrder: config.order(),
       onSelect: choose,
       size: "sm",

@@ -1,7 +1,9 @@
 import type { Api } from "../client/api.ts";
-import { actionButton, element, iconButton } from "./dom.ts";
+import type { IssueDetails } from "../domain/details.ts";
+import { textDifference } from "../domain/text-diff.ts";
+import { actionButton, element, iconButton, uiIcon } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
-import { avatar, relativeTime } from "./meta.ts";
+import { avatar, personPill, relativeTime } from "./meta.ts";
 
 const fieldLabels: Record<string, string> = {
   status: "상태",
@@ -17,7 +19,11 @@ const fieldLabels: Record<string, string> = {
   IssueParentAssociation: "상위 이슈",
 };
 /** 변경 전에는 읽은 페이지를 재사용하고, 수정 뒤에는 다음 열기에 최신 페이지부터 확인한다. */
-export function issueHistory(api: Pick<Api, "history">, key: string) {
+export function issueHistory(
+  api: Pick<Api, "history">,
+  key: string,
+  reporter?: Pick<IssueDetails, "reporter" | "reporterAvatar" | "created">,
+) {
   const trigger = actionButton("기록", "history", {
     size: "sm",
     variant: "outline",
@@ -57,7 +63,62 @@ export function issueHistory(api: Pick<Api, "history">, key: string) {
   const entries = element("div"),
     message = element("p", "empty"),
     more = actionButton("이전 기록", "chevron-right");
-  panel.append(head, entries, message, more);
+  const scroll = element("div", "history-scroll");
+  const timeline = element("div"),
+    comparison = element("section", "history-diff");
+  comparison.hidden = true;
+  timeline.append(entries, message, more);
+  scroll.append(timeline, comparison);
+  let previousScroll = 0;
+  let comparisonTrigger: HTMLButtonElement | undefined;
+  const back = actionButton("변경 기록으로", "undo-2", {
+    size: "sm",
+    variant: "ghost",
+  });
+  function closeComparison() {
+    comparison.hidden = true;
+    timeline.hidden = false;
+    scroll.scrollTop = previousScroll;
+    comparisonTrigger?.focus({ preventScroll: true });
+  }
+  back.addEventListener("click", closeComparison);
+  function showComparison(
+    trigger: HTMLButtonElement,
+    label: string,
+    from: string,
+    to: string,
+  ) {
+    previousScroll = scroll.scrollTop;
+    comparisonTrigger = trigger;
+    const diff = textDifference(from, to);
+    comparison.replaceChildren(back, element("h4", "", `${label} 변경 내용`));
+    for (const [title, value, changed, tag] of [
+      ["변경 전", from, diff.before, "del"],
+      ["변경 후", to, diff.after, "ins"],
+    ] as const) {
+      const block = element("section", "history-diff-block");
+      const text = element("pre");
+      text.append(diff.prefix, element(tag, "", changed), diff.suffix);
+      if (!value) text.replaceChildren(element("span", "muted", "없음"));
+      block.append(element("h5", "", title), text);
+      comparison.append(block);
+    }
+    timeline.hidden = true;
+    comparison.hidden = false;
+    scroll.scrollTop = 0;
+    back.focus();
+  }
+  panel.append(head, scroll);
+  if (reporter) {
+    const footer = element("footer", "history-footer");
+    footer.append(
+      element("small", "field-label", "보고자"),
+      personPill({ name: reporter.reporter, avatar: reporter.reporterAvatar }),
+    );
+    if (reporter.created)
+      footer.append(relativeTime(reporter.created, "", "보고 시점"));
+    panel.append(footer);
+  }
   let before: number | null = null,
     loaded = false,
     loading = false,
@@ -89,12 +150,19 @@ export function issueHistory(api: Pick<Api, "history">, key: string) {
         );
         row.append(author);
         for (const change of entry.changes) {
-          const value = element("p", "history-change");
+          const label = fieldLabels[change.field] ?? change.field;
+          const value = element("button", "history-change");
+          value.type = "button";
+          value.setAttribute("aria-label", `${label} 변경 비교`);
           value.append(
-            element("small", "", fieldLabels[change.field] ?? change.field),
-            element("span", "", change.from || "없음"),
-            element("span", "", "→"),
-            element("span", "", change.to || "없음"),
+            element("small", "history-field", label),
+            element("span", "history-preview", change.from || "없음"),
+            element("span", "history-arrow", "→"),
+            element("span", "history-preview", change.to || "없음"),
+            uiIcon("chevron-right"),
+          );
+          value.addEventListener("click", () =>
+            showComparison(value, label, change.from, change.to),
           );
           row.append(value);
         }
@@ -125,6 +193,7 @@ export function issueHistory(api: Pick<Api, "history">, key: string) {
       panel.hidePopover();
       return;
     }
+    if (!comparison.hidden) closeComparison();
     Object.assign(
       panel.style,
       popoverPosition(trigger.getBoundingClientRect(), {

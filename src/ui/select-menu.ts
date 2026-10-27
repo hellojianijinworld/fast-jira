@@ -8,6 +8,7 @@ export interface SelectConfig {
   beforeOpen?: () => Promise<boolean | undefined>;
   onSearch?: (query: string) => Promise<void>;
   searchLabel?: string;
+  focusSearch?: boolean;
 }
 export interface SelectMenu {
   trigger: HTMLButtonElement;
@@ -122,12 +123,16 @@ export function enhanceSelect(
     if (isOpen()) render();
   }
   function render() {
+    const focused = choices.contains(document.activeElement)
+      ? (document.activeElement as HTMLElement).dataset.value
+      : undefined;
     choices.replaceChildren();
     for (const option of Array.from(select.options).filter(
       (option) => !option.hidden,
     )) {
       const choice = element("button", "select-option");
       choice.type = "button";
+      choice.dataset.value = option.value;
       choice.setAttribute("role", "option");
       choice.setAttribute("aria-selected", String(option.selected));
       choice.disabled = option.disabled;
@@ -150,6 +155,8 @@ export function enhanceSelect(
         { signal },
       );
       choices.append(choice);
+      if (focused === option.value && !choice.disabled)
+        choice.focus({ preventScroll: true });
     }
   }
   function show(rect: PopoverRect, focus = true) {
@@ -166,7 +173,7 @@ export function enhanceSelect(
     if (!isOpen()) panel.showPopover();
     if (focus)
       (
-        searchInput ??
+        (config.focusSearch !== false ? searchInput : undefined) ??
         choices.querySelector<HTMLButtonElement>(
           '[aria-selected="true"]:not(:disabled)',
         ) ??

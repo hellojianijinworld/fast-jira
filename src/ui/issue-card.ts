@@ -1,18 +1,18 @@
 import type { Issue } from "../domain/issue.ts";
+import {
+  issueParticipantFields,
+  participantUsers,
+} from "../domain/participants.ts";
 import { issueKeyCopy } from "./clipboard.ts";
 import { element, uiIcon } from "./dom.ts";
 import { favoriteButton } from "./favorite-button.ts";
-import {
-  dueTime,
-  issueTypeIcon,
-  personPill,
-  priorityPill,
-  statusPill,
-} from "./meta.ts";
+import { dueTime, issueTypeIcon, priorityPill, statusPill } from "./meta.ts";
+import { participantAvatars } from "./participant-avatars.ts";
 import type { ComponentSize } from "./theme.ts";
 
 export interface CardOptions {
   size?: ComponentSize;
+  currentUserId?: string;
   selectedKey?: string;
   context?: string;
   statusOrder: readonly string[];
@@ -75,10 +75,12 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
   )
     meta.append(priorityPill(issue));
   if (issue.dueDate) meta.append(dueTime(issue.dueDate, options.now));
-  if (issue.assignee)
-    meta.append(
-      personPill({ name: issue.assignee, avatar: issue.assigneeAvatar }),
-    );
+  const participants = participantUsers(
+    issueParticipantFields(issue),
+    options.currentUserId,
+  );
+  if (participants.length)
+    meta.append(participantAvatars(participants, options.currentUserId));
   if (issue.status) meta.append(statusPill(issue.status, options.statusOrder));
   const main = element("span", "list-main");
   main.append(identity, title);

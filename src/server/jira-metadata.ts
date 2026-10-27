@@ -5,6 +5,7 @@ import type {
   StatusOption,
 } from "../domain/catalog.ts";
 import type { Issue, IssueType, UserOption } from "../domain/issue.ts";
+import type { ParticipantDefinition } from "../domain/participants.ts";
 import { record, requiredString } from "../domain/validation.ts";
 import { createPromiseCache } from "./cache.ts";
 import { type JiraClient, JiraError } from "./jira-client.ts";
@@ -13,6 +14,7 @@ import {
   decodeCurrentUser,
   decodeIssueType,
   decodePage,
+  decodeParticipantDefinition,
   decodePriority,
   decodeProject,
   decodeUsers,
@@ -38,6 +40,25 @@ export function createJiraMetadata(
   const cacheTypes = createPromiseCache<IssueType[]>(now);
   const cacheDefaults = createPromiseCache<string>(now);
   const cacheStatuses = createPromiseCache<StatusOption[]>(now);
+  const cachePeopleFields =
+    createPromiseCache<
+      (ParticipantDefinition & {
+        searchable: boolean;
+      })[]
+    >(now);
+  function peopleFields() {
+    return cachePeopleFields("all", () =>
+      client.json("/rest/api/3/field", (value) =>
+        arrayValue(value).flatMap((value) => {
+          const raw = record(value);
+          const field = decodeParticipantDefinition(stringValue(raw.id), raw);
+          return field
+            ? [{ ...field, searchable: raw.searchable !== false }]
+            : [];
+        }),
+      ),
+    );
+  }
   let selfPromise: Promise<CurrentUser> | undefined;
   let verifyingSelf = false;
   function currentUser(refresh = false): Promise<CurrentUser> {
@@ -242,6 +263,7 @@ export function createJiraMetadata(
     });
   }
   return {
+    peopleFields,
     currentUser,
     authenticate: currentUser,
     projects,

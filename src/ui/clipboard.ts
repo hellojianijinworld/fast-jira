@@ -45,7 +45,7 @@ export async function copyText(
   }
 }
 
-/** 목록과 상세의 키는 같은 복사 동작과 즉시 툴팁을 사용한다. */
+/** 목록과 상세의 키는 같은 복사 동작과 공통 툴팁을 사용한다. */
 export function issueKeyCopy(
   key: string,
   url: string | null,

@@ -56,6 +56,7 @@ export function createCommandPalette(config: {
     | "voiceStop"
   >;
   site: string;
+  currentUserId?: string;
   context: () => AssistantContext;
   recent: () => readonly Issue[];
   localIssues: () => readonly Issue[];
@@ -230,6 +231,7 @@ export function createCommandPalette(config: {
     host: config.host,
     api: config.api,
     site: config.site,
+    currentUserId: config.currentUserId ?? "",
     context: config.context,
     recent: config.recent,
     localIssues: config.localIssues,

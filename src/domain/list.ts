@@ -1,4 +1,5 @@
 import type { ChildPage, ChildSettings, Issue } from "./issue.ts";
+import { issueParticipantFields, participantUsers } from "./participants.ts";
 import { sortRules } from "./sort.ts";
 
 export function passesChild(
@@ -8,7 +9,9 @@ export function passesChild(
 ): boolean {
   const accounts =
     settings.people === "related"
-      ? (issue.relatedUserIds ?? [issue.assigneeId]).filter(Boolean)
+      ? issue.participantFields
+        ? participantUsers(issueParticipantFields(issue)).map((user) => user.id)
+        : (issue.relatedUserIds ?? [issue.assigneeId]).filter(Boolean)
       : [issue.assigneeId].filter(Boolean);
   const peoplePass =
     settings.assignees !== null

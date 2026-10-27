@@ -40,6 +40,7 @@ import { createNotice } from "../src/ui/notice.ts";
 import { enhanceSelect } from "../src/ui/select-menu.ts";
 import { settingsContent } from "../src/ui/settings.ts";
 import type { ComponentSize } from "../src/ui/theme.ts";
+import { startTooltips, TOOLTIP_DELAY_MS } from "../src/ui/tooltip.ts";
 
 const results = document.querySelector("#results");
 const fixture = document.querySelector("#fixture");
@@ -554,7 +555,7 @@ await check("카드는 댓글을 앞에 배치하고 기본 우선순위·미지
   );
   const due = badges.findIndex((badge) => badge.tagName === "TIME");
   const person = badges.findIndex((badge) =>
-    badge.classList.contains("person-pill"),
+    badge.classList.contains("participant-avatars"),
   );
   assert(due >= 0 && person > due, "마감일·담당자 배지 순서 오류");
   container.append(
@@ -1572,8 +1573,9 @@ await check(
   },
 );
 await check(
-  "티켓 번호는 아이콘 없이 즉시 툴팁을 표시하고 복사 표시가 배치를 바꾸지 않는다",
-  () => {
+  "티켓 번호는 아이콘 없이 공통 툴팁을 표시하고 복사 표시가 배치를 바꾸지 않는다",
+  async () => {
+    const stop = startTooltips();
     const host = element("div");
     const copy = issueKeyCopy(
       "CLIPO-820",
@@ -1585,7 +1587,7 @@ await check(
       assert(copy.querySelector(".ui-icon") === null, "복사 아이콘이 남음");
       assert(
         copy.firstChild !== null && !copy.title,
-        "번호 또는 즉시 툴팁 구성 누락",
+        "번호 또는 툴팁 구성 누락",
       );
       const range = document.createRange();
       range.selectNode(copy.firstChild);
@@ -1594,21 +1596,18 @@ await check(
         Math.abs(before.width - range.getBoundingClientRect().width) < 1,
         "복사 표시 공간이 예약됨",
       );
-      copy.focus();
-      const tip = getComputedStyle(copy, "::after");
-      assert(
-        tip.content.includes("링크 복사") &&
-          tip.visibility === "visible" &&
-          tip.opacity === "1",
-        "즉시 복사 툴팁 누락",
-      );
-      assert(tip.transitionDelay === "0s", "툴팁 표시가 지연됨");
+      await wait(50);
+      copy.focus({ preventScroll: true });
+      await wait(TOOLTIP_DELAY_MS + 30);
+      const tip = document.querySelector(".ui-tooltip:popover-open");
+      assert(tip?.textContent === "링크 복사", "공통 복사 툴팁 누락");
       const after = copy.getBoundingClientRect();
       assert(
         after.width === before.width && after.height === before.height,
         "툴팁 표시로 배치 변경",
       );
     } finally {
+      stop();
       host.remove();
     }
   },
@@ -3314,7 +3313,7 @@ await check(
               ...grid.querySelectorAll<HTMLElement>(".list-item"),
             ].map((tile) => tile.getBoundingClientRect().height);
             assert(
-              heights.every((height) => Math.abs(height - 56) < 1),
+              Math.max(...heights) - Math.min(...heights) < 1,
               "완료 카드가 제목 길이와 행에 따라 높이가 달라진다",
             );
           }
@@ -3324,6 +3323,12 @@ await check(
         if (theme === undefined) delete document.documentElement.dataset.theme;
         else document.documentElement.dataset.theme = theme;
       }
+      list.items.delete(child.key);
+      view.render();
+      assert(
+        !host.querySelector(".tree-children .empty"),
+        "필터로 비어 있는 하위 목록이 안내 행을 차지한다",
+      );
       groupPreview = host.cloneNode(true) as HTMLElement;
       groupPreview.id = "group-layout-preview";
       groupPreview.style.width = "min(100%, 760px)";

@@ -13,6 +13,7 @@ export interface KnownIssue {
   updated: string;
   parent?: string;
   project?: string;
+  needsParticipants?: boolean;
 }
 export interface SyncBatch extends ChangeBatch {
   removed: string[];
@@ -45,8 +46,30 @@ export function knownIssues(issues: Iterable<Issue>): KnownIssue[] {
           updated: issue.updated,
           parent: issue.parent,
           project: issue.project,
+          ...(issue.participantFields === undefined
+            ? { needsParticipants: true }
+            : {}),
         },
       ]),
     ).values(),
   ];
+}
+
+/** 목록 밖에 저장된 카드의 예전 캐시도 기존 묶음 검증에 포함한다. */
+export function withParticipantHydration(
+  known: KnownIssue[],
+  saved: Iterable<Issue>,
+): KnownIssue[] {
+  const merged = new Map(known.map((issue) => [issue.id, issue]));
+  for (const issue of knownIssues(saved)) {
+    if (merged.size >= 10000) break;
+    if (
+      issue.needsParticipants &&
+      !merged.has(issue.id) &&
+      /^\d{1,20}$/.test(issue.id) &&
+      Number.isFinite(Date.parse(issue.updated))
+    )
+      merged.set(issue.id, issue);
+  }
+  return [...merged.values()];
 }

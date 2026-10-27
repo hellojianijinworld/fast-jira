@@ -1,15 +1,11 @@
 import { MAX_FILTER_SELECTION } from "../domain/filters.ts";
 import type { Issue, PeopleFilter } from "../domain/issue.ts";
+import type { ParticipantDefinition } from "../domain/participants.ts";
 import { sortOrder, sortRules, validSort } from "../domain/sort.ts";
 import { parseIssueKey, record } from "../domain/validation.ts";
 import { createPromiseCache } from "./cache.ts";
 import { type JiraClient, JiraError } from "./jira-client.ts";
-import {
-  arrayValue,
-  decodeIssue,
-  optionalRecord,
-  stringValue,
-} from "./jira-decode.ts";
+import { arrayValue, decodeIssue, stringValue } from "./jira-decode.ts";
 import { type createJiraMetadata, projectKeys } from "./jira-metadata.ts";
 
 export interface BrowseOptions {
@@ -84,38 +80,32 @@ export function assigneeCondition(
     ")"
   );
 }
-function decodeIssuePage(value: unknown, fields: readonly string[]): IssuePage {
+function decodeIssuePage(
+  value: unknown,
+  fields: readonly string[],
+  definitions: readonly ParticipantDefinition[],
+): IssuePage {
   const page = record(value);
   return {
-    issues: arrayValue(page.issues).map((issue) => decodeIssue(issue, fields)),
+    issues: arrayValue(page.issues).map((issue) =>
+      decodeIssue(issue, fields, definitions),
+    ),
     nextPageToken: stringValue(page.nextPageToken) || null,
   };
 }
 export function createJiraQuery(
   client: JiraClient,
   metadata: ReturnType<typeof createJiraMetadata>,
-  relatedFieldNames?: readonly string[],
 ) {
   const fieldCache = createPromiseCache<string[]>();
   function relatedFields(): Promise<string[]> {
-    return fieldCache("people-fields", () =>
-      client.json("/rest/api/3/field", (value) =>
-        arrayValue(value).flatMap((value) => {
-          const field = record(value),
-            schema = optionalRecord(field.schema);
-          if (
-            (relatedFieldNames !== undefined &&
-              !relatedFieldNames.includes(stringValue(field.name))) ||
-            field.searchable === false ||
-            (schema.type !== "user" && schema.items !== "user")
-          )
-            return [];
-          const id = stringValue(field.id).match(/^customfield_(\d+)$/)?.[1];
-          return id ? [`customfield_${id}`] : [];
-        }),
-      ),
+    return fieldCache("people-fields", async () =>
+      (await metadata.peopleFields())
+        .filter((field) => field.searchable)
+        .map((field) => field.id),
     );
   }
+
   async function browseConditions(options: BrowseOptions): Promise<string[]> {
     const { q, projects, scope, excludeDone, statuses, assignees } = options;
     if (q.length > 100) throw invalid("검색어가 너무 깁니다.");
@@ -155,15 +145,18 @@ export function createJiraQuery(
     token = "",
     maxResults = 100,
   ): Promise<IssuePage> {
-    const fields = await relatedFields();
+    const [fields, definitions] = await Promise.all([
+      relatedFields(),
+      metadata.peopleFields(),
+    ]);
     const params = new URLSearchParams({
       jql,
-      fields: [listFields, ...fields].join(","),
+      fields: [listFields, ...definitions.map((field) => field.id)].join(","),
       maxResults: String(maxResults),
     });
     if (token) params.set("nextPageToken", token);
     return client.json(`/rest/api/3/search/jql?${params}`, (value) =>
-      decodeIssuePage(value, fields),
+      decodeIssuePage(value, fields, definitions),
     );
   }
   async function sortedPage(

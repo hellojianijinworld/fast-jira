@@ -4,6 +4,10 @@ import type {
   ProjectOption,
 } from "../domain/catalog.ts";
 import type { Issue, IssueType, UserOption } from "../domain/issue.ts";
+import type {
+  ParticipantDefinition,
+  ParticipantField,
+} from "../domain/participants.ts";
 import { parseIssueKey, record, requiredString } from "../domain/validation.ts";
 
 // 요청한 선택 필드는 없거나 null일 수 있다. 존재하는 잘못된 타입은 묵인하지 않는다.
@@ -102,6 +106,7 @@ export function decodePage<T>(
 export function decodeIssue(
   value: unknown,
   relatedFields?: readonly string[],
+  participantDefinitions?: readonly ParticipantDefinition[],
 ): Issue {
   const issue = record(value);
   const key = parseIssueKey(issue.key, "");
@@ -149,6 +154,14 @@ export function decodeIssue(
             ),
           ],
         }),
+    ...(participantDefinitions === undefined
+      ? {}
+      : {
+          participantFields: decodeParticipantFields(
+            fields,
+            participantDefinitions,
+          ),
+        }),
     assigneeAvatar: avatarValue(assignee.avatarUrls),
     updated: stringValue(fields.updated),
     dueDate: stringValue(fields.duedate),
@@ -158,4 +171,42 @@ export function decodeIssue(
     hasChildren:
       subtasks.length > 0 || (hierarchyLevel !== null && hierarchyLevel > 0),
   };
+}
+
+export function decodeParticipantDefinition(
+  id: string,
+  value: unknown,
+): ParticipantDefinition | null {
+  const field = record(value),
+    schema = optionalRecord(field.schema);
+  if (
+    !/^customfield_\d+$/.test(id) ||
+    (schema.type !== "user" &&
+      !(schema.type === "array" && schema.items === "user"))
+  )
+    return null;
+  return {
+    id,
+    name: stringValue(field.name, id),
+    multiple: schema.type === "array",
+  };
+}
+
+export function decodeParticipantFields(
+  fields: Record<string, unknown>,
+  definitions: readonly ParticipantDefinition[],
+): ParticipantField[] {
+  return definitions
+    .filter((field) => Object.hasOwn(fields, field.id))
+    .map((field) => ({
+      id: field.id,
+      name: field.name,
+      multiple: field.multiple,
+      users: (fields[field.id] == null
+        ? []
+        : field.multiple
+          ? arrayValue(fields[field.id])
+          : [fields[field.id]]
+      ).map(decodeUser),
+    }));
 }

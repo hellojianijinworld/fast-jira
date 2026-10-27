@@ -86,6 +86,21 @@ export function createIssueEditor(
   }
   return {
     change,
+    mergeParticipants(updated: IssueDetails) {
+      issue = {
+        ...issue,
+        assignee: updated.assignee,
+        assigneeId: updated.assigneeId,
+        assigneeAvatar: updated.assigneeAvatar,
+        participantFields: updated.participantFields ?? [],
+        ...(updated.relatedUserIds === undefined
+          ? {}
+          : { relatedUserIds: updated.relatedUserIds }),
+        updated: updated.updated,
+      };
+      callbacks.state();
+      return issue;
+    },
     mergeContent(
       patch: Partial<Pick<IssueDetails, "description" | "commentCount">>,
     ) {

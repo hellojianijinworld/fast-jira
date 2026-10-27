@@ -56,6 +56,7 @@
   --line-height-heading: 1.45;
   --opacity-disabled: 0.55;
   --text-on-accent: #fff;
+  --favorite: #f1d84b;
   --shadow-dialog: 0 24px 80px #0003;
   --shadow-popover: 0 12px 36px #0003;
   --shadow-panel: 0 12px 36px #0002;
@@ -72,6 +73,7 @@
 /* 색상은 용도별 의미 토큰으로 라이트·다크를 교체한다. */
 :root {
   color-scheme: light;
+  --favorite-hover: #8a7900;
   --page: #f6f7f8;
   --surface: #fff;
   --surface-alt: #fff;
@@ -90,6 +92,12 @@
   --blue-soft: #e9f2ff;
   --blue-text: #22539a;
   --status-bg: #eef1f5;
+  --selected-status-bg: #dbe5f2;
+  --selected-person-bg: #d6e4ff;
+  --selected-date-bg: #ffe4b0;
+  --selected-comment-bg: #cee9d9;
+  --badge-outline-strength: 14%;
+  --selected-badge-outline-strength: 32%;
   --person-bg: #eaf2ff;
   --date-bg: #fff3e0;
   --date-text: #755008;
@@ -102,6 +110,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --favorite-hover: #f4dc67;
   --page: #141a22;
   --surface: #202936;
   --surface-alt: #1c2531;
@@ -120,6 +129,12 @@
   --blue-soft: #273e5b;
   --blue-text: #bed7ff;
   --status-bg: #344152;
+  --selected-status-bg: #455b78;
+  --selected-person-bg: #3b5c86;
+  --selected-date-bg: #705424;
+  --selected-comment-bg: #326650;
+  --badge-outline-strength: 18%;
+  --selected-badge-outline-strength: 38%;
   --person-bg: #273e5b;
   --date-bg: #4b3c26;
   --date-text: #f2d18e;
@@ -165,9 +180,9 @@
   --sm-icon-button-size: 32px;
   --sm-control-icon-size: 16px;
   --sm-option-height: 32px;
-  --sm-card-height: 34px;
-  --sm-card-margin: 0;
-  --sm-card-padding: 4px 8px;
+  --sm-card-height: 30px;
+  --sm-card-margin: 1px 0;
+  --sm-card-padding: 3px 7px;
   --sm-card-font-size: var(--font-size-12);
   --sm-card-line-height: 22px;
   --sm-card-meta-font-size: var(--font-size-11);
@@ -180,6 +195,7 @@
   --sm-card-badge-padding: 1px 5px;
   --sm-card-badge-radius: var(--radius-4);
   --sm-card-icon-size: 14px;
+  --sm-participant-avatar-size: 20px;
   --sm-card-ui-icon-size: 12px;
   --sm-card-dot-size: 6px;
   --md-button-height: 34px;
@@ -190,9 +206,9 @@
   --md-icon-button-size: 34px;
   --md-control-icon-size: 18px;
   --md-option-height: 36px;
-  --md-card-height: 42px;
-  --md-card-margin: 3px 0;
-  --md-card-padding: 7px 11px;
+  --md-card-height: 38px;
+  --md-card-margin: 2px 0;
+  --md-card-padding: 5px 9px;
   --md-card-font-size: var(--font-size-14);
   --md-card-line-height: 26px;
   --md-card-meta-font-size: var(--font-size-12);
@@ -205,6 +221,7 @@
   --md-card-badge-padding: 2px 7px;
   --md-card-badge-radius: var(--radius-6);
   --md-card-icon-size: 18px;
+  --md-participant-avatar-size: 24px;
   --md-card-ui-icon-size: 13px;
   --md-card-dot-size: 8px;
 }
@@ -232,6 +249,7 @@
   --card-badge-padding: var(--md-card-badge-padding);
   --card-badge-radius: var(--md-card-badge-radius);
   --card-icon-size: var(--md-card-icon-size);
+  --participant-avatar-size: var(--md-participant-avatar-size);
   --card-ui-icon-size: var(--md-card-ui-icon-size);
   --card-dot-size: var(--md-card-dot-size);
 }
@@ -279,6 +297,7 @@
     --card-badge-padding: var(--sm-card-badge-padding);
     --card-badge-radius: var(--sm-card-badge-radius);
     --card-icon-size: var(--sm-card-icon-size);
+    --participant-avatar-size: var(--sm-participant-avatar-size);
     --card-ui-icon-size: var(--sm-card-ui-icon-size);
     --card-dot-size: var(--sm-card-dot-size);
   }
@@ -307,6 +326,7 @@
   --card-badge-padding: var(--sm-card-badge-padding);
   --card-badge-radius: var(--sm-card-badge-radius);
   --card-icon-size: var(--sm-card-icon-size);
+  --participant-avatar-size: var(--sm-participant-avatar-size);
   --card-ui-icon-size: var(--sm-card-ui-icon-size);
   --card-dot-size: var(--sm-card-dot-size);
 }
@@ -334,6 +354,7 @@
   --card-badge-padding: var(--md-card-badge-padding);
   --card-badge-radius: var(--md-card-badge-radius);
   --card-icon-size: var(--md-card-icon-size);
+  --participant-avatar-size: var(--md-participant-avatar-size);
   --card-ui-icon-size: var(--md-card-ui-icon-size);
   --card-dot-size: var(--md-card-dot-size);
 }

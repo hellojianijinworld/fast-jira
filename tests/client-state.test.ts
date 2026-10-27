@@ -801,3 +801,35 @@ test("목록 묶음 접힘은 계정별로 저장하고 티켓 펼침과 분리�
   );
   assert.equal(store.tree().states.size, 0);
 });
+
+test("최근 선택한 사람은 계정·사이트별로 중복 없이 순서를 유지하고 12명까지만 저장한다", () => {
+  const data = storage();
+  const first = createAccountStore(data, "one.atlassian.net", "member-a");
+  for (let index = 0; index < 15; index++)
+    first.people.remember({
+      id: `member-${index}`,
+      name: `사람 ${index}`,
+      avatar: "",
+    });
+  first.people.remember({ id: "member-9", name: "갱신된 이름", avatar: "" });
+  const reopened = createAccountStore(data, "one.atlassian.net", "member-a");
+  assert.equal(reopened.people.recent().length, 12);
+  assert.equal(reopened.people.recent()[0]?.name, "갱신된 이름");
+  assert.equal(
+    new Set(reopened.people.recent().map((user) => user.id)).size,
+    12,
+  );
+  assert.deepEqual(
+    createAccountStore(data, "one.atlassian.net", "member-b").people.recent(),
+    [],
+  );
+  assert.deepEqual(
+    createAccountStore(data, "two.atlassian.net", "member-a").people.recent(),
+    [],
+  );
+  data.setItem(
+    "fastJira:people:one.atlassian.net:member-a",
+    '{"invalid":true}',
+  );
+  assert.deepEqual(reopened.people.recent(), []);
+});

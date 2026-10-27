@@ -19,13 +19,6 @@ export async function startApi() {
       site: process.env.JIRA_SITE ?? "",
       email: process.env.JIRA_EMAIL ?? "",
     },
-    ...(process.env.JIRA_RELATED_FIELDS === undefined
-      ? {}
-      : {
-          relatedFieldNames: process.env.JIRA_RELATED_FIELDS.split(",")
-            .map((name) => name.trim())
-            .filter(Boolean),
-        }),
     loggingEnabled: () => listeners.size > 0,
     onLog: (entry) => {
       for (const listener of listeners) listener(entry);

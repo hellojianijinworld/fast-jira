@@ -13,7 +13,6 @@ export function createConnection(options: {
   credentials: Credentials | null;
   defaults: ConnectionSettings;
   fetcher?: typeof fetch;
-  relatedFieldNames?: readonly string[];
   onLog?: (entry: LogEntry) => void;
   loggingEnabled?: () => boolean;
   persist?: (credentials: Credentials) => Promise<void>;

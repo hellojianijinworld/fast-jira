@@ -1,3 +1,5 @@
+import type { ParticipantField } from "./participants.ts";
+
 /** 브라우저와 서버가 공유하는 값이다. Jira 응답 검증 후 이 형태로 정규화한다. */
 export interface Issue {
   id: string;
@@ -20,6 +22,7 @@ export interface Issue {
   assignee: string;
   assigneeId: string;
   relatedUserIds?: readonly string[];
+  participantFields?: ParticipantField[];
   assigneeAvatar: string;
   updated: string;
   dueDate: string;

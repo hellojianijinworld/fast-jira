@@ -69,11 +69,19 @@ export function createJiraSync(
           id = requiredString(issue.id, "이슈 ID");
         if (!/^\d{1,20}$/.test(id)) throw new Error();
         const updated = requiredString(issue.updated, "수정 시각");
-        if (!Number.isFinite(Date.parse(updated))) throw new Error();
+        if (
+          !Number.isFinite(Date.parse(updated)) ||
+          (issue.needsParticipants !== undefined &&
+            typeof issue.needsParticipants !== "boolean")
+        )
+          throw new Error();
         return {
           id,
           key: parseIssueKey(issue.key, ""),
           updated,
+          ...(issue.needsParticipants === true
+            ? { needsParticipants: true }
+            : {}),
           parent:
             issue.parent === undefined
               ? ""
@@ -141,26 +149,33 @@ export function createJiraSync(
         if (current.key !== before.key) removed.push(before.key);
         const delta = byId.get(before.id);
         if (
-          (current.updated !== before.updated ||
+          (before.needsParticipants &&
+            delta?.participantFields === undefined) ||
+          ((current.updated !== before.updated ||
             current.key !== before.key ||
             current.parent !== before.parent ||
             current.project !== before.project) &&
-          (!delta ||
-            Date.parse(delta.updated) < Date.parse(current.updated) ||
-            delta.key !== current.key ||
-            delta.parent !== current.parent ||
-            delta.project !== current.project)
+            (!delta ||
+              Date.parse(delta.updated) < Date.parse(current.updated) ||
+              delta.key !== current.key ||
+              delta.parent !== current.parent ||
+              delta.project !== current.project))
         )
           changed.push(before.id);
       }
     }
-    const related = await query.relatedFieldIds();
+    const [related, definitions] = await Promise.all([
+      query.relatedFieldIds(),
+      metadata.peopleFields(),
+    ]);
     for (let offset = 0; offset < changed.length; offset += 100) {
       const raw = await fetchIssues(changed.slice(offset, offset + 100), [
         ...listFields.split(","),
-        ...related,
+        ...definitions.map((field) => field.id),
       ]);
-      const issues = raw.map((value) => decodeIssue(value, related));
+      const issues = raw.map((value) =>
+        decodeIssue(value, related, definitions),
+      );
       const matches = new Set<string>();
       for (let index = 0; index < issues.length; index += 50) {
         const result = await query.matchesIssues(
