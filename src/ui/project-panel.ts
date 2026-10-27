@@ -4,7 +4,7 @@ import { filterChecklist } from "./filter-checklist.ts";
 import { popoverPosition } from "./geometry.ts";
 import { projectIcon } from "./meta.ts";
 
-/** 프로젝트는 저장된 뷰와 분리된 전체 목록의 조회 범위다. */
+/** 현재 탭의 프로젝트 조회 범위를 편집한다. */
 export function createProjectPanel(options: {
   projects: () => readonly ProjectOption[];
   selected: () => readonly string[];

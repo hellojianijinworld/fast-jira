@@ -15,6 +15,11 @@ import type { CollapseState } from "../domain/tree.ts";
 import { isRecord } from "../domain/validation.ts";
 import { decodeViews, migrateViews, type ViewState } from "../domain/views.ts";
 import { decodeIssue, decodeUsers, emptyIssue } from "../domain/wire.ts";
+import {
+  decodeWorkspaces,
+  initialWorkspaces,
+  type WorkspaceViews,
+} from "../domain/workspace-views.ts";
 
 export type LocalStore = Pick<Storage, "getItem" | "setItem">;
 export interface Preferences {
@@ -271,6 +276,15 @@ export function createAccountStore(
       decodeViews(read("views")) ?? migrateViews(filters, branches()),
     saveViews: (state: ViewState) =>
       storage.setItem(`fastJira:views:${scope}`, JSON.stringify(state)),
+    workspaces: (
+      projects: readonly string[],
+      selected: readonly string[],
+      views: ViewState,
+    ) =>
+      decodeWorkspaces(read("workspaces"), projects) ??
+      initialWorkspaces(selected, views),
+    saveWorkspaces: (state: WorkspaceViews) =>
+      storage.setItem(`fastJira:workspaces:${scope}`, JSON.stringify(state)),
     filters,
     tree,
     collapsedGroups: (): Set<string> => {

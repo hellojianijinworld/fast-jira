@@ -7,6 +7,14 @@ import type { Issue } from "../domain/issue.ts";
 import { listCacheKey } from "../domain/list-snapshot.ts";
 import { withParticipantHydration } from "../domain/sync.ts";
 import { parseIssueKey } from "../domain/validation.ts";
+import {
+  activeWorkspace,
+  deleteWorkspace,
+  saveWorkspace,
+  selectWorkspace,
+  type WorkspaceView,
+  type WorkspaceViews,
+} from "../domain/workspace-views.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
@@ -31,6 +39,7 @@ import {
   captureViewportAnchor,
   restoreViewportAnchor,
 } from "../ui/viewport-anchor.ts";
+import { createWorkspaceNavigation } from "../ui/workspace-views.ts";
 import { createActivityController } from "./activity-controller.ts";
 import { type Api, ApiError } from "./api.ts";
 import type { ListCache } from "./list-cache.ts";
@@ -44,6 +53,7 @@ import {
 } from "./preferences.ts";
 import { createRefreshLoop } from "./refresh-loop.ts";
 import { createViewController } from "./view-controller.ts";
+import { createViewOptions } from "./view-options.ts";
 
 /** 시작과 화면 간 연결만 담당한다. 필터와 상세의 판단은 각 모듈에서 검증한다. */
 export async function createApp(
@@ -129,13 +139,32 @@ export async function createApp(
   const collapsedGroups = store.collapsedGroups();
   const changedVersions = new Map<string, number>();
   const saved = store.filters(bootstrap.projects.map((project) => project.key));
+  let workspaces = store.workspaces(
+    bootstrap.projects.map((project) => project.key),
+    saved.filters.projects,
+    store.views(saved.filters),
+  );
+  let workspaceNavigation:
+    | ReturnType<typeof createWorkspaceNavigation>
+    | undefined;
+  function saveWorkspaces(next: WorkspaceViews) {
+    store.saveWorkspaces(next);
+    workspaces = next;
+    workspaceNavigation?.render();
+  }
   const globalView = { kind: "global" } as const;
   let syncingViews = false;
-  const views = createViewController(store.views(saved.filters), {
+  const views = createViewController(activeWorkspace(workspaces).views, {
     beforeChange: () => {
       if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
     },
-    save: store.saveViews,
+    save: (next) =>
+      saveWorkspaces(
+        saveWorkspace(workspaces, {
+          ...activeWorkspace(workspaces),
+          views: next,
+        }),
+      ),
     statuses: () => catalog.statuses,
     changed: (conditionsChanged) => {
       if (syncingViews || destroyed) return;
@@ -152,10 +181,11 @@ export async function createApp(
   });
   const initialFilters = {
     ...saved.filters,
+    projects: [...activeWorkspace(workspaces).projects],
     ...views.resolve(globalView, false),
   };
   const cached = await cache?.read(store.scope, initialFilters);
-  let catalogProjects = [...saved.filters.projects];
+  let catalogProjects = [...initialFilters.projects];
 
   let catalog: TreeCatalog = {
     projects: bootstrap.projects,
@@ -713,6 +743,9 @@ export async function createApp(
       )
         return;
       const next = { ...list.filters, projects };
+      saveWorkspaces(
+        saveWorkspace(workspaces, { ...activeWorkspace(workspaces), projects }),
+      );
       store.saveFilters(next, true);
       bulk.reset();
       void list.load(next);
@@ -720,8 +753,64 @@ export async function createApp(
       void activity.check(projects);
     },
   });
+  const workspaceOptions = createViewOptions(api, () => ({
+    projects: catalogProjects,
+    catalog,
+  }));
+  function applyWorkspace(next: WorkspaceViews) {
+    if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
+    const before = activeWorkspace(workspaces),
+      after = activeWorkspace(next);
+    const changed =
+      before.id !== after.id ||
+      JSON.stringify(before.projects) !== JSON.stringify(after.projects) ||
+      JSON.stringify(before.views) !== JSON.stringify(after.views);
+    persistCache();
+    persistPosition();
+    saveWorkspaces(next);
+    views.replace(after.views);
+    if (!changed) {
+      render();
+      return;
+    }
+    panel.close();
+    projectPanel.close();
+    bulk.reset();
+    if (before.id !== after.id) closeDetail();
+    const query = {
+      ...list.filters,
+      ...views.resolve(globalView, false),
+      projects: [...after.projects],
+      q: "",
+    };
+    store.saveFilters(query, true);
+    void list.load(query);
+    void refreshCatalog(query.projects);
+    void activity.check(query.projects);
+  }
+  workspaceNavigation = createWorkspaceNavigation({
+    state: () => workspaces,
+    projects: bootstrap.projects,
+    me: bootstrap.me,
+    load: workspaceOptions.load,
+    select: (id) => {
+      if (id !== workspaces.activeId)
+        applyWorkspace(selectWorkspace(workspaces, id));
+    },
+    save: (tab: WorkspaceView) =>
+      applyWorkspace(saveWorkspace(workspaces, tab)),
+    remove: (id) => applyWorkspace(deleteWorkspace(workspaces, id)),
+    error: notice.show,
+  });
+  nav.append(workspaceNavigation.element);
+  browse.id = "workspace-list";
+  browse.setAttribute("role", "tabpanel");
   render = () => {
     if (destroyed) return;
+    browse.setAttribute(
+      "aria-labelledby",
+      `workspace-tab-${workspaces.activeId}`,
+    );
     const queryKey = listCacheKey(list.filters);
     const anchors = restoredPosition.length
       ? restoredPosition
@@ -1053,6 +1142,7 @@ export async function createApp(
       window.removeEventListener("popstate", popstate);
       panel.destroy();
       projectPanel.destroy();
+      workspaceNavigation?.destroy();
       treeContext.destroy();
       tree.destroy();
       split.destroy();

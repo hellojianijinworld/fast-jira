@@ -136,6 +136,11 @@ export function createViewController(
     get state() {
       return state;
     },
+    replace(next: ViewState) {
+      options.beforeChange?.();
+      temporary.clear();
+      state = next;
+    },
     resolve,
     info,
     binding: (target: ViewTarget) => viewBinding(state, target),
