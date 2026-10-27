@@ -48,7 +48,9 @@ test("겹친 조회는 공유하며 이전 프로젝트의 늦은 응답과 종�
     {
       activity: async (projects) => {
         calls++;
-        return projects[0] === "AA" ? pending : [entry(20)];
+        return projects[0] === "AA"
+          ? pending
+          : [{ ...entry(20), key: "BB-20" }];
       },
     },
     () => {},
@@ -123,4 +125,34 @@ test("HTML 로그인 응답과 인증 실패를 빈 활동으로 오인하지 �
     );
     await assert.rejects(createJiraActivity(client)("AA"));
   }
+});
+
+test("선택하지 않은 프로젝트의 활동은 응답에 섞여도 표시하지 않는다", async () => {
+  const calls: string[][] = [];
+  const controller = createActivityController(
+    {
+      activity: async (projects) => {
+        calls.push([...projects]);
+        return [
+          entry(1),
+          { ...entry(2), key: "BB-2" },
+          { ...entry(3), key: "CC-3" },
+        ];
+      },
+    },
+    () => {},
+  );
+  await controller.check(["AA"]);
+  assert.deepEqual(
+    controller.entries.map((item) => item.key),
+    ["AA-1"],
+  );
+  await controller.check(["BB"]);
+  assert.deepEqual(
+    controller.entries.map((item) => item.key),
+    ["BB-2"],
+  );
+  await controller.check([]);
+  assert.deepEqual(controller.entries, []);
+  assert.deepEqual(calls, [["AA"], ["BB"]]);
 });

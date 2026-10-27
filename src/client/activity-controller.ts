@@ -40,7 +40,15 @@ export function createActivityController(
       .then((incoming) => {
         if (!alive || version !== revision) return;
         const previous = new Set(entries.map((item) => item.id));
-        entries = [...new Map(incoming.map((item) => [item.id, item])).values()]
+        entries = [
+          ...new Map(
+            incoming
+              .filter((item) =>
+                key.split(",").includes(item.key.split("-")[0] ?? ""),
+              )
+              .map((item) => [item.id, item]),
+          ).values(),
+        ]
           .sort((a, b) => Date.parse(b.created) - Date.parse(a.created))
           .slice(0, 10);
         newIds = new Set(

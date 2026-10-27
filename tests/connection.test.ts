@@ -38,12 +38,7 @@ test("미인증 화면에서 토큰을 검증·저장하면 재시작 없이 연
     },
   });
   assert.equal(connection.settings().tokenConfigured, false);
-  const server = createHttpServer(
-    connection.service,
-    () => () => {},
-    undefined,
-    connection,
-  );
+  const server = createHttpServer(connection.service, undefined, connection);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
@@ -110,13 +105,10 @@ test("인증 대기·확인·실패·완료 상태는 개인정보와 Jira 추�
     finish = resolve;
   });
   let calls = 0;
-  const logs: unknown[] = [];
   const connection = createConnection({
     credentials: null,
     defaults: { site: "", email: "" },
     persist: async () => {},
-    onLog: (entry) => logs.push(entry),
-    loggingEnabled: () => true,
     fetcher: async (_input, init) => {
       calls++;
       if (calls === 1) {
@@ -134,12 +126,7 @@ test("인증 대기·확인·실패·완료 상태는 개인정보와 Jira 추�
       });
     },
   });
-  const server = createHttpServer(
-    connection.service,
-    () => () => {},
-    undefined,
-    connection,
-  );
+  const server = createHttpServer(connection.service, undefined, connection);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert.ok(address && typeof address !== "string");
@@ -178,7 +165,6 @@ test("인증 대기·확인·실패·완료 상태는 개인정보와 Jira 추�
   assert.equal((await save()).status, 200);
   assert.deepEqual(await state(), { state: "connected" });
   assert.equal(calls, 2);
-  assert.deepEqual(logs, [], "인증 응답을 개발자 로그에 남기지 않는다");
 });
 
 test("저장된 토큰은 검증하지 않고 연결 성공으로 표시하지 않는다", () => {

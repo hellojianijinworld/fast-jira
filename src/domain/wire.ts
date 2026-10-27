@@ -4,7 +4,6 @@ import type { PriorityOption, ProjectOption, StatusOption } from "./catalog.ts";
 import type { Comment, CommentPage, HistoryPage } from "./content.ts";
 import type { IssueDetails, LookupResult } from "./details.ts";
 import type { Issue, IssueType, UserOption } from "./issue.ts";
-import type { LogEntry } from "./log.ts";
 import type { ParticipantField, ParticipantOption } from "./participants.ts";
 import { record } from "./validation.ts";
 
@@ -366,20 +365,5 @@ export function decodeBulkResult(value: unknown): BulkResult {
     failures: failures(data.failures),
     warnings: failures(data.warnings),
     undoToken: wireString(data.undoToken),
-  };
-}
-
-export function decodeLogEntry(value: unknown): LogEntry {
-  const data = record(value),
-    id = wireNumber(data.id);
-  if (!Number.isSafeInteger(id) || id < 1 || data.source !== "API")
-    throw new Error("로그 형식이 올바르지 않습니다.");
-  return {
-    id,
-    source: "API",
-    ...(typeof data.response === "string" ? { response: data.response } : {}),
-    command: wireString(data.command),
-    result: wireString(data.result),
-    time: wireString(data.time),
   };
 }

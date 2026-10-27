@@ -151,7 +151,6 @@ test("업데이트 HTTP 경로는 Jira 인증 없이 동작하고 외부 Origin�
     () => {
       throw new Error("Jira를 조회하면 안 된다");
     },
-    () => () => {},
     undefined,
     undefined,
     undefined,

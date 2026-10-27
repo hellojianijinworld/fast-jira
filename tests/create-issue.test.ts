@@ -440,7 +440,7 @@ test("HTTP 생성 경로는 동일 출처 JSON만 허용하고 같은 요청 ID�
   const { createHttpServer } = await import("../src/server/http.ts");
   const { once } = await import("node:events");
   const f = fixture(),
-    server = createHttpServer(f.service, () => () => {});
+    server = createHttpServer(f.service);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => {

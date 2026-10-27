@@ -19,7 +19,6 @@ import { decodeIssue, decodeUsers, emptyIssue } from "../domain/wire.ts";
 export type LocalStore = Pick<Storage, "getItem" | "setItem">;
 export interface Preferences {
   theme: "light" | "dark";
-  developerMode: boolean;
   compactView: boolean;
   compactDone: boolean;
   compactDoneParents: boolean;
@@ -28,7 +27,6 @@ export function readPreferences(storage: LocalStore): Preferences {
   try {
     return {
       theme: storage.getItem("fastJira:theme") === "dark" ? "dark" : "light",
-      developerMode: storage.getItem("fastJira:developerMode") === "true",
       compactView: storage.getItem("fastJira:compactView") === "true",
       compactDone: storage.getItem("fastJira:compactDone") !== "false",
       compactDoneParents:
@@ -37,7 +35,6 @@ export function readPreferences(storage: LocalStore): Preferences {
   } catch {
     return {
       theme: "light",
-      developerMode: false,
       compactView: false,
       compactDone: true,
       compactDoneParents: true,
@@ -50,10 +47,6 @@ export function writePreferences(
 ): void {
   try {
     storage.setItem("fastJira:theme", preferences.theme);
-    storage.setItem(
-      "fastJira:developerMode",
-      String(preferences.developerMode),
-    );
     storage.setItem("fastJira:compactView", String(preferences.compactView));
     storage.setItem("fastJira:compactDone", String(preferences.compactDone));
     storage.setItem(

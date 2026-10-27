@@ -1,4 +1,3 @@
-import type { LogEntry } from "../domain/log.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { createBulkService } from "./bulk-service.ts";
 import { createJiraActivity } from "./jira-activity.ts";
@@ -12,20 +11,12 @@ import { createJiraParticipants } from "./jira-participants.ts";
 import { createJiraQuery } from "./jira-query.ts";
 import { createJiraRead } from "./jira-read.ts";
 import { createJiraSync } from "./jira-sync.ts";
-import { loggedFetch } from "./network-log.ts";
 export function createJiraService(options: {
   credentials: Credentials;
   fetcher?: typeof fetch;
-  onLog?: (entry: LogEntry) => void;
-  loggingEnabled?: () => boolean;
 }) {
   const fetcher = options.fetcher ?? fetch;
-  const client = createJiraClient(
-    options.credentials,
-    options.onLog
-      ? loggedFetch(fetcher, options.onLog, options.loggingEnabled)
-      : fetcher,
-  );
+  const client = createJiraClient(options.credentials, fetcher);
   const metadata = createJiraMetadata(client);
   const query = createJiraQuery(client, metadata);
   const read = createJiraRead(

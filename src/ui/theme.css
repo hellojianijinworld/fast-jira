@@ -167,7 +167,7 @@
   --nav-height: 58px;
   --pane-padding: var(--density-space-5);
   --pane-heading-height: 32px;
-  --settings-content-height: 520px;
+  --settings-content-height: 560px;
   --pane-gutter: var(--density-space-4);
 }
 /* 크기 값은 여기에서만 정의하고 버튼·셀렉트·카드가 함께 사용한다. */

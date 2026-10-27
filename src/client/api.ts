@@ -11,7 +11,6 @@ import { createMetadata, type IssueDraft } from "../domain/create-issue.ts";
 import type { Filters } from "../domain/filters.ts";
 import { filterParameters, selectionParameter } from "../domain/filters.ts";
 import type { BranchDefaults, EditableField } from "../domain/issue.ts";
-import type { LogEntry } from "../domain/log.ts";
 import type { ParticipantChange } from "../domain/participants.ts";
 import { decodeSync, type KnownIssue } from "../domain/sync.ts";
 import { isRecord, record } from "../domain/validation.ts";
@@ -26,7 +25,6 @@ import {
   decodeIssue,
   decodeIssuePage,
   decodeListPage,
-  decodeLogEntry,
   decodeLookup,
   decodeParticipantOptions,
   decodePriorities,
@@ -380,20 +378,6 @@ export function createApi(fetcher: typeof fetch = fetch) {
   };
 }
 export type Api = ReturnType<typeof createApi>;
-
-/** 패널을 연 동안만 수신한다. 인증 정보나 로그를 저장소에 쓰지 않는다. */
-export function subscribeLogs(listener: (entry: LogEntry) => void): () => void {
-  const stream = new EventSource("/api/debug");
-  stream.addEventListener("command", (event) => {
-    try {
-      const value: unknown = JSON.parse(event.data);
-      listener(decodeLogEntry(value));
-    } catch {
-      /* 잘못된 이벤트는 표시하지 않고 다음 정상 이벤트를 기다린다. */
-    }
-  });
-  return () => stream.close();
-}
 
 export function subscribeVoice(
   id: string,

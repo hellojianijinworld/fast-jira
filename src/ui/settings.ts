@@ -74,70 +74,80 @@ export function settingsContent(
   body.append(...categories.map(({ panel }) => panel));
   root.append(tabs, body);
   activate(start ? 0 : 1);
-  for (const [label, help, category, checked, change] of [
+  const displayChoices = [
     [
-      "다크 모드",
-      "어두운 배경으로 화면을 표시해요. 이 기기의 브라우저에 선택을 기억해요.",
-      1,
-      draft.theme === "dark",
-      (value: boolean) => {
-        draft.theme = value ? "dark" : "light";
+      "테마",
+      draft.theme === "dark" ? 1 : 0,
+      [
+        ["라이트", "밝은 배경으로 화면을 표시해요."],
+        ["다크", "어두운 배경으로 눈부심을 줄여요."],
+      ],
+      (index: number) => {
+        draft.theme = index === 1 ? "dark" : "light";
       },
     ],
     [
-      "개발자 모드",
-      "상단에 개발자 로그 버튼을 표시해요. 요청과 응답을 확인할 수 있고, 로그는 저장하지 않아요.",
-      2,
-      draft.developerMode,
-      (value: boolean) => {
-        draft.developerMode = value;
+      "제목 표시",
+      draft.compactView ? 1 : 0,
+      [
+        ["줄바꿈", "긴 제목을 줄바꿈하고 배지는 오른쪽에 모아요."],
+        ["한 줄로", "제목을 한 줄로 표시하고 넘치면 말줄임해요."],
+      ],
+      (index: number) => {
+        draft.compactView = index === 1;
       },
     ],
     [
-      "간단히 보기",
-      "긴 제목을 한 줄로 줄이고, 담당자와 상태를 오른쪽에 유지해요.",
-      1,
-      draft.compactView,
-      (value: boolean) => {
-        draft.compactView = value;
+      "완료된 하위 작업",
+      draft.compactDone ? 1 : 0,
+      [
+        ["목록", "일반 카드로 작업 정보를 보여줘요."],
+        ["타일", "작은 타일로 모아 스크롤을 줄여요."],
+      ],
+      (index: number) => {
+        draft.compactDone = index === 1;
       },
     ],
     [
-      "완료된 하위 항목 타일로 보기",
-      "완료된 서브태스크를 작은 타일로 모아 목록의 스크롤을 줄여요.",
-      1,
-      draft.compactDone,
-      (value: boolean) => {
-        draft.compactDone = value;
+      "완료된 상위 작업",
+      draft.compactDoneParents ? 1 : 0,
+      [
+        ["목록", "목록에서 하위 작업을 펼쳐봐요."],
+        ["타일", "타일로 모으고, 하위 작업은 상세에서 봐요."],
+      ],
+      (index: number) => {
+        draft.compactDoneParents = index === 1;
       },
     ],
-    [
-      "완료된 상위 항목 타일로 보기",
-      "완료된 상위 작업도 타일로 모아요. 하위 작업은 타일을 눌러 상세에서 확인할 수 있어요.",
-      1,
-      draft.compactDoneParents,
-      (value: boolean) => {
-        draft.compactDoneParents = value;
-      },
-    ],
-  ] as const) {
-    const row = element("label", "setting-row"),
-      check = element("input");
-    check.type = "checkbox";
-    check.checked = checked;
-    check.addEventListener("change", () => {
-      change(check.checked);
-      save({ ...draft });
+  ] as const;
+  displayChoices.forEach(([title, selected, choices, select], groupIndex) => {
+    const group = element("fieldset", "setting-group");
+    group.append(element("legend", "setting-group-title", title));
+    const cards = element("div", "setting-options");
+    choices.forEach(([label, help], index) => {
+      const card = element("label", "setting-option");
+      const radio = element("input");
+      radio.type = "radio";
+      radio.name = `${id}-choice-${groupIndex}`;
+      radio.value = String(index);
+      radio.checked = selected === index;
+      radio.setAttribute("aria-label", `${title} · ${label}`);
+      const description = element("small", "setting-help", help);
+      description.id = `${id}-choice-${groupIndex}-${index}-help`;
+      radio.setAttribute("aria-describedby", description.id);
+      radio.addEventListener("change", () => {
+        if (!radio.checked) return;
+        select(index);
+        save({ ...draft });
+      });
+      const copy = element("span", "setting-option-copy");
+      copy.append(element("span", "setting-option-title", label), description);
+      card.append(radio, copy);
+      cards.append(card);
     });
-    check.setAttribute("aria-label", label);
-    const description = element("small", "setting-help", help);
-    description.id = `${id}-help-${category}-${categories[category].panel.children.length}`;
-    check.setAttribute("aria-describedby", description.id);
-    const text = element("span", "setting-copy");
-    text.append(element("span", "setting-label", label), description);
-    row.append(check, text);
-    categories[category].panel.append(row);
-  }
+    group.append(cards);
+    categories[1].panel.append(group);
+  });
   if (updates) categories[2].panel.append(updates);
   const actions: HTMLButtonElement[] = [];
   if (start) {

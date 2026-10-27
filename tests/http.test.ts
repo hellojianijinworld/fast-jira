@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { LogEntry } from "../src/domain/log.ts";
 import { record } from "../src/domain/validation.ts";
 import { createHttpServer } from "../src/server/http.ts";
 import { createJiraService } from "../src/server/jira-service.ts";
@@ -19,15 +18,11 @@ const comment = {
 async function setup() {
   let jiraCalls = 0;
   const writes: { path: string; method: string; body: unknown }[] = [];
-  const listeners = new Set<(entry: LogEntry) => void>();
   const service = createJiraService({
     credentials: {
       site: "example.atlassian.net",
       email: "test@example.com",
       token: "fake-secret",
-    },
-    onLog: (entry) => {
-      for (const listener of listeners) listener(entry);
     },
     fetcher: async (value, options) => {
       jiraCalls++;
@@ -106,10 +101,7 @@ async function setup() {
       });
     },
   });
-  const server = createHttpServer(service, (listener) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  });
+  const server = createHttpServer(service);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string")
@@ -272,29 +264,13 @@ test("HTTP 검증 오류·존재하지 않는 경로·정적 빌드 파일을 �
     assert.ok((await asset.text()).length > 0);
   }
 });
-test("개발자 로그는 SSE로 전달하고 토큰을 포함하지 않는다", {
-  timeout: 5000,
-}, async (t) => {
+test("개발자 로그 경로를 제공하거나 Jira를 추가 조회하지 않는다", async (t) => {
   const app = await setup();
   t.after(app.close);
-  const controller = new AbortController();
-  t.after(() => controller.abort());
-  const debug = await fetch(`${app.base}/api/debug`, {
-    signal: controller.signal,
-  });
-  assert.equal(debug.status, 200);
-  const reader = debug.body?.getReader();
-  assert.ok(reader);
-  await reader.read();
-  await fetch(`${app.base}/api/projects`);
-  const chunk = await reader.read();
-  const text = new TextDecoder().decode(chunk.value);
-  assert.ok(text.includes("event: command"));
-  assert.ok(!text.includes("fake-secret"));
-  await reader.cancel();
-  const projects = await fetch(`${app.base}/api/projects`);
-  const body: unknown = await projects.json();
-  assert.equal(record(record(body).me).accountId, "my-account");
+  const before = app.count();
+  const response = await fetch(`${app.base}/api/debug`);
+  assert.equal(response.status, 404);
+  assert.equal(app.count(), before);
 });
 
 test("HTTP 활동 조회는 프로젝트만 받아 단일 Atom 피드를 반환한다", async (t) => {

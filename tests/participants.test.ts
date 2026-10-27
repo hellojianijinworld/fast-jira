@@ -232,7 +232,7 @@ test("표시는 사용자 중복을 합치지만 응답을 왕복해도 실제 �
 
 test("클라이언트와 HTTP 경계에서 실제 필드 선택·검색·저장이 왕복한다", async (t) => {
   const { service, calls } = setup();
-  const server = createHttpServer(service, () => () => {});
+  const server = createHttpServer(service);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(
     () =>

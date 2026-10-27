@@ -5,7 +5,6 @@ import { sameIssue, updateFavorites } from "../domain/favorites.ts";
 import { branchDefaults } from "../domain/filters.ts";
 import type { Issue } from "../domain/issue.ts";
 import { listCacheKey } from "../domain/list-snapshot.ts";
-import type { LogEntry } from "../domain/log.ts";
 import { withParticipantHydration } from "../domain/sync.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
@@ -13,7 +12,6 @@ import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { createIssueDialog } from "../ui/create-issue.ts";
-import { developerLog } from "../ui/developer-log.ts";
 import { actionButton, element, iconButton } from "../ui/dom.ts";
 import { favoriteButton, updateFavoriteButton } from "../ui/favorite-button.ts";
 import { createFilterPanel } from "../ui/filter-panel.ts";
@@ -34,7 +32,7 @@ import {
   restoreViewportAnchor,
 } from "../ui/viewport-anchor.ts";
 import { createActivityController } from "./activity-controller.ts";
-import { type Api, ApiError, subscribeLogs } from "./api.ts";
+import { type Api, ApiError } from "./api.ts";
 import type { ListCache } from "./list-cache.ts";
 import { createListController } from "./list-controller.ts";
 import { createLiveUpdates } from "./live-updates.ts";
@@ -52,9 +50,6 @@ export async function createApp(
   root: HTMLElement,
   api: Api,
   storage: LocalStore,
-  connectLog: (
-    listener: (entry: LogEntry) => void,
-  ) => () => void = subscribeLogs,
   cache?: ListCache,
   updates?: HTMLElement,
 ) {
@@ -66,8 +61,7 @@ export async function createApp(
     filters = iconButton("필터 및 뷰", "list-filter"),
     help = iconButton("도움말", "circle-help"),
     settings = iconButton("설정", "settings"),
-    selection = iconButton("이슈 선택 모드", "check"),
-    logToggle = iconButton("개발자 로그 켜기", "code-xml");
+    selection = iconButton("이슈 선택 모드", "check");
   searchToggle.title = `이슈 검색 (${shortcutLabel(navigator.platform)})`;
   searchToggle.setAttribute("aria-keyshortcuts", "Control+k Meta+k");
   aiToggle.title = `AI 대화 (${shortcutLabel(navigator.platform, "ai")})`;
@@ -75,7 +69,6 @@ export async function createApp(
     "aria-keyshortcuts",
     shortcutAria(navigator.platform, "ai"),
   );
-  logToggle.hidden = true;
   tools.append(
     searchToggle,
     aiToggle,
@@ -84,7 +77,6 @@ export async function createApp(
     selection,
     help,
     settings,
-    logToggle,
   );
   nav.append(element("h1", "", "Fast Jira"), tools);
   const workspace = element("main", "workspace"),
@@ -175,7 +167,6 @@ export async function createApp(
   for (const button of tools.querySelectorAll("button"))
     button.disabled = false;
 
-  const debug = developerLog(root, logToggle, connectLog);
   const split = createSplitPane(workspace, splitter, layout, storage);
   let render = () => {};
   const list = createListController(
@@ -306,7 +297,6 @@ export async function createApp(
   }
 
   function applyPreferences() {
-    debug.setEnabled(preferences.developerMode);
     document.documentElement.dataset.theme = preferences.theme;
     document.documentElement.dataset.compact = String(preferences.compactView);
     document.documentElement.dataset.compactDone = String(
@@ -405,6 +395,7 @@ export async function createApp(
       activity.newIds,
       activity.loading,
       activity.error,
+      list.filters.projects,
     );
     entries.push(["activity-feed", activities.element]);
     renderDashboard(entries);
@@ -415,7 +406,6 @@ export async function createApp(
       if (detailHost.parentElement !== mobile) mobile.append(detailHost);
       if (!commandOpen && noticeHost.parentElement !== mobile)
         mobile.append(noticeHost);
-      debug.place(selectedKey && !bulk.active ? mobile : root);
       if (bulk.active && mobile.open) mobile.close();
       else if (selectedKey && !mobile.open && !commandOpen && !popup.open)
         mobile.showModal();
@@ -423,7 +413,6 @@ export async function createApp(
       if (mobile.open) mobile.close();
       if (detailHost.parentElement !== side) side.append(detailHost);
       if (!commandOpen) root.append(noticeHost);
-      debug.place(root);
     }
   }
   function closeDetail() {
@@ -436,7 +425,6 @@ export async function createApp(
     dashboard.hidden = false;
     if (mobile.open) mobile.close();
     root.append(noticeHost);
-    debug.place(root);
     const url = new URL(location.href);
     url.searchParams.delete("issue");
     history.replaceState(null, "", url);
@@ -1068,7 +1056,6 @@ export async function createApp(
       treeContext.destroy();
       tree.destroy();
       split.destroy();
-      debug.destroy();
       notice.destroy();
       if (popup.open) popup.close();
       if (mobile.open) mobile.close();

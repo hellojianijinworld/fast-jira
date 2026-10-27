@@ -3,7 +3,6 @@ import type {
   ConnectionState,
   Credentials,
 } from "../domain/connection.ts";
-import type { LogEntry } from "../domain/log.ts";
 import { record } from "../domain/validation.ts";
 import { saveCredentials } from "./environment.ts";
 import { credentialsFromEnv, JiraError } from "./jira-client.ts";
@@ -13,8 +12,6 @@ export function createConnection(options: {
   credentials: Credentials | null;
   defaults: ConnectionSettings;
   fetcher?: typeof fetch;
-  onLog?: (entry: LogEntry) => void;
-  loggingEnabled?: () => boolean;
   persist?: (credentials: Credentials) => Promise<void>;
 }) {
   const create = (credentials: Credentials) =>
@@ -71,8 +68,6 @@ export function createConnection(options: {
         const candidate = createJiraService({
           ...options,
           credentials: next,
-          // 인증 응답과 오류는 개발자 로그에도 노출하지 않는다.
-          loggingEnabled: () => !saving && (options.loggingEnabled?.() ?? true),
         });
         try {
           await candidate.authenticate();

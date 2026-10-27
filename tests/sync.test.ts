@@ -132,7 +132,7 @@ test("1,001개 이슈는 HTTP 경계에서도 가벼운 두 묶음으로만 확�
       });
     },
   });
-  const server = createHttpServer(service, () => () => {});
+  const server = createHttpServer(service);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(async () => {
     server.closeAllConnections();

@@ -29,7 +29,11 @@ export function activityFeed(select: (key: string) => void, retry: () => void) {
       newIds: ReadonlySet<string>,
       loading: boolean,
       error: string,
+      projects: readonly string[],
     ) {
+      description.textContent = projects.length
+        ? `${projects.join(" · ")} · 최신 10건`
+        : "프로젝트를 선택해 주세요.";
       spinner.hidden = !loading;
       again.hidden = !error;
       again.disabled = loading;

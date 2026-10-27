@@ -18,7 +18,6 @@ import {
 import { initialViews, resolveView } from "../src/domain/views.ts";
 import {
   type ChangeBatch,
-  decodeLogEntry,
   decodeLookup,
   emptyIssue,
 } from "../src/domain/wire.ts";
@@ -121,7 +120,6 @@ test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다",
   };
   assert.deepEqual(readPreferences(blocked), {
     theme: "light",
-    developerMode: false,
     compactView: false,
     compactDone: true,
     compactDoneParents: true,
@@ -129,7 +127,6 @@ test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다",
   assert.doesNotThrow(() =>
     writePreferences(blocked, {
       theme: "dark",
-      developerMode: true,
       compactView: true,
       compactDone: false,
       compactDoneParents: false,
@@ -556,19 +553,6 @@ test("늦은 하위 페이지는 묶음 갱신 값을 덮어쓰지 않고 커서
   assert.equal(list.visibleItems().get("TEST-2")?.status, "진행 중");
   assert.equal(list.nextPageToken, "root-next");
   assert.equal(list.childPage("TEST-1").nextPageToken, "child-next");
-});
-
-test("로그 이벤트의 ID·문자열·출처를 응답 경계에서 검증한다", () => {
-  const entry = {
-    id: 1,
-    source: "API",
-    command: "GET /test",
-    time: "12:00",
-    result: "200",
-  };
-  assert.deepEqual(decodeLogEntry(entry), entry);
-  assert.throws(() => decodeLogEntry({ ...entry, id: -1 }));
-  assert.throws(() => decodeLogEntry({ ...entry, result: {} }));
 });
 
 test("일괄 변경은 목록·하위 커서를 유지하고 한 번만 알린다", async () => {

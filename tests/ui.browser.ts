@@ -66,6 +66,69 @@ async function check(name: string, inspect: () => void | Promise<void>) {
   }
 }
 await check(
+  "화면 표시 선택 카드는 각 설명·독립 선택·즉시 적용을 제공한다",
+  () => {
+    const initial = readPreferences({ getItem: () => null, setItem: () => {} });
+    let saved = initial;
+    const content = settingsContent(initial, "검사 계정", (next) => {
+      saved = next;
+    });
+    fixture.append(content.element);
+    try {
+      const groups = content.element.querySelectorAll(".setting-group");
+      assert(groups.length === 4, "화면 표시 그룹 수 불일치");
+      const radios = [
+        ...content.element.querySelectorAll<HTMLInputElement>(
+          'input[type="radio"]',
+        ),
+      ];
+      assert(radios.length === 8, "선택 카드 누락");
+      assert(
+        content.element.querySelectorAll("input:checked").length === 4,
+        "그룹별 선택 누락",
+      );
+      for (const input of radios) {
+        const help = document.getElementById(
+          input.getAttribute("aria-describedby") ?? "",
+        );
+        assert(
+          help !== null && (help.textContent?.length ?? 0) > 10,
+          "선택지 설명 연결 누락",
+        );
+      }
+      const select = (label: string) => {
+        const radio = radios.find(
+          (item) => item.getAttribute("aria-label") === label,
+        );
+        assert(radio !== undefined, "설정 선택지 누락");
+        radio.click();
+      };
+      select("테마 · 다크");
+      select("제목 표시 · 한 줄로");
+      select("완료된 하위 작업 · 목록");
+      select("완료된 상위 작업 · 목록");
+      assert(
+        saved.theme === "dark" &&
+          saved.compactView &&
+          !saved.compactDone &&
+          !saved.compactDoneParents,
+        "선택 즉시 적용 또는 다른 그룹 보존 실패",
+      );
+      assert(
+        content.element.querySelectorAll("input:checked").length === 4,
+        "그룹 간 라디오 선택 충돌",
+      );
+      assert(
+        !content.element.textContent?.includes("개발자"),
+        "개발자 설정이 남음",
+      );
+    } finally {
+      content.element.remove();
+    }
+  },
+);
+
+await check(
   "HTTP 모바일에서도 설정 탭과 선택 필드를 고유 ID로 연결한다",
   () => {
     const descriptor = Object.getOwnPropertyDescriptor(crypto, "randomUUID");

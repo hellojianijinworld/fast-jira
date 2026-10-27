@@ -2,7 +2,6 @@ import { createApi } from "../src/client/api.ts";
 import { createApp } from "../src/client/app.ts";
 import { type AdfDocument, decodeAdfDocument } from "../src/domain/adf.ts";
 import type { Comment } from "../src/domain/content.ts";
-import type { LogEntry } from "../src/domain/log.ts";
 import { record } from "../src/domain/validation.ts";
 import { type ChangeBatch, emptyIssue } from "../src/domain/wire.ts";
 import { element } from "../src/ui/dom.ts";
@@ -399,17 +398,9 @@ const api = createApi(async (input, init) => {
   }
 });
 const checks: [string, () => void | Promise<void>][] = [];
-let logListener: (entry: LogEntry) => void = () => {};
-let logConnections = 0;
 // 앞선 검사에서 남긴 선택 URL이 모바일 모달을 열어 후속 검사를 가리지 않게 한다.
 history.replaceState(null, "", location.pathname);
-const app = await createApp(root, api, storage, (listener) => {
-  logConnections++;
-  logListener = listener;
-  return () => {
-    logConnections--;
-  };
-});
+const app = await createApp(root, api, storage);
 function button(label: string): HTMLButtonElement {
   const node = Array.from(
     document.querySelectorAll<HTMLButtonElement>("button"),
@@ -765,15 +756,13 @@ checks.push([
   () => {
     button("설정").click();
     const checks = root.querySelectorAll<HTMLInputElement>(
-      ".settings-modal .setting-row input",
+      ".settings-modal input[type=radio]",
     );
-    assert(checks.length === 5, "설정 체크 누락");
-    for (const label of ["다크 모드", "간단히 보기"]) {
-      const check = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-        .find(
-          (row) => row.querySelector(".setting-label")?.textContent === label,
-        )
-        ?.querySelector<HTMLInputElement>("input");
+    assert(checks.length === 8, "화면 표시 선택 카드 누락");
+    for (const label of ["테마 · 다크", "제목 표시 · 한 줄로"]) {
+      const check = root.querySelector<HTMLInputElement>(
+        `input[aria-label="${label}"]`,
+      );
       assert(check, "설정 필드 누락");
       check.click();
     }
@@ -823,15 +812,9 @@ checks.push([
       Math.abs(modal.getBoundingClientRect().height - height) < 1,
       "탭 이동으로 모달 크기 변경",
     );
-    const developer = modal.querySelector<HTMLInputElement>(
-      'input[aria-label="개발자 모드"]',
-    );
     assert(
-      developer &&
-        document
-          .getElementById(developer.getAttribute("aria-describedby") ?? "")
-          ?.textContent?.includes("저장하지"),
-      "설정 도움말 연결 누락",
+      !modal.querySelector('[aria-label="개발자 모드"]'),
+      "개발자 설정이 남음",
     );
     tabs[2]?.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Home", bubbles: true }),
@@ -1859,115 +1842,6 @@ checks.push([
   },
 ]);
 checks.push([
-  "개발자 모드에서만 로그를 켜며 시작·완료를 합치고 최근 300줄만 유지한다",
-  async () => {
-    assert(
-      root.querySelector<HTMLButtonElement>('[aria-label="개발자 로그 켜기"]')
-        ?.hidden && Number(logConnections) === 0,
-      "기본 로그 구독 발생",
-    );
-    button("설정").click();
-    button("관리").click();
-    const setting = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-      .find(
-        (label) =>
-          label.querySelector(".setting-label")?.textContent === "개발자 모드",
-      )
-      ?.querySelector<HTMLInputElement>("input");
-    assert(setting, "개발자 설정 누락");
-    setting.click();
-    button("닫기").click();
-    const navTitle = root.querySelector<HTMLElement>(".top-nav h1");
-    assert(
-      navTitle && navTitle.clientWidth >= navTitle.scrollWidth,
-      "개발자 모드 서비스명 잘림",
-    );
-    const logRect = button("개발자 로그 켜기").getBoundingClientRect();
-    assert(
-      logRect.right <= innerWidth &&
-        logRect.width >= (innerWidth <= 900 ? 32 : 34),
-      "개발자 도구 넘침",
-    );
-    button("개발자 로그 켜기").click();
-    assert(
-      Number(logConnections) === 1 &&
-        storage.getItem("fastJira:developerMode") === "true",
-      "로그 구독·설정 저장 누락",
-    );
-    const entry: LogEntry = {
-      id: 1,
-      source: "API",
-      time: "12:00",
-      command: "GET /mock",
-      result: "",
-    };
-    logListener(entry);
-    logListener({ ...entry, result: "200 · 10ms", response: '{"ok":true}' });
-    root.querySelector<HTMLButtonElement>('[data-request-id="1"]')?.click();
-    assert(
-      root
-        .querySelector(".debug-response pre")
-        ?.textContent?.includes('"ok": true'),
-      "선택 응답 표시 누락",
-    );
-    assert(
-      root.querySelectorAll('.debug-log [data-request-id="1"]').length === 1 &&
-        root.querySelector('[data-request-id="1"] .debug-result')
-          ?.textContent === "200 · 10ms",
-      "요청 시작·완료 중복",
-    );
-    button("검색").click();
-    assert(
-      root.querySelector(".debug-line.action")?.textContent?.includes("검색"),
-      "클릭 동작 기록 누락",
-    );
-    root.querySelector<HTMLDialogElement>(".command-modal")?.close();
-    const resize = root.querySelector<HTMLElement>(".debug-resize"),
-      panel = root.querySelector<HTMLElement>(".developer-panel");
-    assert(resize && panel, "로그 높이 조절 누락");
-    const height = panel.getBoundingClientRect().height;
-    resize.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
-    );
-    assert(panel.getBoundingClientRect().height > height, "로그 높이 미반영");
-    for (let id = 2; id <= 306; id++)
-      logListener({ ...entry, id, result: "200" });
-    assert(
-      root.querySelector(".debug-log")?.children.length === 300,
-      "로그 크기 제한 누락",
-    );
-    await app.select("TEST-3");
-    if (matchMedia("(max-width:600px)").matches)
-      assert(
-        root.querySelector(".detail-modal .developer-panel"),
-        "모달 로그 배치 누락",
-      );
-    app.closeDetail();
-    button("개발자 로그 끄기").click();
-    assert(
-      Number(logConnections) === 0 &&
-        !root.querySelector(".debug-log")?.children.length,
-      "로그 닫기 정리 누락",
-    );
-    button("설정").click();
-    button("관리").click();
-    const disable = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-      .find(
-        (label) =>
-          label.querySelector(".setting-label")?.textContent === "개발자 모드",
-      )
-      ?.querySelector<HTMLInputElement>("input");
-    assert(disable, "개발자 설정 재열기 누락");
-    disable.click();
-    button("닫기").click();
-    assert(
-      root.querySelector<HTMLButtonElement>('[aria-label="개발자 로그 켜기"]')
-        ?.hidden,
-      "모드 종료 후 로그 버튼 노출",
-    );
-  },
-]);
-checks.push([
   "상단 메뉴는 스크롤해도 위치와 스크롤 영역 높이를 유지한다",
   async () => {
     const scroller = root.querySelector<HTMLElement>(
@@ -2121,7 +1995,7 @@ checks.push([
     const before = calls.filter(
       (call) => call.pathname === "/api/issues",
     ).length;
-    const pending = createApp(host, api, localStore, () => () => {});
+    const pending = createApp(host, api, localStore);
     await tick();
     const popup = host.querySelector<HTMLDialogElement>(".settings-modal");
     try {
@@ -2210,42 +2084,6 @@ checks.push([
     assert(head.scrollWidth <= head.clientWidth, "긴 경로가 가로로 넘침");
     label.textContent = original;
     head.style.removeProperty("width");
-    button("설정").click();
-    button("관리").click();
-    const input = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
-      .find(
-        (label) =>
-          label.querySelector(".setting-label")?.textContent === "개발자 모드",
-      )
-      ?.querySelector<HTMLInputElement>("input");
-    assert(input, "개발자 설정 누락");
-    if (!input.checked) input.click();
-    button("닫기").click();
-    button("개발자 로그 켜기").click();
-    logListener({
-      id: 999,
-      source: "API",
-      time: "12:00",
-      command: "POST /rest/api/3/issue/TEST-3/transitions",
-      result: "204 · 180ms",
-      response: "응답 본문 없음",
-    });
-    root.querySelector<HTMLButtonElement>('[data-request-id="999"]')?.click();
-    const panel = root.querySelector<HTMLElement>(".developer-panel");
-    const response = root.querySelector<HTMLElement>(".debug-response");
-    const log = root.querySelector<HTMLElement>(".debug-log");
-    assert(panel && response && log, "요청·응답 영역 누락");
-    assert(
-      response.getBoundingClientRect().left >=
-        log.getBoundingClientRect().right - 1,
-      "응답이 우측에 배치되지 않음",
-    );
-    assert(response.textContent?.includes("응답 본문 없음"), "선택 응답 누락");
-    if (innerWidth <= 600)
-      assert(
-        panel.getBoundingClientRect().height >= innerHeight * 0.4 - 1,
-        "모바일 로그 높이 부족",
-      );
     assert(
       document.documentElement.scrollWidth <= innerWidth,
       "좁은 화면 가로 넘침",
@@ -2352,15 +2190,9 @@ checks.push([
   async () => {
     button("설정").click();
     await tick();
-    const check = [
-      ...document.querySelectorAll<HTMLLabelElement>(".settings-content label"),
-    ]
-      .find(
-        (row) =>
-          row.querySelector(".setting-label")?.textContent ===
-          "완료된 하위 항목 타일로 보기",
-      )
-      ?.querySelector<HTMLInputElement>("input");
+    const check = root.querySelector<HTMLInputElement>(
+      'input[aria-label="완료된 하위 작업 · 목록"]',
+    );
     assert(check, "완료 표시 옵션 누락");
     const count = calls.filter(
       (call) => call.pathname === "/api/issues",
@@ -2368,11 +2200,12 @@ checks.push([
     check.click();
     await tick();
     assert(
-      document.documentElement.dataset.compactDone === String(check.checked),
+      document.documentElement.dataset.compactDone ===
+        String(check.value === "1"),
       "표시 적용 누락",
     );
     assert(
-      values.get("fastJira:compactDone") === String(check.checked),
+      values.get("fastJira:compactDone") === String(check.value === "1"),
       "로컬 저장 누락",
     );
     assert(
@@ -2422,6 +2255,10 @@ checks.push([
     button("적용").click();
     await tick();
     assert(app.list.filters.projects.length === 0, "프로젝트 선택 해제 실패");
+    assert(
+      root.querySelectorAll(".activity-row").length === 0,
+      "선택 해제한 프로젝트의 활동이 남음",
+    );
     assert(
       calls.filter((call) => call.pathname === "/api/issues").length ===
         beforeCalls,

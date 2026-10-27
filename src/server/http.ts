@@ -8,7 +8,6 @@ import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import type { PeopleFilter } from "../domain/issue.ts";
-import type { LogEntry } from "../domain/log.ts";
 import { record } from "../domain/validation.ts";
 import { AppUpdateError, type AppUpdater } from "./app-update.ts";
 import type { AssistantService } from "./assistant-service.ts";
@@ -77,7 +76,6 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
 }
 export function createHttpServer(
   source: JiraService | (() => JiraService),
-  subscribe: (listener: (entry: LogEntry) => void) => () => void,
   frontendOrigin = "http://127.0.0.1:5173",
   connection?: Connection,
   assistant?: AssistantService,
@@ -357,19 +355,6 @@ export function createHttpServer(
         connection
       ) {
         json(res, connection.settings());
-        return;
-      }
-      if (req.method === "GET" && url.pathname === "/api/debug") {
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          Connection: "keep-alive",
-        });
-        res.write(": connected\n\n");
-        const unsubscribe = subscribe((entry) => {
-          if (!res.destroyed)
-            res.write(`event: command\ndata: ${JSON.stringify(entry)}\n\n`);
-        });
-        res.on("close", unsubscribe);
         return;
       }
       if (

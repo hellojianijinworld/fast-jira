@@ -256,7 +256,7 @@ async function run() {
       values.set(key, value);
     },
   };
-  const pending = createApp(appRoot, api, storage, () => () => {}, {
+  const pending = createApp(appRoot, api, storage, {
     read: async () => restored,
     write: async () => {},
     remove: async () => {},
@@ -355,7 +355,7 @@ async function run() {
   waiting = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const reload = createApp(appRoot, api, storage, () => () => {}, {
+  const reload = createApp(appRoot, api, storage, {
     read: async () => restored,
     write: async () => {},
     remove: async () => {},
@@ -416,13 +416,7 @@ async function run() {
       ? Response.json({ error: "권한 없음" }, { status: 403 })
       : fetchMock(input, init),
   );
-  const deniedApp = await createApp(
-    appRoot,
-    deniedApi,
-    storage,
-    () => () => {},
-    cache,
-  );
+  const deniedApp = await createApp(appRoot, deniedApi, storage, cache);
   await tick();
   await tick();
   assert(deniedApp.list.cacheDenied, "권한 거부를 캐시 삭제에 전달하지 않음");
@@ -449,7 +443,7 @@ async function run() {
   const rejected = createApi(async () =>
     Response.json({ error: "인증 실패" }, { status: 401 }),
   );
-  await createApp(appRoot, rejected, storage, () => () => {}, {
+  await createApp(appRoot, rejected, storage, {
     read: async () => {
       readBeforeAuth = true;
       return restored;
@@ -520,7 +514,7 @@ async function run() {
       throw new Error("캐시를 전체 재조회했다");
     return fetchMock(input, init);
   });
-  const deltaPending = createApp(appRoot, deltaApi, storage, () => () => {}, {
+  const deltaPending = createApp(appRoot, deltaApi, storage, {
     read: async () => deltaSnapshot,
     write: async () => {},
     remove: async () => {},

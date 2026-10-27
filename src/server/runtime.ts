@@ -3,7 +3,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { installationPaths } from "../cli/config.ts";
 import type { Credentials } from "../domain/connection.ts";
-import type { LogEntry } from "../domain/log.ts";
 import { createAssistantService } from "./assistant-service.ts";
 import { createConnection } from "./connection.ts";
 import { loadEnvironment, serverPort } from "./environment.ts";
@@ -19,16 +18,11 @@ export async function startApi() {
     /* 인증 미설정이어도 화면은 제공한다. */
   }
   const port = serverPort();
-  const listeners = new Set<(entry: LogEntry) => void>();
   const connection = createConnection({
     credentials,
     defaults: {
       site: process.env.JIRA_SITE ?? "",
       email: process.env.JIRA_EMAIL ?? "",
-    },
-    loggingEnabled: () => listeners.size > 0,
-    onLog: (entry) => {
-      for (const listener of listeners) listener(entry);
     },
   });
   const assistant = createAssistantService(connection.service);
@@ -63,10 +57,6 @@ export async function startApi() {
   }, token);
   const server = createHttpServer(
     connection.service,
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
     undefined,
     connection,
     assistant,

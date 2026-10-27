@@ -286,13 +286,7 @@ test("stdio는 요청 ID로 응답을 연결하고 프로세스 종료 시 대�
 });
 test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다", async () => {
   const f = fixture();
-  const server = createHttpServer(
-    f.service,
-    () => () => {},
-    undefined,
-    undefined,
-    f.assistant,
-  );
+  const server = createHttpServer(f.service, undefined, undefined, f.assistant);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();

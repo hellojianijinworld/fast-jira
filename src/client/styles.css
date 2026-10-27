@@ -216,13 +216,6 @@ dialog::backdrop {
   color: var(--muted);
   font-size: var(--font-size-12);
 }
-.setting-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--density-space-2);
-  padding: var(--density-space-2) 0;
-  font-size: var(--font-size-13);
-}
 .help-tips {
   padding-left: 20px;
   font-size: var(--font-size-13);
@@ -626,92 +619,6 @@ dialog::backdrop {
     display: none;
   }
 }
-
-.developer-panel {
-  flex: none;
-  position: relative;
-  height: var(--debug-height, 28dvh);
-  display: flex;
-  flex-direction: column;
-  min-height: 120px;
-  background: var(--surface);
-  border-top: 1px solid var(--border-strong);
-}
-.debug-resize {
-  position: absolute;
-  top: -5px;
-  width: 100%;
-  height: 10px;
-  cursor: ns-resize;
-  touch-action: none;
-}
-.debug-resize::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: calc(50% - 26px);
-  width: 52px;
-  height: 4px;
-  border-radius: var(--radius-4);
-  background: var(--border-strong);
-}
-.debug-resize:focus-visible {
-  outline: 2px solid var(--blue);
-}
-.debug-head {
-  display: flex;
-  align-items: center;
-  gap: var(--density-space-2-5);
-  min-height: 42px;
-  padding: 4px var(--density-space-4);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-13);
-}
-.debug-head button {
-  margin-left: auto;
-}
-.debug-log {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding-block: var(--density-space-2);
-  font: var(--font-size-12) / var(--line-height-label) var(--font-family-mono);
-}
-.debug-line,
-.debug-log > .empty {
-  margin-inline: var(--density-space-4);
-}
-.debug-line {
-  display: flex;
-  gap: var(--density-space-2-5);
-  padding-block: 2px;
-  overflow-wrap: anywhere;
-}
-.debug-line time {
-  flex: none;
-  color: var(--muted);
-}
-.debug-command {
-  min-width: 0;
-  white-space: pre-wrap;
-}
-.debug-result {
-  flex: none;
-  margin-left: auto;
-  color: var(--muted);
-}
-.debug-line.action {
-  margin-top: 5px;
-  border-top: 1px solid var(--border);
-  color: var(--blue-text);
-}
-.debug-line.failed .debug-result {
-  color: var(--error);
-}
-#app[data-debug-open="true"] .notice {
-  bottom: calc(var(--debug-height, 28dvh) + 1rem);
-}
 .detail-modal[open] {
   display: flex;
   flex-direction: column;
@@ -725,15 +632,6 @@ dialog::backdrop {
 .nav-tools [aria-pressed="true"] {
   color: var(--blue);
   background: var(--blue-soft);
-}
-@media (max-width: 500px) {
-  .debug-line {
-    flex-wrap: wrap;
-    gap: 2px 8px;
-  }
-  .debug-command {
-    flex-basis: 100%;
-  }
 }
 
 .attachment-images {
@@ -776,58 +674,6 @@ dialog::backdrop {
 }
 
 /* 요청과 응답은 독립적으로 스크롤한다. 좁은 화면에서도 두 열을 유지한다. */
-.debug-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
-}
-.debug-response {
-  min-width: 0;
-  overflow: auto;
-  border-left: 1px solid var(--border);
-  padding: var(--density-space-3) var(--density-space-4);
-  font-size: var(--font-size-12);
-  overscroll-behavior: contain;
-}
-.debug-response strong,
-.debug-response pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.debug-response pre {
-  font-size: var(--font-size-11);
-}
-button.debug-line {
-  width: calc(100% - 2 * var(--density-space-4));
-  min-height: 0;
-  text-align: left;
-  font: inherit;
-  color: inherit;
-  border: 0;
-  border-radius: var(--radius-4);
-  background: transparent;
-  padding: 4px;
-  flex-wrap: wrap;
-}
-button.debug-line:hover,
-button.debug-line[aria-pressed="true"] {
-  background: var(--blue-soft);
-}
-@media (max-width: 600px) {
-  .developer-panel {
-    height: var(--debug-height, 48dvh);
-  }
-  .debug-line {
-    flex-wrap: wrap;
-  }
-  .debug-command {
-    flex-basis: 100%;
-  }
-  .debug-response {
-    padding: 8px;
-  }
-}
 
 .issue-card {
   container: issue-card / inline-size;
@@ -1258,26 +1104,6 @@ button.debug-line[aria-pressed="true"] {
   overscroll-behavior: contain;
   padding: var(--density-space-2) 4px 4px;
 }
-.setting-row {
-  padding: var(--density-space-2) 0;
-  gap: var(--density-space-2-5);
-}
-.setting-row + .setting-row {
-  border-top: 1px solid var(--border);
-}
-.setting-row input {
-  flex: none;
-  margin: 3px 0 0;
-}
-.setting-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-}
-.setting-label {
-  font-weight: var(--font-weight-medium);
-}
 .setting-help {
   font-size: var(--font-size-12);
   line-height: 1.6;
@@ -1607,4 +1433,66 @@ button.debug-line[aria-pressed="true"] {
 .connection-update-settings {
   margin-top: 20px;
   color: var(--muted);
+}
+
+.setting-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 var(--density-space-3);
+  border: 0;
+}
+.setting-group + .setting-group {
+  border-top: 1px solid var(--border);
+}
+.setting-group-title {
+  padding: 0;
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-medium);
+}
+.setting-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--density-space-2);
+  margin-top: var(--density-space-2);
+}
+.setting-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--density-space-2);
+  padding: var(--density-space-2-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+  background: var(--surface);
+  cursor: pointer;
+}
+.setting-option:hover {
+  border-color: var(--border-strong);
+}
+.setting-option:has(input:checked) {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+.setting-option:focus-within {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+.setting-option input {
+  flex: none;
+  margin: 3px 0 0;
+  accent-color: var(--blue);
+}
+.setting-option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.setting-option-title {
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-medium);
+}
+@media (max-width: 400px) {
+  .setting-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
