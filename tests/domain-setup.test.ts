@@ -38,6 +38,7 @@ test("동의한 도메인 연결이 검증된 경우에만 기본 주소로 사�
       run: async (_name, args) => {
         commands.push(args);
       },
+      trust: async () => {},
       verify: async () => true,
       major: 26,
       platform: "darwin",
@@ -109,6 +110,7 @@ test("macOS 비대화형 설치는 시스템 인증창을 사용한다", async (
         prompt = args[3] ?? "";
       }
     },
+    trust: async () => {},
     verify: async () => true,
   });
   assert.ok(commands.includes("/usr/bin/osascript"));
@@ -166,13 +168,52 @@ test("권한 명령은 공백과 작은따옴표 경로를 보존하며 환경�
       run: async (command, args) => {
         if (command === "/usr/bin/osascript") script = args[2] ?? "";
       },
+      trust: async () => {},
       verify: async () => true,
     },
   );
   assert.ok(script.includes("/usr/bin/env -i"));
   assert.ok(script.includes("user'\"'\"'s folder"));
-  assert.ok(script.includes("'trust'"));
+  assert.ok(!script.includes("'trust'"));
   assert.ok(!script.includes("JIRA_"));
   assert.ok(!script.includes("NODE_OPTIONS"));
   assert.ok(!script.includes("Terminal"));
+});
+
+test("인증서 신뢰가 실패하면 도메인 연결 성공으로 처리하지 않는다", async () => {
+  const result = await configureLocalDomain(
+    "/tmp/example",
+    4173,
+    true,
+    "instance",
+    {
+      platform: "darwin",
+      major: 26,
+      run: async () => {},
+      trust: async () => {
+        throw new Error("Certificate approval denied");
+      },
+      verify: async () => true,
+    },
+  );
+  assert.equal(result.url, "http://localhost:4173");
+});
+
+test("실행 중인 본인 프록시는 실제 접속 확인 후 관리자 인증창 없이 재사용한다", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "jira-proxy-reuse-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await mkdir(join(home, "config/portless"), { recursive: true });
+  await writeFile(join(home, "config/portless/proxy.pid"), "12345");
+  const commands: string[] = [];
+  const result = await configureLocalDomain(home, 4173, true, "instance", {
+    platform: "darwin",
+    major: 26,
+    run: async (command) => {
+      commands.push(command);
+    },
+    verify: async () => true,
+    trust: async () => {},
+  });
+  assert.equal(result.url, "https://fast-jira.local");
+  assert.ok(!commands.includes("/usr/bin/osascript"));
 });

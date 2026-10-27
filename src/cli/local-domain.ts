@@ -5,6 +5,11 @@ import { get } from "node:https";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
+import {
+  trustLocalCertificate,
+  verifyLocalCertificate,
+} from "./certificate-trust.ts";
+
 export const LOCAL_DOMAIN = "https://fast-jira.local";
 const PORTLESS_VERSION = "0.15.11";
 type Run = (
@@ -78,6 +83,7 @@ export async function configureLocalDomain(
     verify?: (state: string, instance: string) => Promise<boolean>;
     major?: number;
     platform?: NodeJS.Platform;
+    trust?: (state: string) => Promise<void>;
   } = {},
 ) {
   const fallback = { url: `http://localhost:${port}`, message: "" };
@@ -155,18 +161,43 @@ export async function configureLocalDomain(
       ]
         .map(quote)
         .join(" ")}`;
-    await run(
-      "/usr/bin/osascript",
-      [
-        "-e",
-        "on run argv\n do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges\nend run",
-        `${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])} && (${command(["trust"])} && ${command(["alias", "fast-jira", String(port)])} || { ${command(["proxy", "stop", "--port", "443"])}; exit 1; })`,
-        "Fast Jira를 fast-jira.local 주소로 사용하도록 허용하시겠어요?\n이 컴퓨터에서 해당 주소로 접속할 수 있도록 설정합니다.",
-      ],
-      env,
-    );
+    let connected = false;
+    if (existsSync(join(state, "proxy.pid"))) {
+      try {
+        await run(
+          process.execPath,
+          [cli, "alias", "fast-jira", String(port)],
+          env,
+        );
+        connected = await (options.verify ?? verifyAddress)(state, instance);
+      } catch {
+        /* 실행 중이지 않으면 시스템 승인 후 시작한다. */
+      }
+    }
+    if (!connected) {
+      await run(
+        "/usr/bin/osascript",
+        [
+          "-e",
+          "on run argv\n do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges\nend run",
+          `(${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])} || ${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])}) && (${command(["alias", "fast-jira", String(port)])} || { ${command(["proxy", "stop", "--port", "443"])}; exit 1; })`,
+          "Fast Jira를 fast-jira.local 주소로 사용하도록 허용하시겠어요?\n이 컴퓨터에서 해당 주소로 접속할 수 있도록 설정합니다.",
+        ],
+        env,
+      );
+    }
     if (!(await (options.verify ?? verifyAddress)(state, instance)))
       throw new Error("접속 검증에 실패했어요.");
+    await (
+      options.trust ??
+      ((state) =>
+        trustLocalCertificate(state, (command, args) =>
+          run(command, args, env),
+        ))
+    )(state);
+    await verifyLocalCertificate(state, (command, args) =>
+      run(command, args, env),
+    );
     return { url: LOCAL_DOMAIN, message: "로컬 도메인 연결을 확인했어요." };
   } catch {
     return {
