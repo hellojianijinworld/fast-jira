@@ -120,3 +120,41 @@ test("설치 실행기가 종료된 뒤에도 Node가 유지되고 중복 실행
   assert.equal(run("setup").running, true);
   assert.equal(run("remove").running, false);
 });
+
+test("서비스 상태 확인은 전역 fetch 오류와 관계없이 본인 인스턴스를 확인한다", async (t) => {
+  const { createServer } = await import("node:http");
+  const { once } = await import("node:events");
+  const { serviceStatus } = await import("../src/cli/service.ts");
+  const home = await mkdtemp(join(tmpdir(), "jira-health-"));
+  const paths = installationPaths(home);
+  let instance = "owned";
+  const server = createServer((_request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ app: "fast-jira", instance }));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(async () => {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(home, { recursive: true, force: true });
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  await mkdir(join(home, "config"));
+  await writeFile(
+    paths.config,
+    JSON.stringify({
+      version: 1,
+      port: address.port,
+      instance: "owned",
+      node: process.execPath,
+    }),
+  );
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("setTypeOfService EINVAL");
+  });
+  assert.equal((await serviceStatus(paths)).running, true);
+  instance = "another-installation";
+  assert.equal((await serviceStatus(paths)).running, false);
+});

@@ -9,6 +9,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { get } from "node:http";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
@@ -87,20 +88,39 @@ export async function readServiceConfig(
   return text === null ? null : parseServiceConfig(JSON.parse(text));
 }
 
-async function healthy(config: ServiceConfig): Promise<boolean> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${config.port}/api/health`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    const data = (await response.json()) as { app?: string; instance?: string };
-    return (
-      response.ok &&
-      data.app === "fast-jira" &&
-      data.instance === config.instance
+function healthy(config: ServiceConfig): Promise<boolean> {
+  // 관리용 로컬 상태 확인은 Node fetch의 소켓 구현과 분리한다.
+  return new Promise((resolve) => {
+    const request = get(
+      `http://127.0.0.1:${config.port}/api/health`,
+      { timeout: 3000 },
+      (response) => {
+        let body = "";
+        response.on("data", (chunk) => {
+          body += String(chunk);
+          if (body.length > 4096)
+            request.destroy(new Error("Invalid health response"));
+        });
+        response.on("error", () => resolve(false));
+        response.on("end", () => {
+          try {
+            const data = JSON.parse(body);
+            resolve(
+              response.statusCode === 200 &&
+                data?.app === "fast-jira" &&
+                data.instance === config.instance,
+            );
+          } catch {
+            resolve(false);
+          }
+        });
+      },
     );
-  } catch {
-    return false;
-  }
+    request.on("timeout", () =>
+      request.destroy(new Error("Health check timeout")),
+    );
+    request.on("error", () => resolve(false));
+  });
 }
 
 export async function serviceStatus(paths: InstallationPaths) {
