@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { get } from "node:https";
+import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
 
 export const LOCAL_DOMAIN = "https://fast-jira.local";
@@ -76,6 +77,7 @@ export async function configureLocalDomain(
     run?: Run;
     verify?: (state: string, instance: string) => Promise<boolean>;
     major?: number;
+    platform?: NodeJS.Platform;
   } = {},
 ) {
   const fallback = { url: `http://localhost:${port}`, message: "" };
@@ -85,6 +87,12 @@ export async function configureLocalDomain(
       ...fallback,
       message:
         "로컬 도메인은 Node.js 24 이상에서 설정할 수 있어요. localhost로 실행했어요.",
+    };
+  if ((options.platform ?? process.platform) !== "darwin")
+    return {
+      ...fallback,
+      message:
+        "이 OS에서는 로컬 도메인의 시스템 인증창을 지원하지 않아 localhost로 실행했어요.",
     };
   const run = options.run ?? execute,
     prefix = join(home, "tools"),
@@ -120,12 +128,43 @@ export async function configureLocalDomain(
         env,
       );
     }
+    // OS 인증창만 사용한다. 앱 서버·npm 설치는 일반 사용자 권한을 유지한다.
+    const user = userInfo();
+    const privilegedEnv = {
+      PATH: `${dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`,
+      HOME: user.homedir,
+      SUDO_USER: user.username,
+      SUDO_UID: String(user.uid),
+      SUDO_GID: String(user.gid),
+      PORTLESS_STATE_DIR: state,
+      PORTLESS_LAN: "0",
+      PORTLESS_TLD: "local",
+      PORTLESS_PORT: "443",
+      PORTLESS_HTTPS: "1",
+      PORTLESS_SYNC_HOSTS: "1",
+    };
+    const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
+    const command = (args: string[]) =>
+      `/usr/bin/env -i ${[
+        ...Object.entries(privilegedEnv).map(
+          ([key, value]) => `${key}=${value}`,
+        ),
+        process.execPath,
+        cli,
+        ...args,
+      ]
+        .map(quote)
+        .join(" ")}`;
     await run(
-      process.execPath,
-      [cli, "proxy", "start", "--port", "443", "--tld", "local"],
+      "/usr/bin/osascript",
+      [
+        "-e",
+        "on run argv\n do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges\nend run",
+        `${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])} && (${command(["trust"])} && ${command(["alias", "fast-jira", String(port)])} || { ${command(["proxy", "stop", "--port", "443"])}; exit 1; })`,
+        "Fast Jira를 fast-jira.local 주소로 사용하도록 허용하시겠어요?\n이 컴퓨터에서 해당 주소로 접속할 수 있도록 설정합니다.",
+      ],
       env,
     );
-    await run(process.execPath, [cli, "alias", "fast-jira", String(port)], env);
     if (!(await (options.verify ?? verifyAddress)(state, instance)))
       throw new Error("접속 검증에 실패했어요.");
     return { url: LOCAL_DOMAIN, message: "로컬 도메인 연결을 확인했어요." };
