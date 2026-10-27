@@ -57,7 +57,7 @@ export function developerLog(
     controller = new AbortController();
   function height(value: number) {
     const minimum =
-      innerWidth <= 900 ? Math.max(120, Math.round(innerHeight * 0.4)) : 120;
+      innerWidth <= 600 ? Math.max(120, Math.round(innerHeight * 0.4)) : 120;
     const maximum = Math.max(minimum, Math.round(innerHeight * 0.65)),
       pixels = Math.max(minimum, Math.min(maximum, Math.round(value)));
     root.style.setProperty("--debug-height", `${pixels}px`);

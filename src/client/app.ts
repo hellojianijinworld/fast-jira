@@ -99,7 +99,7 @@ export async function createApp(
   loadingIndicator.setAttribute("aria-label", "이슈 불러오는 중");
   loadingIndicator.hidden = true;
   let detailLoading = false;
-  const layout = matchMedia("(max-width: 900px)");
+  const layout = matchMedia("(max-width: 600px)");
   const dashboardFold = element("details", "dashboard-fold");
   dashboardFold.open = !layout.matches;
   dashboardFold.append(
@@ -412,7 +412,8 @@ export async function createApp(
         mobile.append(noticeHost);
       debug.place(selectedKey && !bulk.active ? mobile : root);
       if (bulk.active && mobile.open) mobile.close();
-      else if (selectedKey && !mobile.open && !commandOpen) mobile.showModal();
+      else if (selectedKey && !mobile.open && !commandOpen && !popup.open)
+        mobile.showModal();
     } else {
       if (mobile.open) mobile.close();
       if (detailHost.parentElement !== side) side.append(detailHost);
@@ -785,6 +786,7 @@ export async function createApp(
   filters.addEventListener("click", () => panel.open(filters));
   let firstSetup = !saved.configured;
   popup.addEventListener("close", () => {
+    if (!destroyed && !popup.open) placeDetail();
     if (!firstSetup) return;
     firstSetup = false;
     store.saveFilters(list.filters, true);

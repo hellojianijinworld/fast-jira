@@ -1,7 +1,9 @@
 import { element, elementId, uiIcon } from "./dom.ts";
 import { type PopoverRect, popoverPosition } from "./geometry.ts";
+import type { ComponentSize } from "./theme.ts";
 
 export interface SelectConfig {
+  size?: ComponentSize;
   renderOption?: (option: HTMLOptionElement) => Node;
   beforeOpen?: () => Promise<boolean | undefined>;
   onSearch?: (query: string) => Promise<void>;
@@ -30,6 +32,7 @@ export function enhanceSelect(
   const controller = new AbortController();
   const signal = controller.signal;
   const wrapper = element("div", "select-menu");
+  wrapper.dataset.size = config.size ?? "auto";
   const trigger = element("button", "select-trigger");
   trigger.type = "button";
   trigger.id = `${select.id || elementId("select")}-trigger`;
@@ -50,6 +53,7 @@ export function enhanceSelect(
   arrow.classList.add("select-arrow");
   trigger.append(value, arrow);
   const panel = element("div", "select-options");
+  panel.dataset.size = config.size ?? "auto";
   panel.popover = "auto";
   panel.setAttribute("role", config.onSearch ? "dialog" : "listbox");
   panel.setAttribute("aria-label", label);

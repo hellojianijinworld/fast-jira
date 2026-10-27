@@ -1,3 +1,5 @@
+import type { ButtonOptions, ButtonVariant } from "./theme.ts";
+
 let nextElementId = 0;
 
 /** 화면 내 접근성 연결용 ID에는 보안 컨텍스트나 난수가 필요하지 않다. */
@@ -40,16 +42,27 @@ export function uiIcon(name: string): SVGSVGElement {
 export function actionButton(
   label: string,
   icon: string,
-  className = "secondary",
+  options: ButtonOptions | ButtonVariant | "" = {},
 ): HTMLButtonElement {
-  const button = element("button", className);
+  const config =
+    typeof options === "string" ? { variant: options || "primary" } : options;
+  const variant = config.variant ?? "secondary";
+  const button = element("button", variant);
+  button.dataset.variant = variant;
+  button.dataset.size = config.size ?? "auto";
   button.type = "button";
   button.append(uiIcon(icon), element("span", "", label));
   return button;
 }
 
-export function iconButton(label: string, icon: string): HTMLButtonElement {
+export function iconButton(
+  label: string,
+  icon: string,
+  options: ButtonOptions = {},
+): HTMLButtonElement {
   const button = element("button", "tool-button");
+  button.dataset.variant = options.variant ?? "ghost";
+  button.dataset.size = options.size ?? "auto";
   button.type = "button";
   button.title = label;
   button.setAttribute("aria-label", label);

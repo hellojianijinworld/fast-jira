@@ -77,7 +77,7 @@ export function issueDetail(
   const titleRow = element("div", "detail-title-row");
   const title = element("h2", "detail-title", issue.summary);
   title.tabIndex = -1;
-  const pencil = iconButton("제목 수정", "square-pen");
+  const pencil = iconButton("제목 수정", "square-pen", { size: "sm" });
   const form = element("form", "detail-title-editor");
   const input = element("input");
   input.maxLength = 255;

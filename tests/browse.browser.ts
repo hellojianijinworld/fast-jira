@@ -431,8 +431,17 @@ checks.push([
   async () => {
     const fold = root.querySelector<HTMLDetailsElement>(".dashboard-fold");
     assert(fold, "보조 정보 접힘 영역 누락");
+    const workspace = root.querySelector<HTMLElement>(".workspace");
+    const split = root.querySelector<HTMLElement>(".splitter");
+    assert(workspace && split, "화면 분할 영역 누락");
     assert(
-      fold.open === !matchMedia("(max-width: 900px)").matches,
+      getComputedStyle(workspace).display ===
+        (innerWidth <= 600 ? "flex" : "grid") &&
+        Boolean(split.getClientRects().length) === innerWidth > 600,
+      "600px 경계에서 CSS와 화면 분할 동작이 일치하지 않음",
+    );
+    assert(
+      fold.open === !matchMedia("(max-width: 600px)").matches,
       "초기 펼침 조건 불일치",
     );
     if (!fold.open) {
@@ -744,7 +753,7 @@ checks.push([
     );
     const modal = root.querySelector<HTMLDialogElement>(".detail-modal");
     assert(
-      modal?.open === matchMedia("(max-width: 900px)").matches,
+      modal?.open === matchMedia("(max-width: 600px)").matches,
       "반응형 모달 조건 불일치",
     );
     app.closeDetail();
@@ -1754,7 +1763,7 @@ checks.push([
     changes = { issues: rows, ancestors: [] };
     await app.checkChanges();
     const scroller = root.querySelector<HTMLElement>(
-      matchMedia("(max-width:900px)").matches ? ".workspace" : ".browse",
+      matchMedia("(max-width:600px)").matches ? ".workspace" : ".browse",
     );
     assert(scroller, "스크롤 영역 누락");
     scroller.style.overflowAnchor = "none";
@@ -1806,7 +1815,7 @@ checks.push([
   async () => {
     const split = root.querySelector<HTMLElement>(".splitter");
     assert(split, "구분선 누락");
-    if (matchMedia("(max-width:900px)").matches) {
+    if (matchMedia("(max-width:600px)").matches) {
       assert(!split.getClientRects().length, "모바일 구분선 노출");
       return;
     }
@@ -1928,7 +1937,7 @@ checks.push([
       "로그 크기 제한 누락",
     );
     await app.select("TEST-3");
-    if (matchMedia("(max-width:900px)").matches)
+    if (matchMedia("(max-width:600px)").matches)
       assert(
         root.querySelector(".detail-modal .developer-panel"),
         "모달 로그 배치 누락",
@@ -1962,7 +1971,7 @@ checks.push([
   "상단 메뉴는 스크롤해도 위치와 스크롤 영역 높이를 유지한다",
   async () => {
     const scroller = root.querySelector<HTMLElement>(
-      matchMedia("(max-width:900px)").matches ? ".workspace" : ".browse",
+      matchMedia("(max-width:600px)").matches ? ".workspace" : ".browse",
     );
     const nav = root.querySelector<HTMLElement>(".top-nav");
     assert(scroller && nav, "스크롤 영역 또는 메뉴 누락");
@@ -2232,7 +2241,7 @@ checks.push([
       "응답이 우측에 배치되지 않음",
     );
     assert(response.textContent?.includes("응답 본문 없음"), "선택 응답 누락");
-    if (innerWidth <= 900)
+    if (innerWidth <= 600)
       assert(
         panel.getBoundingClientRect().height >= innerHeight * 0.4 - 1,
         "모바일 로그 높이 부족",
@@ -3199,7 +3208,7 @@ checks.push([
           Number.parseFloat(getComputedStyle(action).fontSize) >= 12,
           "일괄 동작 이름 숨김",
         );
-        if (innerWidth <= 900)
+        if (innerWidth <= 600)
           assert(
             action.getBoundingClientRect().height >= 32,
             "일괄 동작 터치 영역 부족",
@@ -3224,7 +3233,7 @@ checks.push([
       element("p", "", "길어진 설명과 댓글을 읽는 상황입니다. ".repeat(5)),
     );
     const scroller = root.querySelector<HTMLElement>(
-      matchMedia("(max-width: 900px)").matches
+      matchMedia("(max-width: 600px)").matches
         ? ".detail-content"
         : ".detail-pane",
     );
@@ -3309,6 +3318,27 @@ checks.push([
         "선택기가 공통 크기를 벗어남",
       );
     }
+    assert(
+      controls.every(
+        (control) =>
+          Number.parseFloat(getComputedStyle(control).fontSize) ===
+          (small ? 12 : 13),
+      ),
+      "선택기 글자 크기가 공통 토큰을 따르지 않음",
+    );
+    controls[0]?.click();
+    await tick();
+    const option = root.querySelector<HTMLElement>(
+      '.select-options:popover-open [role="option"]',
+    );
+    assert(
+      option &&
+        option.getBoundingClientRect().height >= (small ? 32 : 36) &&
+        Number.parseFloat(getComputedStyle(option).fontSize) ===
+          (small ? 12 : 13),
+      "선택지 크기가 공통 토큰을 따르지 않음",
+    );
+    controls[0]?.click();
     const fields = root.querySelector<HTMLElement>(".detail-fields");
     assert(
       fields &&
@@ -3323,6 +3353,10 @@ checks.push([
     );
     button("댓글 추가").click();
     const save = button("댓글 저장");
+    assert(
+      Number.parseFloat(getComputedStyle(save).fontSize) === (small ? 12 : 13),
+      "댓글 버튼이 공통 글자 크기를 따르지 않음",
+    );
     assert(
       Math.abs(
         save.getBoundingClientRect().height -
@@ -3341,6 +3375,85 @@ checks.push([
     }
     button("취소").click();
     app.closeDetail();
+  },
+]);
+
+checks.push([
+  "상세·설정·필터·활동의 간격은 같은 화면 밀도를 따른다",
+  async () => {
+    const small = innerWidth <= 900;
+    function spacing(selector: string, property: string, expected: number) {
+      const node = document.querySelector<HTMLElement>(selector);
+      assert(node, `간격 검사 대상 누락: ${selector}`);
+      const actual = Number.parseFloat(
+        getComputedStyle(node).getPropertyValue(property),
+      );
+      assert(
+        Math.abs(actual - expected) < 1,
+        `${selector} ${property}: ${actual} / ${expected}`,
+      );
+    }
+    await app.select("TEST-3");
+    try {
+      spacing(".detail-fields", "row-gap", small ? 8 : 16);
+      spacing(".detail-fields", "column-gap", small ? 12 : 20);
+      spacing(".comments", "margin-top", small ? 8 : 20);
+      spacing(".comments", "padding-top", small ? 8 : 16);
+      spacing(".description-head", "margin-bottom", small ? 8 : 12);
+      spacing(".issue-detail", "padding-top", small ? 10 : 20);
+      spacing(".detail-pane", "padding-top", 0);
+    } finally {
+      app.closeDetail();
+    }
+    spacing(".activity-feed", "margin-top", small ? 8 : 20);
+    spacing(".activity-row", "padding-top", small ? 8 : 12);
+    button("설정").click();
+    try {
+      spacing(".settings-modal", "padding-top", small ? 10 : 20);
+      spacing(".settings-tabs", "margin-top", small ? 8 : 12);
+      spacing(".settings-panels", "padding-top", small ? 6 : 8);
+      const content = root.querySelector<HTMLElement>(".settings-content");
+      assert(
+        content &&
+          content.getBoundingClientRect().height <= (small ? 420 : 520),
+        "설정 본문에 PC 높이의 빈 공간이 남음",
+      );
+    } finally {
+      button("닫기").click();
+    }
+    button("필터 및 뷰").click();
+    await tick();
+    try {
+      spacing(".view-panel-head", "padding-top", small ? 8 : 16);
+      spacing(".view-panel-body", "padding-top", small ? 8 : 16);
+      spacing(".view-panel-body", "padding-left", small ? 10 : 20);
+    } finally {
+      button("취소").click();
+    }
+  },
+]);
+
+checks.push([
+  "설정이 열린 동안 상세는 모달을 가리지 않고 닫은 뒤에 표시한다",
+  async () => {
+    app.closeDetail();
+    button("설정").click();
+    const popup = root.querySelector<HTMLDialogElement>(".settings-modal");
+    const detail = root.querySelector<HTMLDialogElement>(".detail-modal");
+    assert(popup && detail, "모달 누락");
+    try {
+      await app.select("TEST-3");
+      assert(popup.open && !detail.open, "상세가 열린 설정을 가림");
+      popup.close();
+      await tick();
+      assert(
+        detail.open === innerWidth <= 600,
+        "설정 종료 후 상세 배치가 복원되지 않음",
+      );
+    } finally {
+      app.closeDetail();
+      if (popup.open) popup.close();
+    }
   },
 ]);
 

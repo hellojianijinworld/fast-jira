@@ -106,6 +106,7 @@ export function createCommandPalette(config: {
     hint = element("p", "command-hint"),
     status = element("p", "command-status"),
     aiResults = element("div", "command-results");
+  controls.dataset.size = "sm";
   let conversations: Conversation[] = [],
     current: Conversation | undefined,
     storageError = "";

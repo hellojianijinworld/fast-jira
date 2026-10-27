@@ -7,7 +7,7 @@ export function createChatSidebar(actions: {
 }) {
   const root = element("aside", "chat-sidebar"),
     head = element("div", "chat-sidebar-head"),
-    create = iconButton("대화 시작", "square-pen"),
+    create = iconButton("대화 시작", "square-pen", { size: "sm" }),
     list = element("div", "chat-conversations");
   root.setAttribute("aria-label", "저장한 대화");
   head.append(element("strong", "", "대화"), create);
@@ -25,7 +25,7 @@ export function createChatSidebar(actions: {
         ...items.map((item) => {
           const row = element("div", "chat-conversation"),
             open = element("button", "chat-conversation-open"),
-            remove = iconButton("대화 삭제", "trash-2");
+            remove = iconButton("대화 삭제", "trash-2", { size: "sm" });
           open.type = "button";
           open.disabled = remove.disabled = disabled;
           open.setAttribute("aria-current", String(item.id === selected));

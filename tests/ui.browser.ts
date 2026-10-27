@@ -39,6 +39,7 @@ import { showModal } from "../src/ui/modal.ts";
 import { createNotice } from "../src/ui/notice.ts";
 import { enhanceSelect } from "../src/ui/select-menu.ts";
 import { settingsContent } from "../src/ui/settings.ts";
+import type { ComponentSize } from "../src/ui/theme.ts";
 
 const results = document.querySelector("#results");
 const fixture = document.querySelector("#fixture");
@@ -139,7 +140,8 @@ await check(
         root.dataset.theme = mode;
         const page = getComputedStyle(root).backgroundColor;
         assert(
-          getComputedStyle(pane).backgroundColor === page,
+          getComputedStyle(pane).backgroundColor ===
+            (innerWidth <= 600 ? "rgba(0, 0, 0, 0)" : page),
           "오른쪽 패널 배경이 페이지와 다르다",
         );
         assert(
@@ -202,7 +204,7 @@ const cardExamples = [
     "세특·간편세특 프롬프트에 기재요령 기본 금지어 반영 ('과제'→'활동', 상호명·플랫폼명 → 일반 표현)",
   ],
 ] as const;
-function exampleCards() {
+function exampleCards(size: ComponentSize = "auto") {
   const host = element("section", "issue-list-container");
   for (const [key, summary] of cardExamples)
     host.append(
@@ -217,6 +219,7 @@ function exampleCards() {
           status: "개발 진행 중",
         },
         {
+          size,
           statusOrder: order,
           site: "example.atlassian.net",
           onSelect: () => {},
@@ -230,7 +233,7 @@ await check(
   () => {
     const compact = document.documentElement.dataset.compact;
     document.documentElement.dataset.compact = "false";
-    const host = exampleCards();
+    const host = exampleCards("md");
     host.style.width = "760px";
     fixture.append(host);
     try {
@@ -271,7 +274,7 @@ await check(
   () => {
     const compact = document.documentElement.dataset.compact;
     document.documentElement.dataset.compact = "false";
-    const host = exampleCards();
+    const host = exampleCards("md");
     host.style.width = "420px";
     fixture.append(host);
     try {
@@ -314,7 +317,11 @@ await check(
     document.documentElement.dataset.compact = "false";
     const host = element("div", "issue-list-container");
     host.style.width = "480px";
-    const card = issueCard(issue, { statusOrder: order, onSelect: () => {} });
+    const card = issueCard(issue, {
+      size: "md",
+      statusOrder: order,
+      onSelect: () => {},
+    });
     host.append(card);
     fixture.append(host);
     try {
@@ -342,9 +349,15 @@ await check(
         Math.abs(second.left - main.getBoundingClientRect().left) < 1,
         "두 번째 줄이 번호 옆의 별도 칸에 갇혀 있다",
       );
+      const identityBounds = identity.getBoundingClientRect();
       assert(
-        identity.getBoundingClientRect().bottom <= first.bottom + 5,
-        "유형·번호 영역이 제목 전체 높이 가운데로 내려간다",
+        Math.abs(
+          identityBounds.top +
+            identityBounds.height / 2 -
+            (first.top + first.height / 2),
+        ) <
+          (second.top - first.top) / 2,
+        "유형·번호 영역이 첫 줄 대신 제목 전체 높이 가운데로 내려간다",
       );
       assert(
         second.top - first.bottom >= 9,

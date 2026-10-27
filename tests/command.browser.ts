@@ -737,7 +737,7 @@ await check(
   },
 );
 await check(
-  "공통 카드 sm은 정보를 유지하면서 기본 카드보다 행·제목·배지를 작게 표시한다",
+  "공통 카드 sm은 정보를 유지하고 태블릿 이하의 기본 카드에도 같은 크기를 적용한다",
   async () => {
     const value = {
       ...issue,
@@ -757,19 +757,28 @@ await check(
       const normalRow = standard.querySelector<HTMLElement>(".list-item");
       const smallRow = small.querySelector<HTMLElement>(".list-item");
       if (!normalRow || !smallRow) throw new Error("카드 누락");
+      const responsiveSmall = innerWidth <= 900;
       assert(
-        smallRow.getBoundingClientRect().height <
-          normalRow.getBoundingClientRect().height,
-        "sm 행 높이가 줄지 않음",
+        responsiveSmall
+          ? Math.abs(
+              smallRow.getBoundingClientRect().height -
+                normalRow.getBoundingClientRect().height,
+            ) < 1
+          : smallRow.getBoundingClientRect().height <
+              normalRow.getBoundingClientRect().height,
+        "공통 카드 크기가 화면 밀도와 일치하지 않음",
       );
       for (const selector of [".list-title", ".person-pill", ".status-pill"]) {
         const normal = standard.querySelector<HTMLElement>(selector),
           compact = small.querySelector<HTMLElement>(selector);
         if (!normal || !compact) throw new Error("공통 카드 정보 누락");
+        const compactSize = parseFloat(getComputedStyle(compact).fontSize);
+        const normalSize = parseFloat(getComputedStyle(normal).fontSize);
         assert(
-          parseFloat(getComputedStyle(compact).fontSize) <
-            parseFloat(getComputedStyle(normal).fontSize),
-          `${selector} 크기가 줄지 않음`,
+          responsiveSmall
+            ? compactSize === normalSize
+            : compactSize < normalSize,
+          `${selector} 크기가 화면 밀도와 일치하지 않음`,
         );
       }
       assert(
@@ -781,6 +790,34 @@ await check(
     }
   },
 );
+await check("검색과 AI 대화의 여백도 공통 밀도를 따른다", async () => {
+  const small = innerWidth <= 900;
+  palette.open("search");
+  await tick();
+  const searchPanel = host.querySelector<HTMLElement>(
+    ".search-modal .command-panel",
+  );
+  assert(searchPanel, "검색 본문 누락");
+  if (!searchPanel) return;
+  assert(
+    Number.parseFloat(getComputedStyle(searchPanel).paddingLeft) ===
+      (small ? 12 : 16),
+    "검색 여백이 공통 밀도를 따르지 않음",
+  );
+  palette.open("ai");
+  await tick();
+  const transcript = host.querySelector<HTMLElement>(".chat-transcript");
+  const composer = host.querySelector<HTMLElement>(".chat-main .command-form");
+  assert(transcript && composer, "AI 대화 영역 누락");
+  if (!transcript || !composer) return;
+  assert(
+    Number.parseFloat(getComputedStyle(transcript).paddingTop) ===
+      (small ? 14 : 20) &&
+      Number.parseFloat(getComputedStyle(composer).paddingTop) ===
+        (small ? 8 : 10),
+    "AI 대화와 입력창 여백이 공통 밀도를 따르지 않음",
+  );
+});
 await check("destroy는 단축키와 명령창을 해제한다", async () => {
   palette.destroy();
   notice.destroy();

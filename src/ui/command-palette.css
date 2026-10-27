@@ -7,10 +7,10 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--border-strong);
-  border-radius: 16px;
+  border-radius: var(--radius-16);
   background: var(--surface);
   color: var(--text);
-  box-shadow: 0 24px 80px #0003;
+  box-shadow: var(--shadow-dialog);
 }
 .command-modal[open] {
   display: flex;
@@ -21,7 +21,7 @@
   height: min(780px, calc(100dvh - var(--command-top) - 16px));
 }
 .command-modal::backdrop {
-  background: #10182866;
+  background: var(--backdrop-command);
 }
 .command-modal [hidden] {
   display: none;
@@ -30,18 +30,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px 2px;
-  gap: 12px;
+  padding: var(--density-space-2-5) var(--density-space-4) 2px;
+  gap: var(--density-space-3);
   flex: none;
 }
 .command-head h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-15);
 }
 .command-modal kbd {
   margin-left: 8px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--muted);
   white-space: nowrap;
 }
@@ -55,28 +55,29 @@
   border-top: 1px solid var(--border);
 }
 .search-modal .command-panel {
-  padding: 8px 16px 16px;
+  padding: var(--density-space-2) var(--density-space-4) var(--density-space-4);
 }
 .search-form {
   display: flex;
   flex-wrap: nowrap;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--density-space-2);
 }
 .search-query {
   flex: 1;
   min-width: 0;
   font: inherit;
+  font-size: var(--button-font-size);
 }
 .search-form button {
   flex: none;
 }
 .ai-modal .command-head {
-  padding-bottom: 10px;
+  padding-bottom: var(--density-space-2-5);
 }
 .command-form {
   display: grid;
-  gap: 8px;
+  gap: var(--density-space-2);
 }
 .command-form textarea {
   width: 100%;
@@ -84,29 +85,21 @@
   min-height: 42px;
   max-height: 180px;
   font: inherit;
-  padding: 10px 12px;
-  line-height: 1.7;
+  padding: var(--density-space-2-5) var(--density-space-3);
+  line-height: var(--line-height-prose);
   box-sizing: border-box;
 }
 .command-controls {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--density-space-1-5);
   flex-wrap: wrap;
 }
 .command-model {
   margin-right: auto;
   max-width: 190px;
-  font-size: 12px;
-}
-.command-controls button {
-  font-size: 12px;
-  min-height: 32px;
-}
-.command-controls .tool-button {
-  width: 32px;
-  height: 32px;
+  font-size: var(--font-size-12);
 }
 .command-controls .active {
   background: var(--blue-soft);
@@ -114,9 +107,9 @@
 }
 .command-hint,
 .command-status {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.6;
-  margin: 10px 0;
+  margin: var(--density-space-2-5) 0;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -125,34 +118,34 @@
 }
 .command-results {
   display: grid;
-  gap: 8px;
+  gap: var(--density-space-2);
   min-width: 0;
 }
 .command-results .issue-card:focus-within {
   outline: 2px solid var(--blue);
   outline-offset: 1px;
-  border-radius: 10px;
+  border-radius: var(--radius-10);
 }
 .command-proposal {
   display: grid;
   justify-items: start;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--density-space-2);
+  padding: var(--density-space-3);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-12);
   background: var(--page);
 }
 .command-proposal h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--muted);
 }
 .command-proposal > strong {
-  font-size: 15px;
+  font-size: var(--font-size-15);
 }
 .command-targets,
 .command-proposal-result {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.6;
   margin: 0;
   white-space: pre-wrap;
@@ -165,7 +158,7 @@
   display: none;
 }
 .command-picker {
-  padding: 4px 16px 16px;
+  padding: 4px var(--density-space-4) var(--density-space-4);
   overflow-y: auto;
 }
 .command-picker input {
@@ -175,11 +168,11 @@
 .command-menu {
   display: grid;
   gap: 4px;
-  margin-top: 10px;
+  margin-top: var(--density-space-2-5);
 }
 .command-menu button {
   justify-content: flex-start;
-  padding: 12px;
+  padding: var(--control-padding-x);
   background: transparent;
   color: var(--text);
 }
@@ -202,7 +195,7 @@
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  padding: 12px 8px;
+  padding: var(--density-space-3) var(--density-space-2);
   background: var(--page);
   border-right: 1px solid var(--border);
 }
@@ -210,13 +203,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px 8px;
-  font-size: 12px;
+  padding: 0 4px var(--density-space-2);
+  font-size: var(--font-size-12);
 }
-.chat-sidebar-head .tool-button {
-  width: 28px;
-  height: 28px;
-}
+
 .chat-conversations {
   overflow-y: auto;
   min-height: 0;
@@ -227,7 +217,7 @@
   gap: 2px;
   margin-bottom: 4px;
   min-width: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-8);
 }
 .chat-conversation:has([aria-current="true"]) {
   background: var(--blue-soft);
@@ -239,7 +229,7 @@
   flex: 1;
   min-width: 0;
   border: 0;
-  padding: 9px 8px;
+  padding: 9px var(--density-space-2);
   background: transparent;
   color: var(--text);
   text-align: left;
@@ -251,12 +241,12 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: var(--font-size-12);
+  line-height: var(--line-height-label);
 }
 .chat-conversation-open small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-10);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -264,8 +254,6 @@
 }
 .chat-conversation > .tool-button {
   visibility: hidden;
-  width: 24px;
-  height: 28px;
   flex: none;
   color: var(--muted);
 }
@@ -274,9 +262,9 @@
   visibility: visible;
 }
 .chat-sidebar-empty {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--muted);
-  padding: 8px;
+  padding: var(--density-space-2);
   line-height: 1.6;
 }
 .chat-main {
@@ -289,7 +277,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: var(--density-space-5) var(--density-space-6);
   scroll-behavior: auto;
 }
 .chat-welcome {
@@ -300,22 +288,22 @@
   text-align: center;
   min-height: 160px;
   height: 100%;
-  gap: 8px;
+  gap: var(--density-space-2);
 }
 .chat-welcome h3 {
   margin: 0;
-  font-size: 19px;
+  font-size: var(--font-size-19);
 }
 .chat-welcome p {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 .chat-main .command-form {
-  margin: 0 16px 8px;
-  padding: 10px;
+  margin: 0 var(--density-space-4) var(--density-space-2);
+  padding: var(--density-space-2-5);
   border: 1px solid var(--border-strong);
-  border-radius: 14px;
+  border-radius: var(--radius-14);
   background: var(--surface);
   flex: none;
 }
@@ -333,26 +321,26 @@
   resize: vertical;
 }
 .chat-main .command-results {
-  gap: 18px;
+  gap: var(--density-space-4-5);
 }
 .chat-message {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--density-space-1-5);
 }
 .chat-author {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--density-space-1-5);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 .chat-author small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 10px;
+  font-size: var(--font-size-10);
 }
 .chat-author .ui-icon {
   width: 14px;
@@ -365,17 +353,18 @@
 }
 .command-user {
   max-width: 90%;
-  padding: 10px 14px;
-  border-radius: 14px 14px 4px 14px;
+  padding: var(--density-space-2-5) var(--density-space-3-5);
+  border-radius: var(--radius-14) var(--radius-14) var(--radius-4)
+    var(--radius-14);
   background: var(--blue-soft);
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: 1.7;
+  line-height: var(--line-height-prose);
 }
 .command-answer {
   line-height: 1.8;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   overflow-wrap: anywhere;
   min-width: 0;
 }
@@ -385,19 +374,19 @@
   white-space: pre-wrap;
 }
 .command-answer h3 {
-  font-size: 14px;
-  margin: 6px 0;
+  font-size: var(--font-size-14);
+  margin: var(--density-space-1-5) 0;
 }
 .command-answer .chat-break {
   height: 10px;
 }
 .command-answer pre {
   max-width: 100%;
-  padding: 12px;
+  padding: var(--density-space-3);
   background: var(--page);
-  border-radius: 8px;
+  border-radius: var(--radius-8);
   overflow: auto;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 .command-answer code {
   font-size: 0.95em;
@@ -409,7 +398,7 @@
   height: 11px;
   border: 2px solid var(--border-strong);
   border-top-color: var(--blue);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   vertical-align: middle;
   margin-right: 8px;
   animation: chat-spin 1s linear infinite;
@@ -428,7 +417,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--muted);
 }
 .chat-provider::before {
@@ -436,7 +425,7 @@
   width: 5px;
   height: 5px;
   background: var(--muted);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
 }
 .chat-provider[data-state="ready"]::before {
   background: var(--blue);
@@ -445,21 +434,21 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 4px 14px;
-  padding: 0 18px 10px;
+  gap: 4px var(--density-space-3-5);
+  padding: 0 var(--density-space-4-5) var(--density-space-2-5);
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--font-size-10);
   flex: none;
 }
 .chat-footer .command-hint {
   width: 100%;
   margin: 0 0 2px;
-  font-size: 10px;
+  font-size: var(--font-size-10);
 }
 .command-policy,
 .chat-capabilities {
   max-width: 100%;
-  font-size: 10px;
+  font-size: var(--font-size-10);
   line-height: 1.6;
 }
 .command-policy summary,
@@ -467,16 +456,16 @@
   cursor: pointer;
 }
 .command-policy p {
-  margin: 6px 0 0;
+  margin: var(--density-space-1-5) 0 0;
 }
 .chat-capabilities table {
   border-collapse: collapse;
-  margin-top: 6px;
-  font-size: 10px;
+  margin-top: var(--density-space-1-5);
+  font-size: var(--font-size-10);
 }
 .chat-capabilities th,
 .chat-capabilities td {
-  padding: 4px 8px;
+  padding: 4px var(--density-space-2);
   border-bottom: 1px solid var(--border);
   text-align: left;
 }
@@ -490,14 +479,14 @@
   right: 4px;
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: #f59e0b;
 }
 .command-modal > .notice {
   position: static;
   flex: none;
   max-width: none;
-  margin: 0 16px 12px;
+  margin: 0 var(--density-space-4) var(--density-space-3);
 }
 @media (max-width: 640px) {
   .command-modal,
@@ -506,16 +495,13 @@
     width: calc(100vw - 16px);
     margin-top: 8px;
     max-height: calc(100dvh - 16px);
-    border-radius: 12px;
+    border-radius: var(--radius-12);
   }
   .command-modal.is-chat {
     height: calc(100dvh - 16px);
   }
   .command-head {
     padding: 8px 12px 0;
-  }
-  .search-modal .command-panel {
-    padding: 8px 12px 12px;
   }
   .chat-layout {
     grid-template-columns: 1fr;
@@ -557,7 +543,7 @@
     min-height: 100px;
   }
   .chat-welcome h3 {
-    font-size: 17px;
+    font-size: var(--font-size-17);
   }
   .chat-main .command-form {
     margin: 0 8px 6px;
@@ -586,5 +572,5 @@
 .command-search-group mark {
   color: inherit;
   background: var(--blue-soft);
-  border-radius: 2px;
+  border-radius: var(--radius-2);
 }

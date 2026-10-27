@@ -166,7 +166,7 @@ export function issueComments(
     const body = element("div", "adf comment-body");
     body.append(renderADF(comment.body, issue, imageEnabled));
     const toolbar = element("div", "comment-toolbar"),
-      copy = iconButton("댓글 링크 복사", "copy");
+      copy = iconButton("댓글 링크 복사", "copy", { size: "sm" });
     copy.disabled = !commentLink(comment.id);
     copy.addEventListener("click", async () => {
       await copyText(
@@ -176,11 +176,11 @@ export function issueComments(
         "댓글 링크를 복사하지 못했어요.",
       );
     });
-    const reply = iconButton("답글 작성", "reply");
+    const reply = iconButton("답글 작성", "reply", { size: "sm" });
     reply.addEventListener("click", () => compose(comment, true, entry));
     toolbar.append(reply, copy);
     if (accountId && comment.authorId === accountId) {
-      const edit = iconButton("내 댓글 편집", "square-pen");
+      const edit = iconButton("내 댓글 편집", "square-pen", { size: "sm" });
       edit.addEventListener("click", () => compose(comment, false, entry));
       toolbar.append(edit);
     }
