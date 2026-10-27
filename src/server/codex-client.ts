@@ -161,7 +161,7 @@ export async function startCodex(
   };
   try {
     await client.request("initialize", {
-      clientInfo: { name: "fast_jira", version: "0.1.0" },
+      clientInfo: { name: "fast_jira", version: "0.2.0" },
       capabilities: { experimentalApi: true },
     });
     send({ method: "initialized", params: {} });

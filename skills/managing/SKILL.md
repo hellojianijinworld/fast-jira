@@ -17,4 +17,4 @@ Read the management section in [INSTALL.md](../../INSTALL.md). Resolve the plugi
 
 When authentication or token renewal is needed, open the app and follow Setup's user-only authentication handoff. During entry, inspect only `GET /api/connection/status`; never inspect browser content, clipboard, request payloads, or private credential files.
 
-The process is detached from the terminal, with no OS auto-start registration. After reboot, start it explicitly through Managing. A consented local domain is restored on start when available; otherwise open the verified localhost URL. Do not attach startup to unrelated AI sessions or messages.
+The process is detached from the terminal, with no OS auto-start registration. After reboot, start it explicitly through Managing. On macOS, restoring a consented local domain may open the native system authorization dialog again after reboot. Never ask the user to open Terminal or run sudo. A consented local domain is restored on start when available; otherwise open the verified localhost URL. Do not attach startup to unrelated AI sessions or messages.

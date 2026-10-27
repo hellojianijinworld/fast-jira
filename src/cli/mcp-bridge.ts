@@ -13,7 +13,7 @@ import { installationPaths } from "./config.ts";
 import { readServiceConfig } from "./service.ts";
 
 const server = new Server(
-  { name: "fast-jira", version: "0.1.0" },
+  { name: "fast-jira", version: "0.2.0" },
   { capabilities: { tools: {} } },
 );
 type Connection = { remote: Client; transport: StreamableHTTPClientTransport };
@@ -37,7 +37,7 @@ async function client() {
       server.getClientCapabilities()?.elicitation,
     );
     const remote = new Client(
-      { name: "fast-jira-plugin", version: "0.1.0" },
+      { name: "fast-jira-plugin", version: "0.2.0" },
       { capabilities: supportsApproval ? { elicitation: { form: {} } } : {} },
     );
     if (supportsApproval)

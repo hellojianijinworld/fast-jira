@@ -4,7 +4,7 @@
 
 ## 완료 기준과 지원 범위
 
-- Node.js 22.12 이상, npm, Git. 저장소 접근에 필요한 GitHub 인증은 재사용합니다.
+- Node.js 22.12 이상, npm, Git. 공개 소스 설치에는 GitHub 로그인이 필요하지 않습니다.
 - macOS·Windows·Linux에서 Node 백그라운드 실행을 제공합니다. OS 서비스·로그인 훅·예약 작업은 등록하지 않습니다. 재부팅한 뒤에는 Managing으로 다시 시작합니다. Windows·Linux 실기기 검증 여부는 따로 보고합니다.
 - API 토큰이 없어도 앱과 플러그인 설치는 완료할 수 있습니다. 인증 전 상태를 연결 성공으로 보고하지 마세요.
 - 기존 4173 서비스·설정·다른 프로그램을 종료하거나 덮어쓰지 마세요. 포트 충돌이면 다른 포트로 테스트하거나 이전 서비스의 소유와 이전 의도를 확인합니다.
@@ -13,16 +13,12 @@
 
 1. 현재 요청을 수행하는 플랫폼이 Codex인지 Claude Code인지 확인합니다. 둘을 모두 등록하는 것은 사용자가 요청했을 때만 합니다.
 2. `node --version`, `npm --version`, `git --version`과 해당 플랫폼 CLI의 도움말을 확인합니다. 지원 Node가 없으면 설치 방식을 제안하고 필요한 승인 후 진행합니다.
-3. 기존 소스 경로와 개인 설정을 우선 재사용합니다. 새로 필요하면 사용자가 지정한 위치 또는 `~/Applications/fast-jira-source`에 복제합니다. GitHub 접근 실패는 사용자의 로그인·저장소 권한 문제로 안내하며 공개 저장소라고 가정하지 않습니다.
+3. 기존 소스 경로와 개인 설정을 우선 재사용합니다. 새로 필요하면 사용자가 지정한 위치 또는 `~/Applications/fast-jira-source`에 복제합니다. 공개 저장소이므로 복제에 GitHub 로그인을 요구하지 않습니다. 접근 실패를 곧바로 사용자 인증 문제로 단정하지 마세요.
 4. 두 AI 플랫폼은 같은 개인 폴더를 사용합니다. macOS는 `~/Library/Application Support/Fast Jira`, Windows는 `%LOCALAPPDATA%/Fast Jira`, Linux는 `$XDG_DATA_HOME/fast-jira`(미설정 시 `~/.local/share/fast-jira`)입니다. `FAST_JIRA_HOME` 또는 `--home`으로 지정했다면 관리 명령과 MCP 프로세스 환경에도 같은 `FAST_JIRA_HOME`을 적용합니다.
 
 ## 2. 배포본 준비
 
-### 공개 릴리스에서 설치할 때 — 우선 사용
-
-GitHub의 최신 정식 릴리스 `https://api.github.com/repos/hellojianijinworld/fast-jira/releases/latest`에서 `fast-jira-<version>.tar.gz`와 `SHA256SUMS`를 받습니다. 태그와 파일 버전이 같은지 확인하고 SHA-256을 검증한 뒤 개인 폴더의 `distribution/<version>/`에 압축을 풉니다. 최상위 `marketplace/`가 아래 `MARKETPLACE`입니다. 웹·서버·관리 CLI·MCP는 이미 빌드되어 있으므로 npm 설치나 소스 빌드가 필요 없습니다. 아카이브의 경로가 대상 폴더를 벗어나지 않는지 확인합니다.
-
-이 경로는 플러그인 원본이므로 설치 후 지우지 않습니다. 공통 실행본은 별도의 `runtime/`에 복사되고 인증은 `config/`에 보관됩니다. 공식 CLI 등록은 아래 3단계를 따릅니다. 릴리스 파일이 없을 때만 아래 소스 빌드를 사용합니다.
+현재는 공개 소스에서 빌드해 설치합니다. 정식 릴리스 아카이브가 게시되어 있다고 가정하지 마세요.
 
 ### 소스 저장소에서 설치할 때
 
@@ -33,7 +29,7 @@ npm ci
 npm run package:plugin
 ```
 
-산출물은 `dist/marketplace`입니다. 빌드한 UI·서버·관리 CLI와 스킬만 들어 있으며 개발 의존성·개인 설정은 포함하지 않습니다. Node는 실행 시에도 필요합니다.
+산출물은 `dist/marketplace`입니다. 이 경로는 플러그인 원본이므로 설치 후 지우지 않습니다. 공통 실행본은 개인 폴더의 `runtime/`, 인증은 `config/`에 따로 보관됩니다. 빌드한 UI·서버·관리 CLI와 스킬만 들어 있으며 개발 의존성·개인 설정은 포함하지 않습니다. Node는 실행 시에도 필요합니다.
 
 ### 이미 빌드된 플러그인을 받았을 때
 
@@ -76,7 +72,8 @@ node "$PLUGIN_ROOT/dist/cli/main.js" status
 node "$PLUGIN_ROOT/dist/cli/main.js" open
 ```
 
-- 실행 전에 로컬 도메인 설정에 대한 사용자 동의를 받습니다. 동의하면 `--domain yes`, 거부하면 `--domain no`로 실행합니다. 도메인은 `https://fast-jira.local`이며 Portless 0.15.11을 개인 폴더에 선택 설치합니다(Node 24 이상 필요). hosts·로컬 인증서·443 프록시에 대한 OS 승인/암호 입력은 사용자가 직접 수행합니다. 서비스 등록·LAN 공유 옵션은 사용하지 않습니다. 실패하면 localhost 주소로 정상 실행합니다. 무조건 한 번의 승인으로 끝난다고 약속하지 않습니다.
+- 실행 전에 로컬 도메인 설정에 대한 사용자 동의를 받습니다. 동의하면 `--domain yes`, 거부하면 `--domain no`로 실행합니다. macOS와 Node 24 이상에서 `https://fast-jira.local`을 설정하며 Portless 0.15.11을 개인 폴더에 선택 설치합니다. 설치기가 Fast Jira의 설정 목적과 변경 항목을 설명하는 macOS 시스템 인증창을 열면 사용자가 그 창에서 승인합니다. 실행 주체 이름은 OS가 `osascript`로 표시합니다. 인증서 신뢰 승인은 설치기가 만든 임시 GUI 앱에서 macOS 기본 승인창으로 요청합니다. 관리자 승인과 인증서 승인이 별도로 표시될 수 있으며, 해당 창에서 사용자가 승인하면 설치기가 나머지를 완료합니다. 신뢰 대상은 현재 사용자의 fast-jira.local 전용 서버 인증서이며 범용 CA 신뢰로 확대하지 않습니다. 시스템 인증서 신뢰 검사와 실제 HTTPS 응답까지 확인합니다. 인증서 보조 앱은 실행 후 제거합니다. hosts·로컬 인증서·443 프록시 설정만 관리자 권한으로 수행하며 앱과 MCP 서버는 일반 사용자로 실행합니다.
+- 사용자에게 터미널 열기, 명령 복사, `sudo` 실행을 요구하지 않습니다. 암호는 채팅이나 AI 도구에 입력하지 않습니다. OS 인증창을 취소하거나 연결 확인에 실패하면 localhost로 설치를 완료합니다. Windows·Linux는 현재 도메인용 시스템 인증창을 지원하지 않으므로 localhost로 설치합니다. OS 서비스 등록·LAN 공유는 하지 않습니다.
 - `setup`은 실행 파일을 개인 폴더의 `runtime/`에 복사하고 Node를 독립 백그라운드 프로세스로 실행합니다. 터미널과 AI를 닫아도 유지되며 재부팅 후 자동 시작하지 않습니다. 이후 Managing의 `start`로 시작합니다.
 - `config/service.json`은 실행 설정, `config/connection.env`는 웹과 MCP가 공유하는 Jira 인증입니다. `config/mcp-token`은 로컬 MCP 연결 전용이며 Jira 토큰과 별개입니다. 플러그인 캐시 안에 인증을 저장하지 않습니다.
 - 재설치·업데이트는 인증 파일을 보존합니다. `--port`는 최초·재설치 `setup`에만 사용합니다. 예: `setup --port 4174`.
@@ -110,6 +107,8 @@ node "$PLUGIN_ROOT/dist/cli/main.js" open
 - `update`: 새 플러그인/새로 빌드한 소스의 CLI로 실행해 실행본을 교체합니다. 명시적인 업데이트 요청일 때만 합니다. 실패하면 이전 실행본·설정 복구를 시도합니다.
 - `remove`: 서비스·실행 파일을 제거하며 개인 `config/connection.env`와 로그는 남깁니다. 플러그인 제거는 해당 플랫폼의 공식 명령으로 별도로 수행합니다.
 - `service.lock` 오류: 다른 관리 명령이 실행 중인지 기록된 PID를 확인합니다. 진행 중인 작업의 잠금을 지우지 않습니다.
+
+앱은 GitHub의 최신 정식 릴리스를 확인합니다. 새 버전이 있으면 파비콘에 주황색 점을 표시하며, **설정 → 관리**에서 변경 내용을 확인하고 직접 업데이트합니다. 앱과 설치된 Codex·Claude 플러그인이 함께 갱신됩니다.
 
 앱의 **설정 → 관리 → 업데이트**에서는 앱과 Setup으로 설치한 사용자 범위 Codex·Claude Fast Jira 플러그인을 한 번에 갱신합니다. 미설치 플랫폼은 새로 등록하지 않으며 플러그인 반영은 AI의 새 대화부터입니다. 중간에 실패하면 이전 플러그인과 앱 상태 복구를 시도합니다. 아래 명령은 수동 관리가 필요할 때 사용합니다.
 

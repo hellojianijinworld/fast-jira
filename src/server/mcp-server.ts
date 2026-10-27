@@ -16,7 +16,7 @@ export interface ToolService {
 /** 승인 응답은 MCP 클라이언트가 제공한다. 모델이 보낸 승인 플래그는 사용하지 않는다. */
 export function createToolServer(tools: () => ToolService) {
   const server = new Server(
-    { name: "fast-jira", version: "0.1.0" },
+    { name: "fast-jira", version: "0.2.0" },
     { capabilities: { tools: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
