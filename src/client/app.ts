@@ -1,5 +1,6 @@
 import type { TreeCatalog } from "../domain/catalog.ts";
 import { shortcutAria, shortcutLabel } from "../domain/commands.ts";
+import type { LookupResult } from "../domain/details.ts";
 import { sameIssue, updateFavorites } from "../domain/favorites.ts";
 import { branchDefaults } from "../domain/filters.ts";
 import type { Issue } from "../domain/issue.ts";
@@ -11,6 +12,7 @@ import { activityFeed } from "../ui/activity-feed.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
+import { createIssueDialog } from "../ui/create-issue.ts";
 import { developerLog } from "../ui/developer-log.ts";
 import { actionButton, element, iconButton } from "../ui/dom.ts";
 import { favoriteButton, updateFavoriteButton } from "../ui/favorite-button.ts";
@@ -445,7 +447,12 @@ export async function createApp(
       ?.focus({ preventScroll: true });
     detailOpener = null;
   }
-  async function select(key: string, updateUrl = true, silent = false) {
+  async function select(
+    key: string,
+    updateUrl = true,
+    silent = false,
+    created?: LookupResult,
+  ) {
     const active = document.activeElement;
     const keyboard =
       !silent &&
@@ -488,7 +495,7 @@ export async function createApp(
       history.pushState(null, "", url);
     }
     try {
-      const result = await api.lookup(key);
+      const result = created ?? (await api.lookup(key));
       // 선택 순서를 지킨다. 늦은 응답은 현재 상세와 최근 이력을 덮어쓰지 않는다.
       if (destroyed || version !== detailRevision) return;
       // 조회 시작 이후 이 화면에서 저장한 내용은 이전 응답으로 덮지 않는다.
@@ -557,6 +564,9 @@ export async function createApp(
           },
         ),
         store.people,
+        (parent) => {
+          void creator.open({ parent });
+        },
       );
       const focusTitle =
         keyboard && detailHost.contains(document.activeElement);
@@ -601,7 +611,46 @@ export async function createApp(
       }
     }
   }
+  const creator = createIssueDialog({
+    host: root,
+    api,
+    projects: () => catalog.projects,
+    site: bootstrap.site,
+    me: {
+      id: bootstrap.me.accountId,
+      name: bootstrap.me.displayName,
+      avatar: "",
+    },
+    recents: store.people,
+    storage,
+    scope: store.scope,
+    notice: notice.show,
+    async created(key) {
+      const result = await api.lookup(key);
+      if (destroyed) return;
+      const parent = list.visibleItems().get(result.parent.parent);
+      if (parent)
+        list.update(
+          { ...parent, hasChildren: true },
+          list.direct.has(parent.key),
+        );
+      await applyChangedIssues([result.parent]);
+      if (destroyed) return;
+      list.insertCreated(result.parent, list.direct.has(key));
+      const hidden =
+        !list.direct.has(key) &&
+        !(result.parent.parent && list.childPasses(result.parent));
+      await select(key, true, false, result);
+      if (hidden)
+        notice.show(
+          `${key} 생성 완료 · 현재 뷰 조건에서는 목록에 표시되지 않습니다.`,
+        );
+    },
+  });
   const tree = createTreeView(listHost, list, {
+    onCreate: (project) => {
+      void creator.open({ project });
+    },
     collapsedGroups,
     onGroupChange: () => {
       store.saveCollapsedGroups(collapsedGroups);
@@ -741,6 +790,9 @@ export async function createApp(
     void list.load({ ...list.filters, q: "" });
   }
   const commands = createCommandPalette({
+    create: (draft) => {
+      void creator.open(draft ? { draft } : {});
+    },
     host: root,
     api,
     site: bootstrap.site,
@@ -999,6 +1051,7 @@ export async function createApp(
       detailView?.destroy();
       bulk.destroy();
       commands.destroy();
+      creator.destroy();
       detailRevision++;
       polling.destroy();
       live.destroy();

@@ -6,6 +6,7 @@ import type {
   AssistantStatus,
 } from "../domain/assistant.ts";
 import type { ChatMessage } from "../domain/conversation.ts";
+import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { record } from "../domain/validation.ts";
 import { createAssistantMcp } from "./assistant-mcp.ts";
 import { type ClaudeCommand, runClaudeCommand } from "./claude-client.ts";
@@ -92,6 +93,7 @@ export function createClaudeAssistant(
       if (signal?.aborted) abort();
       active.add(controller);
       const proposals: ChangeProposal[] = [];
+      const creations: IssueDraft[] = [];
       let bridge: Awaited<ReturnType<typeof createAssistantMcp>> | undefined;
       try {
         bridge = await createAssistantMcp(
@@ -104,6 +106,11 @@ export function createClaudeAssistant(
                 "Jira 연결이 바뀌었어요. 새 요청으로 시작하세요.",
               );
             const value = await tools.call(name, args);
+            if (name === "jira_prepare_issue") {
+              if (creations.length >= 5)
+                throw new Error("생성안은 한 번에 5개까지 준비할 수 있습니다.");
+              creations.push(issueDraft(value));
+            }
             if (name === "jira_propose_change") {
               const proposal = changeProposal(value, service.site);
               if (
@@ -182,6 +189,7 @@ export function createClaudeAssistant(
             : `claude:${randomUUID()}`,
           answer: result.result,
           proposals,
+          creations,
         };
       } finally {
         bridge?.close();

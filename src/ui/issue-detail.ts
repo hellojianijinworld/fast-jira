@@ -47,6 +47,7 @@ export function issueDetail(
   childOptions?: DetailChildOptions,
   favorite?: HTMLButtonElement,
   people?: ParticipantRecents,
+  createChild?: (issue: Issue) => void,
 ) {
   const issue = result.parent,
     root = element("article", "issue-detail");
@@ -298,6 +299,13 @@ export function issueDetail(
   });
   meta.append(participants.element);
   root.append(meta);
+  if (createChild && issue.hierarchyLevel !== -1) {
+    const actions = element("div", "detail-create-actions");
+    const create = actionButton("하위 이슈 생성", "plus", { size: "sm" });
+    create.addEventListener("click", () => createChild(editor.issue));
+    actions.append(create);
+    root.append(actions);
+  }
   const body = element("section", "detail-description");
   body.setAttribute("aria-label", "이슈 설명");
   const descriptionHead = element("div", "description-head"),

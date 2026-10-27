@@ -1,6 +1,12 @@
 /** 명령 이름·검색어는 여기에서 관리하고, 실행은 화면의 동작에 연결한다. */
 export const commands = [
   {
+    id: "create",
+    label: "이슈 생성",
+    icon: "plus",
+    keywords: "create 생성 만들기 등록",
+  },
+  {
     id: "search",
     label: "이슈 검색",
     icon: "search",
@@ -20,7 +26,7 @@ export function matchingCommands(query: string) {
     `${item.label} ${item.keywords}`.toLocaleLowerCase().includes(term),
   );
 }
-export type ShortcutCommand = CommandId | "palette";
+export type ShortcutCommand = Exclude<CommandId, "create"> | "palette";
 const shortcutKeys = { search: "K", palette: "P", ai: "I" } as const;
 const isMac = (platform: string) => /Mac|iPhone|iPad/.test(platform);
 export function shortcutLabel(

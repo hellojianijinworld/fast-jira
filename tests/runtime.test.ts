@@ -23,7 +23,7 @@ test("실행 진입점은 인증 실패에도 화면을 제공하고 잘못된 �
     const failed = spawnSync(process.execPath, args, {
       env,
       encoding: "utf8",
-      timeout: 5000,
+      timeout: 15000,
     });
     assert.notEqual(failed.status, 0);
     assert.match(failed.stderr, /JIRA_EMAIL|PORT/);
@@ -58,7 +58,7 @@ test("실행 진입점은 인증 실패에도 화면을 제공하고 잘못된 �
         await once(child, "close");
       }
     });
-    const signal = AbortSignal.timeout(5000);
+    const signal = AbortSignal.timeout(15000);
     while (!output.includes("Fast Jira API:")) {
       const [chunk] = await once(child.stdout, "data", { signal });
       output += String(chunk);

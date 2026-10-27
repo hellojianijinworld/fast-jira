@@ -93,6 +93,26 @@ export function createHttpServer(
     const params = url.searchParams;
     const issueKey = () => key(params.get("key") ?? "");
     switch (url.pathname) {
+      case "/api/create-types":
+        return service.creationTypes(params.get("project") ?? "");
+      case "/api/create-users":
+        return service.creationUsers(
+          params.get("project") ?? "",
+          params.get("type") ?? "",
+          params.get("field") ?? "",
+        );
+      case "/api/create-metadata":
+        return service.creationMetadata(
+          params.get("project") ?? "",
+          params.get("type") ?? "",
+        );
+      case "/api/create-parents":
+        return service.creationParents(
+          params.get("project") ?? "",
+          params.get("type") ?? "",
+          params.get("q") ?? "",
+          params.get("pageToken") ?? "",
+        );
       case "/api/parent-options":
         return service.parentOptions(
           (params.get("keys") ?? "").split(",").filter(Boolean),
@@ -197,6 +217,8 @@ export function createHttpServer(
       return input.keys.map((value) => inputString(value, "이슈 키"));
     };
     switch (path) {
+      case "/api/create-issue":
+        return service.createIssue(input.draft, string("requestId"));
       case "/api/sync":
         return service.sync(
           browseOptions(new URLSearchParams(string("query"))),
@@ -367,6 +389,7 @@ export function createHttpServer(
                 )
               ? 120000
               : [
+                    "/api/create-issue",
                     "/api/description",
                     "/api/comment",
                     "/api/comment-edit",

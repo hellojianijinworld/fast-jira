@@ -1,4 +1,5 @@
 import { type ChangeProposal, changeProposal } from "./agent.ts";
+import { type IssueDraft, issueDraft } from "./create-issue.ts";
 import { isRecord, record, requiredString } from "./validation.ts";
 export interface AssistantModel {
   id: string;
@@ -20,12 +21,14 @@ export interface AssistantReply {
   conversationId: string;
   answer: string;
   proposals: ChangeProposal[];
+  creations?: IssueDraft[];
   reconnected?: boolean;
 }
 export interface AssistantContext {
   projects: readonly string[];
   issue: string;
   keys: readonly string[];
+  creation?: IssueDraft;
 }
 export function assistantStatus(value: unknown): AssistantStatus {
   const data = record(value);
@@ -75,6 +78,16 @@ export function assistantReply(value: unknown): AssistantReply {
     answer: data.answer,
     proposals: data.proposals.map((value) => changeProposal(value, "")),
     reconnected: data.reconnected === true,
+    ...(data.creations === undefined
+      ? {}
+      : {
+          creations: (Array.isArray(data.creations)
+            ? data.creations
+            : (() => {
+                throw new Error("생성안을 확인하세요.");
+              })()
+          ).map(issueDraft),
+        }),
   };
 }
 export function assistantContext(value: unknown): AssistantContext {
@@ -89,5 +102,12 @@ export function assistantContext(value: unknown): AssistantContext {
     typeof data.issue !== "string"
   )
     throw new Error("AI 요청의 이슈 범위가 올바르지 않습니다.");
-  return { projects: data.projects, keys: data.keys, issue: data.issue };
+  return {
+    projects: data.projects,
+    keys: data.keys,
+    issue: data.issue,
+    ...(data.creation === undefined
+      ? {}
+      : { creation: issueDraft(data.creation) }),
+  };
 }

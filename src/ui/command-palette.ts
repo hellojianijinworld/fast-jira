@@ -1,3 +1,4 @@
+import type { IssueDraft } from "../domain/create-issue.ts";
 import "./command-palette.css";
 import { type Api, subscribeVoice } from "../client/api.ts";
 import {
@@ -65,6 +66,7 @@ export function createCommandPalette(config: {
   localIssues: () => readonly Issue[];
   order: () => readonly string[];
   favorites?: CardOptions["favorites"];
+  create?: (draft?: IssueDraft) => void;
   select: (key: string) => void;
   changed: (issues: Issue[]) => Promise<void>;
   canMutate: () => boolean;
@@ -637,6 +639,19 @@ export function createCommandPalette(config: {
       aiResults.append(
         chatMessage("assistant", answer, selectedModel),
         ...reply.proposals.map(proposal),
+        ...(reply.creations ?? []).map((draft) => {
+          const card = element("div", "create-draft-card");
+          const button = actionButton("생성 내용 확인", "plus", { size: "sm" });
+          button.addEventListener("click", () => {
+            dialog.close();
+            config.create?.(draft);
+          });
+          card.append(
+            element("span", "", String(draft.fields.summary ?? "새 이슈")),
+            button,
+          );
+          return card;
+        }),
       );
       saveConversation();
       if (follow) scrollConversation();
@@ -688,17 +703,24 @@ export function createCommandPalette(config: {
     }
   }
   const commandActions: Record<CommandId, () => void> = {
+    create: () => {
+      pickerDialog.close();
+      config.create?.();
+    },
     search: () => open("search"),
     ai: () => open("ai"),
   };
   function renderCommands() {
-    const items = matchingCommands(commandQuery.value);
+    const items = matchingCommands(commandQuery.value).filter(
+      (item) => item.id !== "create" || config.create,
+    );
     commandMenu.replaceChildren(
       ...items.map((item) => {
         const button = actionButton(item.label, item.icon);
-        button.append(
-          element("kbd", "", formatShortcut(navigator.platform, item.id)),
-        );
+        if (item.id !== "create")
+          button.append(
+            element("kbd", "", formatShortcut(navigator.platform, item.id)),
+          );
         button.addEventListener("click", commandActions[item.id]);
         return button;
       }),

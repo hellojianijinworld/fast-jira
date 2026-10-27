@@ -6,6 +6,7 @@ import {
 } from "../domain/assistant.ts";
 import type { BulkField } from "../domain/bulk.ts";
 import type { ConnectionSettings, Credentials } from "../domain/connection.ts";
+import { createMetadata, type IssueDraft } from "../domain/create-issue.ts";
 import type { Filters } from "../domain/filters.ts";
 import { filterParameters, selectionParameter } from "../domain/filters.ts";
 import type { BranchDefaults, EditableField } from "../domain/issue.ts";
@@ -139,6 +140,36 @@ export function createApi(fetcher: typeof fetch = fetch) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(credentials),
       }),
+    creationTypes: (project: string) =>
+      request(
+        `/api/create-types?${new URLSearchParams({ project })}`,
+        decodeTypes,
+      ),
+    creationUsers: (project: string, type: string, field: string) =>
+      request(
+        `/api/create-users?${new URLSearchParams({ project, type, field })}`,
+        decodeUsers,
+      ),
+    creationMetadata: (project: string, type: string) =>
+      request(
+        `/api/create-metadata?${new URLSearchParams({ project, type })}`,
+        createMetadata,
+      ),
+    creationParents: (project: string, type: string, q = "", pageToken = "") =>
+      request(
+        `/api/create-parents?${new URLSearchParams({ project, type, q, pageToken })}`,
+        decodeIssuePage,
+      ),
+    createIssue: (draft: IssueDraft, requestId: string) =>
+      request(
+        "/api/create-issue",
+        (value) => ({ key: wireString(record(value).key) }),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft, requestId }),
+        },
+      ),
     parentOptions: (keys: string[], q = "", pageToken = "") =>
       request(
         `/api/parent-options?${new URLSearchParams({ keys: keys.join(","), q, pageToken })}`,

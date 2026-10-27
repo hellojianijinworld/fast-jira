@@ -140,6 +140,23 @@ export function createJiraTools(
       ["keys", "field"],
     ),
     definition(
+      "jira_creation_options",
+      "새 이슈 생성에 가능한 필드·필수값·기본값을 조회합니다. parentQuery로 해당 유형의 상위 후보도 검색합니다.",
+      { project: stringSchema, type: stringSchema, parentQuery: stringSchema },
+      ["project", "type"],
+    ),
+    definition(
+      "jira_prepare_issue",
+      "생성 폼을 채울 초안만 만듭니다. 실제 Jira 생성은 사용자가 폼을 확인하고 생성 버튼을 누를 때만 수행합니다. 먼저 catalog와 creation_options로 유형·필드·상위를 확인하세요. 설명은 ADF 문서입니다. 링크는 본문에 보존하고 외부 링크 내용을 읽었다고 주장하지 마세요. 불명확한 상위는 임의로 고르지 마세요.",
+      {
+        project: stringSchema,
+        type: stringSchema,
+        parent: stringSchema,
+        fields: { type: "object" },
+      },
+      ["project", "type", "fields"],
+    ),
+    definition(
       "jira_propose_change",
       "일괄 변경안을 만듭니다. Jira를 수정하지 않습니다. 저장은 사용자가 변경안을 확인한 후 별도 적용 단계에서만 수행합니다.",
       changeSchema,
@@ -279,6 +296,24 @@ export function createJiraTools(
           );
         return service.bulk.options(keys, field);
       }
+      case "jira_creation_options": {
+        const project = string(input, "project"),
+          type = string(input, "type");
+        return {
+          metadata: await service.creationMetadata(project, type),
+          ...(input.parentQuery === undefined
+            ? {}
+            : {
+                parents: await service.creationParents(
+                  project,
+                  type,
+                  string(input, "parentQuery"),
+                ),
+              }),
+        };
+      }
+      case "jira_prepare_issue":
+        return service.validateCreation(input);
       case "jira_propose_change":
         return changeProposal(input, service.site);
       case "jira_update_issues": {

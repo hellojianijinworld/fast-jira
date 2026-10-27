@@ -52,7 +52,7 @@ export async function readServiceConfig(
 async function healthy(config: ServiceConfig): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${config.port}/api/health`, {
-      signal: AbortSignal.timeout(700),
+      signal: AbortSignal.timeout(3000),
     });
     const data = (await response.json()) as { app?: string; instance?: string };
     return (
@@ -84,7 +84,7 @@ export async function serviceStatus(paths: InstallationPaths) {
 }
 
 async function waitHealthy(config: ServiceConfig): Promise<void> {
-  for (let count = 0; count < 60; count++) {
+  for (let count = 0; count < 200; count++) {
     if (await healthy(config)) return;
     await setTimeout(150);
   }

@@ -4,7 +4,7 @@ import type { Issue } from "../domain/issue.ts";
 import { compareIssues } from "../domain/list.ts";
 import { branchState, groupIssues, searchAncestors } from "../domain/tree.ts";
 import type { ViewInfo } from "../domain/view-labels.ts";
-import { element, iconButton, uiIcon } from "./dom.ts";
+import { actionButton, element, iconButton, uiIcon } from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
 import { projectIcon } from "./meta.ts";
 
@@ -19,6 +19,7 @@ export interface TreeCallbacks {
   selectedKey: () => string;
   compactDone?: () => boolean;
   compactDoneParents?: () => boolean;
+  onCreate?: (project: string) => void;
   onSelect: (key: string) => void;
   onBranch: (key: string, anchor: HTMLButtonElement) => void;
   viewInfo?: (key: string) => ViewInfo;
@@ -380,7 +381,7 @@ export function createTreeView(
     const root = element("ul", "root-tree tree-list");
     for (const key of new Set([
       ...sorted("").map((issue) => issue.project),
-      ...(list.loading ? list.filters.projects : []),
+      ...list.filters.projects,
     ])) {
       const project = catalog.projects.find((project) => project.key === key);
       const group = element("li", "project-group");
@@ -418,6 +419,15 @@ export function createTreeView(
       );
       count.title = "현재 표시된 이슈 수";
       head.append(count);
+      if (callbacks.onCreate) {
+        const create = actionButton("생성", "plus", {
+          size: "sm",
+          variant: "ghost",
+        });
+        create.classList.add("project-create");
+        create.addEventListener("click", () => callbacks.onCreate?.(key));
+        head.append(create);
+      }
       if (list.loading) {
         const spinner = element("span", "loading-indicator project-loading");
         spinner.setAttribute("role", "status");

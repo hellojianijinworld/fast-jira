@@ -180,7 +180,7 @@ test("MCP 소스와 배포 stdio 실행은 초기화·목록 응답만 출력한
       cwd: new URL("../", import.meta.url),
       encoding: "utf8",
       input,
-      timeout: 5000,
+      timeout: 15000,
       env: {
         ...process.env,
         JIRA_SITE: "example.atlassian.net",

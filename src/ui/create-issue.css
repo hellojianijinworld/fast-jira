@@ -1,0 +1,141 @@
+.settings-modal.create-issue-dialog {
+  width: min(720px, calc(100vw - 24px));
+  padding: 0;
+}
+.create-issue-dialog .dialog-head {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.create-issue-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.create-issue-body {
+  overflow: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.create-issue-body fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: contents;
+}
+.create-context,
+.create-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.create-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+.create-field > input,
+.create-field > select {
+  width: 100%;
+}
+.create-field[data-field="summary"],
+.create-field:has(.description-edit) {
+  grid-column: 1 / -1;
+}
+.create-field .description-edit {
+  min-height: 100px;
+  max-height: 240px;
+  overflow: auto;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.create-field .participant-people {
+  flex-wrap: wrap;
+}
+.create-ai {
+  border: 1px solid var(--border);
+  background: var(--page);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.create-ai textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+.create-ai-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.create-ai-controls select {
+  flex: 1;
+  min-width: 120px;
+}
+.create-issue-dialog .modal-footer {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.project-heading .project-create {
+  margin-left: auto;
+}
+.detail-create-actions {
+  display: flex;
+  margin: var(--space-3) 0;
+}
+.create-draft-card {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+@media (max-width: 480px) {
+  .create-context,
+  .create-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.create-additional {
+  grid-column: 1 / -1;
+}
+.create-additional > .create-fields {
+  margin-top: var(--space-3);
+}
+
+.create-issue-dialog > .create-issue-form {
+  overflow: hidden;
+}
+.create-issue-body {
+  min-height: 0;
+  flex: 1;
+}
+
+.create-participants {
+  grid-column: 1 / -1;
+}
+.create-participants > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.create-participants > summary .participant-people {
+  margin-left: auto;
+}
+.create-participants > .create-fields {
+  margin-top: var(--space-3);
+}

@@ -582,6 +582,12 @@ export function createListController(
     visibleItems,
     toggle,
     update,
+    insertCreated(issue: Issue, matches: boolean) {
+      apply(issue, matches);
+      if (issue.parent && childPasses(issue))
+        childPage(issue.parent).issues.set(issue.key, issue);
+      onChange();
+    },
     updateMany(
       issues: Issue[],
       matches: ReadonlySet<string>,

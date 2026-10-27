@@ -4,6 +4,7 @@ import { createBulkService } from "./bulk-service.ts";
 import { createJiraActivity } from "./jira-activity.ts";
 import { type Credentials, createJiraClient } from "./jira-client.ts";
 import { createJiraContent } from "./jira-content.ts";
+import { createJiraCreation } from "./jira-create.ts";
 import { createJiraEdit } from "./jira-edit.ts";
 import { createJiraMetadata } from "./jira-metadata.ts";
 import { createParentOptions } from "./jira-parents.ts";
@@ -44,6 +45,7 @@ export function createJiraService(options: {
     ...metadata,
     ...read,
     ...edit,
+    ...createJiraCreation(client, metadata),
     ...createJiraParticipants(
       client,
       read,
