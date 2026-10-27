@@ -16,27 +16,45 @@ const storage: LocalStore = {
 document.documentElement.dataset.theme = readPreferences(storage).theme;
 async function start(root: HTMLElement) {
   const api = createApi();
+  let failure: unknown;
   try {
-    await createApp(root, api, storage, undefined, createListCache());
+    const settings = await api.connection();
+    if (settings.tokenConfigured) {
+      await createApp(root, api, storage, undefined, createListCache());
+      return;
+    }
   } catch (reason) {
+    failure = reason;
+  }
+  const setup = element("section", "connection-setup");
+  setup.append(element("h1", "", "Fast Jira"));
+  if (failure)
+    setup.append(
+      element(
+        "p",
+        "error",
+        failure instanceof Error
+          ? failure.message
+          : "Jira에 연결하지 못했어요.",
+      ),
+    );
+  setup.append(
+    connectionForm(
+      api,
+      () => {
+        void start(root);
+      },
+      { guided: true },
+    ),
+  );
+  if (failure) {
     const retry = actionButton("다시 연결", "refresh-cw");
     retry.addEventListener("click", () => {
       void start(root);
     });
-    const setup = element("section", "connection-setup");
-    setup.append(
-      element("h1", "", "Fast Jira"),
-      element(
-        "p",
-        "error",
-        reason instanceof Error ? reason.message : "Jira에 연결하지 못했어요.",
-      ),
-      connectionForm(api, () => {
-        void start(root);
-      }),
-      retry,
-    );
-    root.replaceChildren(setup);
+    setup.append(retry);
   }
+  root.replaceChildren(setup);
 }
+
 void start(root);

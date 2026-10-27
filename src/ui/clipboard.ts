@@ -1,4 +1,4 @@
-import { iconButton } from "./dom.ts";
+import { element } from "./dom.ts";
 
 /** 카드·상세·댓글·일괄 링크 복사는 같은 성공/실패 안내를 사용한다. */
 export async function copyText(
@@ -45,15 +45,16 @@ export async function copyText(
   }
 }
 
-/** 목록과 상세의 키는 같은 호버 복사 버튼을 사용한다. */
+/** 목록과 상세의 키는 같은 복사 동작과 즉시 툴팁을 사용한다. */
 export function issueKeyCopy(
   key: string,
   url: string | null,
   notify?: (message: string) => void,
 ) {
-  const button = iconButton(`${key} 이슈 링크 복사`, "copy");
-  button.classList.add("key", "card-copy");
-  button.prepend(document.createTextNode(key));
+  const button = element("button", "key card-copy", key);
+  button.type = "button";
+  button.setAttribute("aria-label", `${key} 이슈 링크 복사`);
+  button.dataset.tooltip = "링크 복사";
   button.disabled = !url;
   button.addEventListener("click", async (event) => {
     event.preventDefault();

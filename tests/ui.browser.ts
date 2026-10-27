@@ -22,7 +22,7 @@ import type { Comment, HistoryPage } from "../src/domain/content.ts";
 import type { Issue } from "../src/domain/issue.ts";
 import { adfEditor } from "../src/ui/adf-editor.ts";
 import { renderADF } from "../src/ui/adf-render.ts";
-import { copyText } from "../src/ui/clipboard.ts";
+import { copyText, issueKeyCopy } from "../src/ui/clipboard.ts";
 import { actionButton, element } from "../src/ui/dom.ts";
 import { filterChecklist } from "../src/ui/filter-checklist.ts";
 import { createFilterPanel } from "../src/ui/filter-panel.ts";
@@ -123,6 +123,47 @@ await check(
   },
 );
 
+await check(
+  "상세·최근 이슈 패널은 라이트·다크 모두 페이지 배경과 통일된다",
+  () => {
+    const root = document.documentElement;
+    const theme = root.dataset.theme;
+    const pane = element("aside", "detail-pane");
+    const dashboard = element("section", "dashboard");
+    const head = element("header", "detail-head");
+    const modal = element("dialog", "detail-modal");
+    pane.append(dashboard, head);
+    fixture.append(pane, modal);
+    try {
+      for (const mode of ["light", "dark"]) {
+        root.dataset.theme = mode;
+        const page = getComputedStyle(root).backgroundColor;
+        assert(
+          getComputedStyle(pane).backgroundColor === page,
+          "오른쪽 패널 배경이 페이지와 다르다",
+        );
+        assert(
+          getComputedStyle(head).backgroundColor === page,
+          "상세 고정 헤더만 다른 배경이다",
+        );
+        assert(
+          getComputedStyle(modal).backgroundColor === page,
+          "좁은 화면의 상세 배경이 다르다",
+        );
+        assert(
+          getComputedStyle(dashboard).backgroundColor === "rgba(0, 0, 0, 0)",
+          "최근 이슈에 별도 배경이 남는다",
+        );
+      }
+    } finally {
+      pane.remove();
+      modal.remove();
+      if (theme === undefined) delete root.dataset.theme;
+      else root.dataset.theme = theme;
+    }
+  },
+);
+
 const issue: Issue = {
   id: "",
   key: "TEST-711",
@@ -153,6 +194,171 @@ const issue: Issue = {
 const order = ["백로그", "개발 진행 중", "개발 완료", "Done"];
 const now = new Date(2026, 9, 1, 12);
 
+const cardExamples = [
+  ["CLIPO-820", "세특·간편세특 생성 결과 가운데점(·) → 쉼표(,) 룰베이스 치환"],
+  ["CLIPO-641", "AI 기록 작성시 특수문자 변환 처리"],
+  [
+    "CLIPO-821",
+    "세특·간편세특 프롬프트에 기재요령 기본 금지어 반영 ('과제'→'활동', 상호명·플랫폼명 → 일반 표현)",
+  ],
+] as const;
+function exampleCards() {
+  const host = element("section", "issue-list-container");
+  for (const [key, summary] of cardExamples)
+    host.append(
+      issueCard(
+        {
+          ...issue,
+          key,
+          summary,
+          commentCount: 0,
+          dueDate: "",
+          assignee: "Jacob Kim",
+          status: "개발 진행 중",
+        },
+        {
+          statusOrder: order,
+          site: "example.atlassian.net",
+          onSelect: () => {},
+        },
+      ),
+    );
+  return host;
+}
+await check(
+  "내용이 들어가는 카드는 한 줄, 긴 제목은 오른쪽 배지만 내려가며 높이가 달라진다",
+  () => {
+    const compact = document.documentElement.dataset.compact;
+    document.documentElement.dataset.compact = "false";
+    const host = exampleCards();
+    host.style.width = "760px";
+    fixture.append(host);
+    try {
+      const rows = [...host.querySelectorAll<HTMLElement>(".list-item")];
+      rows.forEach((row, index) => {
+        const titleElement = row.querySelector<HTMLElement>(".list-title");
+        const metaElement = row.querySelector<HTMLElement>(".list-meta");
+        assert(titleElement !== null && metaElement !== null, "카드 구성 누락");
+        const title = titleElement.getBoundingClientRect();
+        const meta = metaElement.getBoundingClientRect();
+        assert(
+          index < 2
+            ? meta.top < title.bottom && meta.bottom > title.top
+            : meta.top >= title.bottom,
+          "제목 길이에 맞는 줄 배치가 아님",
+        );
+        assert(row.scrollWidth <= row.clientWidth + 1, "카드 가로 넘침");
+      });
+      const first = rows[0],
+        last = rows[2];
+      assert(first !== undefined && last !== undefined, "비교 카드 누락");
+      assert(
+        first.getBoundingClientRect().height <
+          last.getBoundingClientRect().height,
+        "카드 높이가 불필요하게 같음",
+      );
+    } finally {
+      host.remove();
+      if (compact === undefined)
+        delete document.documentElement.dataset.compact;
+      else document.documentElement.dataset.compact = compact;
+    }
+  },
+);
+
+await check(
+  "제목 마지막 줄에 공간이 있으면 배지가 같은 줄 오른쪽에 붙는다",
+  () => {
+    const compact = document.documentElement.dataset.compact;
+    document.documentElement.dataset.compact = "false";
+    const host = exampleCards();
+    host.style.width = "420px";
+    fixture.append(host);
+    try {
+      const row = host.querySelector(".list-item");
+      const title = row?.querySelector(".list-title");
+      const meta = row?.querySelector(".list-meta");
+      assert(Boolean(row && title && meta), "카드 내용 누락");
+      const range = document.createRange();
+      range.selectNodeContents(title as Node);
+      const lines = [...range.getClientRects()];
+      const last = lines.at(-1);
+      const badges = meta?.getBoundingClientRect();
+      assert(lines.length > 1, "여러 줄 제목이 아니다");
+      assert(
+        Boolean(
+          last &&
+            badges &&
+            badges.top < last.bottom &&
+            badges.bottom > last.top,
+        ),
+        "배지가 마지막 줄의 빈 공간을 사용하지 않는다",
+      );
+      assert(
+        Boolean(last && badges && last.right < badges.left),
+        "제목과 배지가 겹친다",
+      );
+    } finally {
+      host.remove();
+      if (compact === undefined)
+        delete document.documentElement.dataset.compact;
+      else document.documentElement.dataset.compact = compact;
+    }
+  },
+);
+
+await check(
+  "긴 제목은 번호 옆에서 시작하고 다음 줄은 카드 왼쪽부터 이어진다",
+  () => {
+    const compact = document.documentElement.dataset.compact;
+    document.documentElement.dataset.compact = "false";
+    const host = element("div", "issue-list-container");
+    host.style.width = "480px";
+    const card = issueCard(issue, { statusOrder: order, onSelect: () => {} });
+    host.append(card);
+    fixture.append(host);
+    try {
+      const title = card.querySelector(".list-title");
+      const identity = card.querySelector(".issue-identity");
+      const main = card.querySelector(".list-main");
+      assert(
+        title !== null && identity !== null && main !== null,
+        "카드 내용 누락",
+      );
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const lines = [...range.getClientRects()];
+      const first = lines[0],
+        second = lines[1];
+      assert(
+        first !== undefined && second !== undefined,
+        "긴 제목이 여러 줄로 표시되지 않는다",
+      );
+      assert(
+        first.left >= identity.getBoundingClientRect().right,
+        "첫 줄 제목이 번호 옆에서 시작하지 않는다",
+      );
+      assert(
+        Math.abs(second.left - main.getBoundingClientRect().left) < 1,
+        "두 번째 줄이 번호 옆의 별도 칸에 갇혀 있다",
+      );
+      assert(
+        identity.getBoundingClientRect().bottom <= first.bottom + 5,
+        "유형·번호 영역이 제목 전체 높이 가운데로 내려간다",
+      );
+      assert(
+        second.top - first.bottom >= 9,
+        "여러 줄 제목의 줄 간격이 너무 좁다",
+      );
+    } finally {
+      host.remove();
+      if (compact === undefined)
+        delete document.documentElement.dataset.compact;
+      else document.documentElement.dataset.compact = compact;
+    }
+  },
+);
+
 await check(
   "작은 카드의 긴 제목은 키 아래 전체 폭을 사용하고 배지는 오른쪽에 남는다",
   () => {
@@ -172,20 +378,29 @@ await check(
         row !== null && title !== null && identity !== null && meta !== null,
         "카드 구성 누락",
       );
+
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      const lines = [...range.getClientRects()];
+      const main = card.querySelector(".list-main");
       assert(
-        title.getBoundingClientRect().width >=
-          row.getBoundingClientRect().width - 24,
-        "제목 폭을 키가 차지한다",
+        Boolean(lines[1] && main) &&
+          Math.abs(
+            (lines[1]?.left ?? 0) - (main?.getBoundingClientRect().left ?? 0),
+          ) < 1,
+        "작은 카드의 다음 줄에 번호 칸이 남는다",
       );
       assert(
-        title.getBoundingClientRect().top >=
-          identity.getBoundingClientRect().bottom,
-        "제목과 키가 겹친다",
+        Boolean(lines[0] && lines[1]) &&
+          (lines[0]?.left ?? 0) >= identity.getBoundingClientRect().right,
+        "작은 카드도 번호 옆부터 제목을 이어 쓴다",
       );
       assert(
         Math.abs(
           meta.getBoundingClientRect().right -
-            title.getBoundingClientRect().right,
+            (row.getBoundingClientRect().right -
+              parseFloat(getComputedStyle(row).paddingRight) -
+              1),
         ) < 1,
         "배지 우측 정렬이 깨진다",
       );
@@ -1344,6 +1559,49 @@ await check(
   },
 );
 await check(
+  "티켓 번호는 아이콘 없이 즉시 툴팁을 표시하고 복사 표시가 배치를 바꾸지 않는다",
+  () => {
+    const host = element("div");
+    const copy = issueKeyCopy(
+      "CLIPO-820",
+      "https://example.atlassian.net/browse/CLIPO-820",
+    );
+    host.append(copy, element("span", "", "바로 다음 제목"));
+    fixture.append(host);
+    try {
+      assert(copy.querySelector(".ui-icon") === null, "복사 아이콘이 남음");
+      assert(
+        copy.firstChild !== null && !copy.title,
+        "번호 또는 즉시 툴팁 구성 누락",
+      );
+      const range = document.createRange();
+      range.selectNode(copy.firstChild);
+      const before = copy.getBoundingClientRect();
+      assert(
+        Math.abs(before.width - range.getBoundingClientRect().width) < 1,
+        "복사 표시 공간이 예약됨",
+      );
+      copy.focus();
+      const tip = getComputedStyle(copy, "::after");
+      assert(
+        tip.content.includes("링크 복사") &&
+          tip.visibility === "visible" &&
+          tip.opacity === "1",
+        "즉시 복사 툴팁 누락",
+      );
+      assert(tip.transitionDelay === "0s", "툴팁 표시가 지연됨");
+      const after = copy.getBoundingClientRect();
+      assert(
+        after.width === before.width && after.height === before.height,
+        "툴팁 표시로 배치 변경",
+      );
+    } finally {
+      host.remove();
+    }
+  },
+);
+
+await check(
   "카드 복사는 상세 이동 없이 사이트 링크를 복사하고 실패를 안내한다",
   async () => {
     const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
@@ -1713,13 +1971,16 @@ await check(
           identity = tile.querySelector<HTMLElement>(".issue-identity");
         assert(label !== null && identity !== null, "완료 카드 내용 누락");
         assert(
-          getComputedStyle(label).webkitLineClamp === "2",
-          "원래의 두 줄 제목이 복원되지 않았다",
+          getComputedStyle(tile.querySelector(".list-main") as Element)
+            .webkitLineClamp === "2",
+          "번호와 제목 전체가 최대 두 줄로 제한되지 않는다",
         );
+        const firstLine = label.getClientRects()[0];
+        assert(firstLine !== undefined, "완료 카드 제목 줄 누락");
         assert(
-          label.getBoundingClientRect().top >=
-            identity.getBoundingClientRect().bottom,
-          "제목이 번호 옆으로 압축됐다",
+          firstLine.left >= identity.getBoundingClientRect().right &&
+            firstLine.top < identity.getBoundingClientRect().bottom,
+          "제목이 번호 바로 뒤에서 시작하지 않는다",
         );
       }
       const title = grid?.querySelector<HTMLAnchorElement>(".list-title");
@@ -1983,6 +2244,208 @@ await check(
 );
 
 await check(
+  "늦은 연결 설정 응답은 인증 확인 중 비운 토큰을 다시 채우지 않는다",
+  async () => {
+    let settings!: (value: {
+      site: string;
+      email: string;
+      tokenConfigured: boolean;
+    }) => void;
+    let saved!: (value: { site: string; email: string }) => void;
+    const form = connectionForm(
+      {
+        connection: () =>
+          new Promise((resolve) => {
+            settings = resolve;
+          }),
+        saveConnection: () =>
+          new Promise((resolve) => {
+            saved = resolve;
+          }),
+      },
+      () => {},
+    );
+    fixture.append(form);
+    try {
+      const site = form.querySelector<HTMLInputElement>(
+        '[aria-label="Jira 사이트"]',
+      );
+      const email = form.querySelector<HTMLInputElement>(
+        '[aria-label="Atlassian 이메일"]',
+      );
+      const token = form.querySelector<HTMLInputElement>(
+        "input[type=password]",
+      );
+      assert(
+        site !== null && email !== null && token !== null,
+        "인증 필드 누락",
+      );
+      site.value = "example.atlassian.net";
+      email.value = "fixture@example.com";
+      token.value = "fixture-token";
+      token.focus();
+      form.requestSubmit();
+      settings({
+        site: "example.atlassian.net",
+        email: "fixture@example.com",
+        tokenConfigured: true,
+      });
+      await wait();
+      assert(
+        token.value === "",
+        "늦은 설정 응답이 전송 후 비운 토큰 입력을 다시 채움",
+      );
+    } finally {
+      saved({ site: "example.atlassian.net", email: "fixture@example.com" });
+      form.remove();
+      await wait();
+    }
+  },
+);
+
+await check(
+  "첫 연결은 모든 필드를 함께 표시하고 입력·확인 결과에 따라 진행도를 갱신한다",
+  async () => {
+    let releaseSettings!: (value: { site: string; email: string }) => void;
+    let failSave!: (reason: Error) => void;
+    let calls = 0;
+    let connected = false;
+    const form = connectionForm(
+      {
+        connection: () =>
+          new Promise((resolve) => {
+            releaseSettings = resolve;
+          }),
+        saveConnection: async (credentials) => {
+          calls++;
+          assert(
+            credentials.site === "example.atlassian.net" &&
+              credentials.email === "fixture@example.com",
+            "기본 정보 유실",
+          );
+          assert(credentials.token === "fixture-token", "토큰 전달 누락");
+          if (calls === 1)
+            return new Promise((_resolve, reject) => {
+              failSave = reject;
+            });
+          return { site: credentials.site, email: credentials.email };
+        },
+      },
+      () => {
+        connected = true;
+      },
+      { guided: true },
+    );
+    fixture.append(form);
+    try {
+      const site = form.querySelector<HTMLInputElement>(
+        '[aria-label="Jira 사이트"]',
+      );
+      const email = form.querySelector<HTMLInputElement>(
+        '[aria-label="Atlassian 이메일"]',
+      );
+      const token = form.querySelector<HTMLInputElement>(
+        "input[type=password]",
+      );
+      const issueToken = form.querySelector<HTMLAnchorElement>(
+        ".connection-token-link",
+      );
+      const steps = [
+        ...form.querySelectorAll<HTMLElement>(".connection-progress li"),
+      ];
+      assert(
+        site !== null &&
+          email !== null &&
+          token !== null &&
+          issueToken !== null,
+        "연결 폼 구성 누락",
+      );
+      assert(
+        [site, email, token].every(
+          (field) => field.getBoundingClientRect().height > 0,
+        ),
+        "일부 입력 필드를 별도 단계로 숨김",
+      );
+      assert(
+        steps.length === 3 && steps[0]?.getAttribute("aria-current") === "step",
+        "최초 진행도 표시 누락",
+      );
+      assert(
+        form.querySelector('[aria-label="이전 단계"]') === null,
+        "불필요한 단계 이동 버튼이 남음",
+      );
+      form.requestSubmit();
+      assert(calls === 0, "비어 있는 입력으로 인증 요청");
+      site.value = "example.atlassian.net";
+      email.value = "invalid";
+      email.dispatchEvent(new Event("input", { bubbles: true }));
+      assert(
+        steps[0]?.dataset.state !== "complete",
+        "잘못된 이메일을 입력 완료로 표시",
+      );
+      email.value = "fixture@example.com";
+      email.dispatchEvent(new Event("input", { bubbles: true }));
+      releaseSettings({
+        site: "late.atlassian.net",
+        email: "late@example.com",
+      });
+      await wait();
+      assert(
+        site.value === "example.atlassian.net" &&
+          steps[0]?.dataset.state === "complete",
+        "늦은 설정 응답이 사용자 입력이나 진행도를 덮음",
+      );
+      issueToken.addEventListener("click", (event) => event.preventDefault());
+      issueToken.click();
+      token.blur();
+      window.dispatchEvent(new Event("focus"));
+      assert(
+        document.activeElement === token &&
+          email.value === "fixture@example.com",
+        "발급 페이지 복귀 시 포커스 또는 입력 유실",
+      );
+      token.value = "fixture-token";
+      token.dispatchEvent(new Event("input", { bubbles: true }));
+      assert(
+        steps[1]?.dataset.state === "complete" &&
+          steps[2]?.getAttribute("aria-current") === "step",
+        "토큰 입력 후 확인 단계 표시 누락",
+      );
+      form.requestSubmit();
+      assert(
+        token.value === "" &&
+          token.matches(":disabled") &&
+          steps[1]?.dataset.state === "complete",
+        "확인 중 토큰 제거·입력 잠금·진행도 유지 누락",
+      );
+      form.requestSubmit();
+      assert(Number(calls) === 1, "연결 중 중복 요청");
+      failSave(new Error("모의 인증 실패"));
+      await wait();
+      assert(
+        !token.matches(":disabled") &&
+          !connected &&
+          token.value === "" &&
+          steps[2]?.dataset.state === "error",
+        "실패 복구 또는 진행도 오류 표시 누락",
+      );
+      token.value = "fixture-token";
+      token.dispatchEvent(new Event("input", { bubbles: true }));
+      form.requestSubmit();
+      await wait();
+      assert(
+        connected &&
+          token.value === "" &&
+          steps.every((step) => step.dataset.state === "complete"),
+        "성공 후 완료 표시·토큰 제거·화면 전환 누락",
+      );
+    } finally {
+      form.remove();
+    }
+  },
+);
+
+await check(
   "부모 경로는 상단 틈 없이 고정되며 목록 높이·카드·스크롤을 바꾸지 않는다",
   async () => {
     const pane = element("section", "browse"),
@@ -2114,8 +2577,8 @@ await check(
         "고정 경로 위에 틈이 있다",
       );
       assert(
-        Boolean(nav && nav.getBoundingClientRect().height <= 68),
-        "부모 경로가 두 줄보다 커진다",
+        Boolean(nav && nav.scrollWidth <= nav.clientWidth),
+        "부모 경로가 가로로 넘친다",
       );
       assert(
         pane.scrollHeight === height && pane.scrollTop === 250,
@@ -2135,10 +2598,12 @@ await check(
       assert(
         Boolean(
           nav &&
-            nav.getBoundingClientRect().height <= 68 &&
-            pane.scrollWidth === pane.clientWidth,
+            pane.scrollWidth === pane.clientWidth &&
+            [...nav.querySelectorAll<HTMLElement>(".tree-context-key")].every(
+              (key) => key.scrollWidth <= key.clientWidth,
+            ),
         ),
-        "좁은 경로가 넘치거나 너무 높다",
+        "좁은 경로가 넘치거나 이슈 번호가 잘린다",
       );
       const narrowHeight = pane.scrollHeight;
       pane.scrollTop = 0;
@@ -2610,8 +3075,9 @@ await check(
   },
 );
 
+let groupPreview: HTMLElement | undefined;
 await check(
-  "완료·상위 연결 없는 묶음은 별도로 접고 재렌더해도 상태를 유지한다",
+  "유형과 무관한 루트 분류·완료 통합과 카드 안의 펼침을 유지한다",
   () => {
     const host = element("div", "issue-list-container");
     fixture.append(host);
@@ -2631,6 +3097,7 @@ await check(
     const parent = {
       ...emptyIssue("TEST-1000"),
       hierarchyLevel: 1,
+      summary: "상위 태스크",
       hasChildren: true,
     };
     const child = {
@@ -2638,15 +3105,41 @@ await check(
       parent: parent.key,
       hierarchyLevel: -1,
       statusCategory: "done",
+      summary: "완료된 하위 작업",
     };
-    const orphan = { ...emptyIssue("TEST-1002"), hierarchyLevel: 0 };
-    for (const item of [parent, child, orphan]) {
+    const orphan = {
+      ...emptyIssue("TEST-1002"),
+      hierarchyLevel: 0,
+      summary: "상위 연결 없는 작업 예시",
+    };
+    const done = {
+      ...emptyIssue("TEST-1003"),
+      hierarchyLevel: 1,
+      statusCategory: "done",
+      summary: "완료된 상위 작업",
+    };
+    const doneTask = {
+      ...emptyIssue("TEST-1004"),
+      hierarchyLevel: 0,
+      statusCategory: "done",
+      summary:
+        "완료된 일반 작업의 긴 제목을 두 줄에 표시해도 다른 카드와 높이가 같아야 합니다",
+    };
+    const missingParent = {
+      ...emptyIssue("TEST-1005"),
+      parent: "TEST-9999",
+      hierarchyLevel: 0,
+      statusCategory: "done",
+      summary: "현재 목록에 부모가 없는 작업",
+    };
+    for (const item of [parent, child, orphan, done, doneTask, missingParent]) {
       list.items.set(item.key, item);
       list.matched.add(item.key);
     }
     list.childPage(parent.key).loaded = true;
     const view = createTreeView(host, list, {
       site: "example",
+      compactDoneParents: () => true,
       copied: () => {},
       selectedKey: () => "",
       catalog: () => ({
@@ -2666,7 +3159,79 @@ await check(
     });
     try {
       view.render();
-      for (const label of ["상위 연결 없는 작업", "완료 1개"]) {
+      const unparented = host.querySelector<HTMLElement>(
+        '[data-tree-key="unparented:TEST"]',
+      );
+      const rootDone = host.querySelector<HTMLElement>(
+        '[data-tree-key="completed:TEST:tree"]',
+      );
+      assert(
+        Boolean(unparented?.querySelector(`[data-tree-key="${parent.key}"]`)) &&
+          Boolean(unparented?.querySelector(`[data-tree-key="${orphan.key}"]`)),
+        "상위 연결 없는 에픽과 일반 작업이 유형으로 분리됐다",
+      );
+      assert(
+        !unparented?.querySelector(`[data-tree-key="${missingParent.key}"]`),
+        "부모가 목록에 없는 항목을 상위 연결 없음으로 오인했다",
+      );
+      assert(
+        rootDone?.querySelectorAll(".list-item").length === 2 &&
+          !unparented?.querySelector(
+            '[data-tree-key="completed:TEST:standalone"]',
+          ),
+        "루트 완료가 유형별로 분리되거나 누락됐다",
+      );
+      assert(
+        Boolean(unparented?.querySelector(`[data-tree-key="${child.key}"]`)) &&
+          !rootDone?.querySelector(`[data-tree-key="${child.key}"]`),
+        "실제 하위 완료가 프로젝트 완료로 이동했다",
+      );
+      const toggle = host.querySelector<HTMLButtonElement>(
+        `[data-issue-key="${parent.key}"]`,
+      );
+      assert(
+        Boolean(toggle?.parentElement?.classList.contains("tree-row")) &&
+          !host.querySelector(".tree-folder,.tree-actions") &&
+          Boolean(toggle?.querySelector(".ui-icon")) &&
+          toggle?.textContent === "" &&
+          toggle.parentElement?.firstElementChild === toggle &&
+          getComputedStyle(toggle).position === "absolute" &&
+          toggle.getBoundingClientRect().right <=
+            (toggle.parentElement
+              ?.querySelector(".list-item")
+              ?.getBoundingClientRect().left ?? 0),
+        "펼침 화살표가 카드 왼쪽 바깥에 절대 배치되지 않았다",
+      );
+      const children = toggle
+        ?.closest(".tree-row")
+        ?.parentElement?.querySelector(".tree-children");
+      assert(
+        Boolean(
+          children && getComputedStyle(children).borderTopWidth === "0px",
+        ),
+        "펼친 하위 목록에 구분선이 남아 있다",
+      );
+      const parentIdentity = toggle
+        ?.closest(".tree-row")
+        ?.querySelector(".issue-identity");
+      assert(
+        Boolean(
+          parentIdentity &&
+            getComputedStyle(parentIdentity).paddingInlineStart === "0px",
+        ),
+        "펼침 버튼의 빈 공간이 왼쪽에 남아 있다",
+      );
+      const groupArrows = [
+        ...host.querySelectorAll<SVGSVGElement>(
+          '[data-group-key="unparented:TEST"] .ui-icon, [data-group-key="completed:TEST:tree"] .ui-icon',
+        ),
+      ].map((arrow) => arrow.getBoundingClientRect());
+      assert(
+        groupArrows.length === 2 &&
+          Math.abs((groupArrows[0]?.x ?? 0) - (groupArrows[1]?.x ?? 0)) < 1,
+        "루트 그룹의 들여쓰기 레벨이 다르다",
+      );
+      for (const label of ["상위 연결 없는 작업", "완료 2개"]) {
         const toggle = [
           ...host.querySelectorAll<HTMLButtonElement>(".tree-section-toggle"),
         ].find((button) => button.textContent === label);
@@ -2694,8 +3259,61 @@ await check(
       }
       assert(
         list.tree.states.size === 0,
-        "묶음을 접어 티켓 접힘 상태가 변경됐다",
+        "그룹 접기가 이슈 펼침 상태를 바꿨다",
       );
+      toggle?.click();
+      view.render();
+      const closedParent = host.querySelector<HTMLButtonElement>(
+        `[data-issue-key="${parent.key}"]`,
+      );
+      assert(
+        closedParent?.getAttribute("aria-expanded") === "false" &&
+          !closedParent
+            .closest(".tree-row")
+            ?.parentElement?.querySelector(".tree-children"),
+        "접어도 하위 목록이 남는다",
+      );
+      closedParent?.click();
+      view.render();
+      const openedParent = host.querySelector<HTMLButtonElement>(
+        `[data-issue-key="${parent.key}"]`,
+      );
+      assert(
+        openedParent?.getAttribute("aria-expanded") === "true" &&
+          Boolean(
+            openedParent
+              .closest(".tree-row")
+              ?.parentElement?.querySelector(".tree-children"),
+          ),
+        "다시 열어도 하위 목록이 복원되지 않는다",
+      );
+      const theme = document.documentElement.dataset.theme;
+      try {
+        host.style.width = "320px";
+        for (const mode of ["light", "dark"]) {
+          document.documentElement.dataset.theme = mode;
+          for (const card of host.querySelectorAll<HTMLElement>(".issue-card"))
+            assert(card.scrollWidth <= card.clientWidth, "좁은 카드가 넘친다");
+          for (const grid of host.querySelectorAll<HTMLElement>(
+            ".completed-grid",
+          )) {
+            const heights = [
+              ...grid.querySelectorAll<HTMLElement>(".list-item"),
+            ].map((tile) => tile.getBoundingClientRect().height);
+            assert(
+              heights.every((height) => Math.abs(height - 56) < 1),
+              "완료 카드가 제목 길이와 행에 따라 높이가 달라진다",
+            );
+          }
+        }
+      } finally {
+        host.style.removeProperty("width");
+        if (theme === undefined) delete document.documentElement.dataset.theme;
+        else document.documentElement.dataset.theme = theme;
+      }
+      groupPreview = host.cloneNode(true) as HTMLElement;
+      groupPreview.id = "group-layout-preview";
+      groupPreview.style.width = "min(100%, 760px)";
     } finally {
       view.destroy();
       host.remove();
@@ -2709,7 +3327,7 @@ await check(
     const pane = element("section", "browse"),
       content = element("div", "browse-content"),
       host = element("div");
-    pane.style.cssText = "height:280px;width:600px;overflow:auto";
+    pane.style.cssText = "height:280px;width:400px;overflow:auto";
     content.append(host);
     pane.append(content);
     fixture.append(pane);
@@ -2783,11 +3401,7 @@ await check(
           "첫 프로젝트",
           ["상위 연결 없는 작업"],
         ],
-        [
-          '[data-tree-key="AA"] .completed-group',
-          "첫 프로젝트",
-          ["상위 연결 없는 작업", "완료 10개"],
-        ],
+        ['[data-tree-key="completed:AA:tree"]', "첫 프로젝트", ["완료"]],
         [
           '[data-tree-key="BB"] .list-item',
           "다른 프로젝트",
@@ -2821,6 +3435,16 @@ await check(
           JSON.stringify(groupLabels) === JSON.stringify(expectedGroups),
           "현재 묶음 경로가 누락되거나 순서가 다르다",
         );
+        const project = nav?.querySelector(".tree-context-project"),
+          group = nav?.querySelector(".tree-context-group");
+        assert(Boolean(project && group), "프로젝트·그룹 경로 누락");
+        assert(
+          Math.abs(
+            (project?.getBoundingClientRect().top ?? 0) -
+              (group?.getBoundingClientRect().top ?? 0),
+          ) < 2,
+          "공간이 충분한 프로젝트·그룹 경로가 강제로 줄 바꿈된다",
+        );
       }
     } finally {
       context.destroy();
@@ -2840,3 +3464,32 @@ results.append(
       : "전체 브라우저 검사 통과 · 실제 Jira 변경 없음",
   ),
 );
+
+const cardPreview = exampleCards();
+cardPreview.id = "card-layout-preview";
+const previewWidth = new URLSearchParams(location.search).get("width");
+cardPreview.style.width =
+  previewWidth === "320" || previewWidth === "420" || previewWidth === "480"
+    ? `${previewWidth}px`
+    : "min(100%, 760px)";
+fixture.append(cardPreview);
+const previewLink = element("a", "", "카드 배치 미리보기");
+previewLink.href = "#card-layout-preview";
+results.append(previewLink);
+
+if (groupPreview) {
+  if (new URLSearchParams(location.search).get("width") === "320") {
+    groupPreview.style.width = "320px";
+    const title = groupPreview.querySelector(".tree-parent .list-title");
+    if (title)
+      title.textContent =
+        "긴 제목을 여러 줄로 읽는 경우에도 번호 옆부터 자연스럽게 이어지며 배지가 남은 줄 오른쪽에 정렬되어야 합니다";
+  }
+  fixture.append(groupPreview);
+  const link = element("a", "", "그룹 배치 미리보기");
+  link.href = "#group-layout-preview";
+  results.append(link);
+}
+
+if (new URLSearchParams(location.search).get("theme") === "dark")
+  document.documentElement.dataset.theme = "dark";

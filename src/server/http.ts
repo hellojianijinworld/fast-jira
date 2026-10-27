@@ -249,6 +249,14 @@ export function createHttpServer(
       }
       if (
         req.method === "GET" &&
+        url.pathname === "/api/connection/status" &&
+        connection
+      ) {
+        json(res, connection.status());
+        return;
+      }
+      if (
+        req.method === "GET" &&
         url.pathname === "/api/connection" &&
         connection
       ) {

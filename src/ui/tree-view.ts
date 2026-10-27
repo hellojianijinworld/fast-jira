@@ -2,12 +2,7 @@ import type { ListController } from "../client/list-controller.ts";
 import type { TreeCatalog } from "../domain/catalog.ts";
 import type { Issue } from "../domain/issue.ts";
 import { compareIssues } from "../domain/list.ts";
-import {
-  branchState,
-  groupIssues,
-  hierarchyDepth,
-  searchAncestors,
-} from "../domain/tree.ts";
+import { branchState, groupIssues, searchAncestors } from "../domain/tree.ts";
 import type { ViewInfo } from "../domain/view-labels.ts";
 import { element, iconButton, uiIcon } from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
@@ -84,6 +79,7 @@ export function createTreeView(
           position = chosen.nextElementSibling;
           continue;
         }
+        old.className = node.className;
         const oldParts = Array.from(old.children);
         const nextParts = Array.from(node.children);
         for (const [index, part] of nextParts.entries()) {
@@ -131,7 +127,9 @@ export function createTreeView(
       "aria-label",
       `${label} ${collapsed ? "펼치기" : "접기"}`,
     );
-    toggle.append(uiIcon("chevron-right"), element("span", "", label));
+    const control = element("span", "tree-section-control");
+    control.append(uiIcon("chevron-right"));
+    toggle.append(control, element("span", "", label));
     content.hidden = collapsed;
     toggle.addEventListener("click", () => {
       if (collapsedGroups.has(key)) collapsedGroups.delete(key);
@@ -194,15 +192,19 @@ export function createTreeView(
       project: string,
       depth: number,
       reset: number,
-      unparented = false,
+      rootSection: "linked" | "unparented" | "completed" = "linked",
       path = new Set<string>(),
-      standaloneTree = unparented,
     ): HTMLUListElement {
       const group = element("ul", "tree-list");
-      group.dataset.treeKey = unparented ? "standalone" : "children";
+      group.dataset.treeKey = rootSection;
+      if (
+        !parent &&
+        rootSection === "completed" &&
+        callbacks.compactDoneParents?.()
+      )
+        group.classList.add("completed-grid");
       const completed = element("li", "completed-group");
       completed.dataset.treeKey = "completed";
-      completed.style.paddingLeft = `calc(${depth * 24}px + var(--tree-gutter) + 4px)`;
       const tiles = element("ul", "tree-list completed-grid");
       tiles.dataset.treeKey = "tiles";
       tiles.setAttribute("aria-label", "완료된 이슈");
@@ -211,7 +213,12 @@ export function createTreeView(
           permitted(issue) &&
           (parent ||
             (issue.project === project &&
-              hierarchyDepth(issue, catalog.types) > 0 === unparented)),
+              rootSection ===
+                (issue.parent
+                  ? "linked"
+                  : issue.statusCategory === "done"
+                    ? "completed"
+                    : "unparented"))),
       )) {
         if (path.has(issue.key)) continue;
         const nextPath = new Set(path);
@@ -219,7 +226,6 @@ export function createTreeView(
         const item = element("li");
         item.dataset.treeKey = issue.key;
         const row = element("div", "tree-row");
-        row.style.paddingLeft = `${(standaloneTree ? depth : hierarchyDepth(issue, catalog.types, depth)) * 24}px`;
         const descendants = groups.get(issue.key) ?? [];
         const hasChildren = issue.hasChildren || descendants.some(permitted);
         const page = list.childPage(issue.key);
@@ -253,6 +259,25 @@ export function createTreeView(
             callbacks.onBranch(issue.key, button);
           });
         }
+        let toggle: HTMLButtonElement | undefined;
+        if (hasChildren && !compactCompleted) {
+          const label = `${issue.key} 하위 이슈 ${collapsed ? "펼치기" : "접기"}`;
+          toggle = iconButton(label, "chevron-right");
+          toggle.classList.add("tree-toggle");
+          toggle.dataset.issueKey = issue.key;
+          toggle.setAttribute("aria-expanded", String(!collapsed));
+          toggle.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            list.toggle(issue.key, !collapsed);
+            callbacks.onTreeChange();
+            host
+              .querySelector<HTMLButtonElement>(
+                `[data-issue-key="${issue.key}"]`,
+              )
+              ?.focus();
+          });
+        }
         const card = issueCard(issue, {
           ...(callbacks.favorites ? { favorites: callbacks.favorites } : {}),
           site: callbacks.site,
@@ -266,10 +291,10 @@ export function createTreeView(
         const decorated = callbacks.decorate?.(issue, card) ?? card;
         if (compactCompleted) {
           card.title = `${issue.key} · ${issue.summary} · ${issue.status}`;
-          row.style.paddingLeft = "0";
           row.append(decorated);
           item.append(row);
-          tiles.append(item);
+          if (parent) tiles.append(item);
+          else group.append(item);
           continue;
         }
         if (hasChildren) {
@@ -279,25 +304,8 @@ export function createTreeView(
             row.dataset.contextParent = parent;
           }
           row.dataset.depth = String(depth);
-          const actions = element("div", "tree-actions");
-          const toggle = iconButton(
-            `${issue.key} 하위 이슈 ${collapsed ? "펼치기" : "접기"}`,
-            "chevron-right",
-          );
-          toggle.classList.add("tree-toggle", "row-action");
-          toggle.dataset.issueKey = issue.key;
-          toggle.setAttribute("aria-expanded", String(!collapsed));
-          toggle.addEventListener("click", () => {
-            list.toggle(issue.key, !collapsed);
-            callbacks.onTreeChange();
-            host
-              .querySelector<HTMLButtonElement>(
-                `[data-issue-key="${issue.key}"]`,
-              )
-              ?.focus();
-          });
-          actions.append(toggle);
-          row.append(actions, decorated);
+          if (toggle) row.append(toggle);
+          row.append(decorated);
           item.append(row);
           if (!collapsed) {
             const nested = branch(
@@ -305,9 +313,8 @@ export function createTreeView(
               "",
               depth + 1,
               state.childReset,
-              false,
+              "linked",
               nextPath,
-              standaloneTree,
             );
             nested.classList.add("tree-children");
             nested.dataset.parent = issue.key;
@@ -353,7 +360,7 @@ export function createTreeView(
             item.append(nested);
           }
         } else {
-          row.append(element("span", "tree-spacer"), decorated);
+          row.append(decorated);
           item.append(row);
         }
         group.append(item);
@@ -361,7 +368,7 @@ export function createTreeView(
       if (tiles.children.length) {
         completed.append(
           section(
-            `completed:${parent || project}:${unparented ? "standalone" : "tree"}`,
+            `completed:${parent}:tree`,
             `완료 ${tiles.children.length}개`,
             "completed-heading",
             tiles,
@@ -385,7 +392,7 @@ export function createTreeView(
       head.append(document.createTextNode(project?.name ?? key));
       const projectTree = element("div", "project-tree");
       projectTree.append(branch("", key, 0, 0));
-      const standalone = branch("", key, 0, 0, true);
+      const standalone = branch("", key, 0, 0, "unparented");
       if (standalone.children.length)
         projectTree.append(
           section(
@@ -393,6 +400,16 @@ export function createTreeView(
             "상위 연결 없는 작업",
             "unparented-heading",
             standalone,
+          ),
+        );
+      const done = branch("", key, 0, 0, "completed");
+      if (done.children.length)
+        projectTree.append(
+          section(
+            `completed:${key}:tree`,
+            `완료 ${done.children.length}개`,
+            "completed-heading",
+            done,
           ),
         );
       const count = element(

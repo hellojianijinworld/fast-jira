@@ -111,7 +111,7 @@ export function createTreeContext(
         ...known,
         ...groups
           .filter((group) => group.key.startsWith("completed:"))
-          .map((group) => group.label),
+          .map(() => "완료"),
       ];
       const current = known.at(-1);
       const projectKey = current?.project ?? activeProject;
@@ -131,8 +131,7 @@ export function createTreeContext(
       ]);
       if (signature !== next) {
         signature = next;
-        const ancestors = element("div", "tree-context-ancestors");
-        ancestors.hidden = !projectKey;
+        const crumbs: HTMLElement[] = [];
         if (projectKey) {
           const label = element("span", "tree-context-project");
           const icon = project ? projectIcon(project) : null;
@@ -140,15 +139,18 @@ export function createTreeContext(
           label.append(
             element("span", "tree-context-label", project?.name ?? projectKey),
           );
-          ancestors.append(label);
-          if (trail.length) ancestors.append(uiIcon("chevron-right"));
+          crumbs.push(label);
         }
-        for (const item of trail.slice(0, -1))
-          ancestors.append(breadcrumb(item, true), uiIcon("chevron-right"));
-        const last = trail.at(-1);
+        trail.forEach((item, index) => {
+          crumbs.push(breadcrumb(item, index < trail.length - 1));
+        });
         nav.replaceChildren(
-          ancestors,
-          ...(last ? [breadcrumb(last, false)] : []),
+          ...crumbs.map((crumb, index) => {
+            const step = element("span", "tree-context-step");
+            if (index) step.append(uiIcon("chevron-right"));
+            step.append(crumb);
+            return step;
+          }),
         );
         nav.hidden = !projectKey;
       }

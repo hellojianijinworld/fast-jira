@@ -488,12 +488,11 @@ checks.push([
       ),
       "공통 부모 경로 영역이 없다",
     );
-    const actions = root.querySelector(".tree-actions");
-    assert(actions, "카드 액션 누락");
+    const toggle = root.querySelector(".browse .tree-row > .tree-toggle");
     assert(
-      actions.children.length === 1 &&
-        actions.firstElementChild?.classList.contains("tree-toggle"),
-      "카드 바깥에 필터 버튼이 남음",
+      toggle?.parentElement?.classList.contains("tree-row") &&
+        !root.querySelector(".tree-folder,.tree-actions"),
+      "카드 안의 펼침 제어가 없거나 폴더 장식이 남음",
     );
     assert(
       !root.querySelector(".browse .card-view-button"),
@@ -811,7 +810,7 @@ checks.push([
       "연결 탭 내용 누락",
     );
     email.value = "fixture@example.com";
-    button("개발자").click();
+    button("관리").click();
     assert(
       Math.abs(modal.getBoundingClientRect().height - height) < 1,
       "탭 이동으로 모달 크기 변경",
@@ -1860,7 +1859,7 @@ checks.push([
       "기본 로그 구독 발생",
     );
     button("설정").click();
-    button("개발자").click();
+    button("관리").click();
     const setting = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
       .find(
         (label) =>
@@ -1942,7 +1941,7 @@ checks.push([
       "로그 닫기 정리 누락",
     );
     button("설정").click();
-    button("개발자").click();
+    button("관리").click();
     const disable = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
       .find(
         (label) =>
@@ -2182,9 +2181,9 @@ checks.push([
       "현재 이슈 중복 또는 이동 링크가 남음",
     );
     assert(
-      getComputedStyle(copy.querySelector(".ui-icon") as HTMLElement)
-        .opacity === (matchMedia("(max-width: 600px)").matches ? "1" : "0"),
-      "뷰포트에 맞는 복사 아이콘 표시 누락",
+      copy.querySelector(".ui-icon") === null &&
+        copy.dataset.tooltip === "링크 복사",
+      "복사 아이콘이 남거나 즉시 툴팁이 누락됨",
     );
     const head = root.querySelector<HTMLElement>(".detail-head");
     const identity = root.querySelector<HTMLElement>(".detail-identity");
@@ -2203,7 +2202,7 @@ checks.push([
     label.textContent = original;
     head.style.removeProperty("width");
     button("설정").click();
-    button("개발자").click();
+    button("관리").click();
     const input = [...root.querySelectorAll<HTMLLabelElement>(".setting-row")]
       .find(
         (label) =>

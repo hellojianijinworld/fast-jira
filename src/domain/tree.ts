@@ -3,7 +3,6 @@ import type {
   BranchOverrides,
   ChildPage,
   Issue,
-  IssueType,
 } from "./issue.ts";
 
 export interface CollapseState {
@@ -80,25 +79,6 @@ export function updateListedIssue(
     if (child) Object.assign(child, changes);
   }
 }
-export function hierarchyDepth(
-  issue: Pick<Issue, "project" | "issueTypeId" | "hierarchyLevel">,
-  types: readonly IssueType[],
-  fallback = 0,
-): number {
-  const projectTypes = types.filter(
-    (type) => type.project === issue.project && type.hierarchyLevel !== null,
-  );
-  const level =
-    issue.hierarchyLevel ??
-    projectTypes.find((type) => type.id === issue.issueTypeId)?.hierarchyLevel;
-  if (level == null || !projectTypes.length) return fallback;
-  // 이슈 이름(에픽/스토리)을 하드코딩하지 않고 프로젝트의 실제 계층 값을 사용한다.
-  return Math.max(
-    0,
-    Math.max(...projectTypes.map((type) => type.hierarchyLevel ?? 0)) - level,
-  );
-}
-
 export function groupIssues(
   items: ReadonlyMap<string, Issue>,
 ): Map<string, Issue[]> {

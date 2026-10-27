@@ -144,7 +144,7 @@ main {
 }
 .detail-pane {
   border-left: 1px solid var(--border);
-  background: var(--surface-alt);
+  background: var(--page);
 }
 .dashboard {
   padding: var(--pane-padding);
@@ -251,7 +251,7 @@ main {
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--surface-alt);
+  background: var(--page);
   color: var(--text);
 }
 dialog::backdrop {
@@ -881,26 +881,40 @@ button.debug-line[aria-pressed="true"] {
   flex: 1;
 }
 .card-copy {
+  position: relative;
   width: auto;
   min-width: 0;
   height: 22px;
   min-height: 22px;
   padding: 0;
-  gap: 4px;
+  gap: 0;
   border: 0;
   border-radius: 3px;
   background: transparent;
   font-size: 12px;
   font-weight: 500;
 }
-.card-copy .ui-icon {
-  width: 14px;
-  height: 14px;
+.card-copy::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  inset-inline-start: 50%;
+  bottom: calc(100% + 4px);
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
 }
-.card-copy:where(:hover, :focus-visible) .ui-icon {
+.card-copy:where(:enabled:hover, :enabled:focus-visible)::after {
   opacity: 1;
+  visibility: visible;
 }
 .modal-footer {
   display: flex;
@@ -1028,10 +1042,6 @@ button.debug-line[aria-pressed="true"] {
   height: 28px;
   min-height: 28px;
 }
-.tree-actions {
-  border-radius: 6px;
-  background: transparent;
-}
 .row-action {
   color: var(--muted);
 }
@@ -1129,6 +1139,80 @@ button.debug-line[aria-pressed="true"] {
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+.connection-fields {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.connection-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 4px 0 12px;
+  padding: 12px 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+.connection-progress li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.connection-progress li + li::before {
+  position: absolute;
+  top: 12px;
+  right: 50%;
+  width: 100%;
+  border-top: 1px solid var(--border-strong);
+  content: "";
+}
+.connection-progress-marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  font-size: 11px;
+}
+.connection-progress [data-state="current"] {
+  color: var(--blue);
+  font-weight: 600;
+}
+.connection-progress [data-state="current"] .connection-progress-marker {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+.connection-progress [data-state="complete"] .connection-progress-marker {
+  border-color: var(--button-bg);
+  background: var(--button-bg);
+  color: white;
+}
+.connection-progress [data-state="error"] {
+  color: var(--error);
+}
+.connection-progress [data-state="error"] .connection-progress-marker {
+  border-color: var(--error);
+}
+.connection-progress-marker .ui-icon {
+  width: 14px;
+  height: 14px;
+}
+.connection-field-label .connection-token-link {
+  font-size: var(--button-font-size);
+  white-space: nowrap;
+}
+.connection-field-label .connection-token-link:hover {
+  text-decoration: none;
+  border-color: var(--border-strong);
+}
 .connection-form h3 {
   margin: 0;
   font-size: 14px;
@@ -1150,10 +1234,12 @@ button.debug-line[aria-pressed="true"] {
 }
 .connection-guide {
   color: var(--muted);
+  line-height: 1.6;
 }
 .connection-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .connection-guide p {
@@ -1354,9 +1440,6 @@ button.debug-line[aria-pressed="true"] {
     font-size: 16px;
     min-height: var(--button-height);
   }
-  .card-copy .ui-icon {
-    opacity: 1;
-  }
 }
 
 .activity-feed {
@@ -1482,7 +1565,7 @@ button.debug-line[aria-pressed="true"] {
   z-index: 3;
   padding-block: 4px;
   align-items: center;
-  background: var(--surface-alt);
+  background: var(--page);
   border-bottom: 1px solid var(--border);
 }
 @media (max-width: 900px) {
@@ -1496,9 +1579,6 @@ button.debug-line[aria-pressed="true"] {
     min-width: var(--icon-button-size);
     height: var(--icon-button-size);
     min-height: var(--icon-button-size);
-  }
-  .tree-actions {
-    padding-inline: 2px;
   }
   .card-view-button {
     width: auto;

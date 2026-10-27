@@ -99,3 +99,99 @@ test("미인증 화면에서 토큰을 검증·저장하면 재시작 없이 연
     tokenConfigured: true,
   });
 });
+
+test("인증 대기·확인·실패·완료 상태는 개인정보와 Jira 추가 조회 없이 확인한다", async (t) => {
+  let begin!: () => void;
+  let finish!: () => void;
+  const started = new Promise<void>((resolve) => {
+    begin = resolve;
+  });
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let calls = 0;
+  const logs: unknown[] = [];
+  const connection = createConnection({
+    credentials: null,
+    defaults: { site: "", email: "" },
+    persist: async () => {},
+    onLog: (entry) => logs.push(entry),
+    loggingEnabled: () => true,
+    fetcher: async (_input, init) => {
+      calls++;
+      if (calls === 1) {
+        begin();
+        await pending;
+        return Response.json(
+          { errorMessages: ["private-token"] },
+          { status: 401 },
+        );
+      }
+      assert.equal(init?.method ?? "GET", "GET");
+      return Response.json({
+        accountId: "fixture-user",
+        displayName: "검사 계정",
+      });
+    },
+  });
+  const server = createHttpServer(
+    connection.service,
+    () => () => {},
+    undefined,
+    connection,
+  );
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const base = `http://127.0.0.1:${address.port}`;
+  t.after(async () => {
+    finish();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  const state = async () => {
+    const response = await fetch(`${base}/api/connection/status`);
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const save = () =>
+    fetch(`${base}/api/connection`, {
+      method: "POST",
+      headers: { Origin: base, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        site: "example.atlassian.net",
+        email: "fixture@example.com",
+        token: "private-token",
+      }),
+    });
+  assert.deepEqual(await state(), { state: "waiting" });
+  assert.equal(calls, 0);
+  const saving = save();
+  await started;
+  assert.deepEqual(await state(), { state: "checking" });
+  finish();
+  const failed = await saving;
+  assert.equal(failed.status, 401);
+  assert.ok(!(await failed.text()).includes("private-token"));
+  assert.deepEqual(await state(), { state: "failed" });
+  assert.equal(calls, 1);
+  assert.equal((await save()).status, 200);
+  assert.deepEqual(await state(), { state: "connected" });
+  assert.equal(calls, 2);
+  assert.deepEqual(logs, [], "인증 응답을 개발자 로그에 남기지 않는다");
+});
+
+test("저장된 토큰은 검증하지 않고 연결 성공으로 표시하지 않는다", () => {
+  const connection = createConnection({
+    credentials: {
+      site: "example.atlassian.net",
+      email: "fixture@example.com",
+      token: "saved-token",
+    },
+    defaults: { site: "", email: "" },
+    fetcher: async () => {
+      throw new Error("상태 확인은 Jira를 호출하면 안 된다");
+    },
+  });
+  assert.deepEqual(connection.status(), { state: "unverified" });
+});

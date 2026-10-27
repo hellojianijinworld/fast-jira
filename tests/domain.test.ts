@@ -9,7 +9,6 @@ import {
   type BranchDefaults,
   fieldValue,
   type Issue,
-  type IssueType,
 } from "../src/domain/issue.ts";
 import {
   compareIssues,
@@ -20,7 +19,7 @@ import { sortOrder, sortRules } from "../src/domain/sort.ts";
 import {
   branchState,
   type CollapseState,
-  hierarchyDepth,
+  groupIssues,
   resolveBranchSettings,
   setBranchState,
 } from "../src/domain/tree.ts";
@@ -87,7 +86,7 @@ test("부모를 접었다 펼쳐도 이전 하위 펼침은 복원하지 않는�
     false,
   );
 });
-test("전체·선택 없음·상속의 구분과 사용자 지정 계층", () => {
+test("전체·선택 없음·상속의 구분", () => {
   const defaults: BranchDefaults = {
     sort: "recent",
     people: "mine",
@@ -107,12 +106,21 @@ test("전체·선택 없음·상속의 구분과 사용자 지정 계층", () =>
     resolveBranchSettings({ statuses: "inherit" }, defaults).statuses,
     ["1"],
   );
-  const types: IssueType[] = [
-    { project: "TEST", id: "custom", name: "상위", hierarchyLevel: 3 },
-    { project: "TEST", id: "task", name: "작업", hierarchyLevel: 0 },
-  ];
-  assert.equal(hierarchyDepth(issue(), types), 3);
-  assert.equal(hierarchyDepth(issue({ project: "OTHER" }), types, 2), 2);
+});
+test("실제 부모로 묶고 목록에서 빠진 부모의 연결 정보는 유지한다", () => {
+  const epic = issue({ key: "TEST-1", hierarchyLevel: 1 });
+  const task = issue({ key: "TEST-2", hierarchyLevel: 0 });
+  const child = issue({ key: "TEST-3", parent: epic.key, hierarchyLevel: -1 });
+  const missingParent = issue({ key: "TEST-4", parent: "TEST-999" });
+  const groups = groupIssues(
+    new Map([epic, task, child, missingParent].map((row) => [row.key, row])),
+  );
+  assert.deepEqual(
+    groups.get("")?.map((row) => row.key),
+    [epic.key, task.key, missingParent.key],
+  );
+  assert.deepEqual(groups.get(epic.key), [child]);
+  assert.equal(missingParent.parent, "TEST-999");
 });
 test("하위는 나 또는 미지정, 완료 범주와 명시적 체크를 적용한다", () => {
   const settings = {
