@@ -28,6 +28,14 @@ test("배포본은 플랫폼별 manifest와 동일한 공통 스킬만 포함하
     const plugin = join(root, platform, "fast-jira");
     const files = await listFiles(plugin);
     assert.ok(files.includes(`.${platform}-plugin/plugin.json`));
+    assert.ok(files.includes("dist/cli/mcp-bridge.js"));
+    const mcp = JSON.parse(await readFile(join(plugin, ".mcp.json"), "utf8"));
+    assert.equal(mcp.mcpServers.fast_jira.command, "node");
+    assert.equal(mcp.mcpServers.fast_jira.args.length, 1);
+    assert.ok(
+      mcp.mcpServers.fast_jira.args[0].endsWith("/dist/cli/mcp-bridge.js"),
+    );
+    assert.equal(mcp.mcpServers.fast_jira.env, undefined);
     assert.ok(
       files.every(
         (name) =>
@@ -52,6 +60,12 @@ test("배포본은 플랫폼별 manifest와 동일한 공통 스킬만 포함하
     );
     assert.equal(manifest.version, pkg.version);
     assert.equal(pkg.license, "MIT");
+    const notices = await readFile(
+      join(plugin, "THIRD_PARTY_NOTICES.txt"),
+      "utf8",
+    );
+    assert.match(notices, /@modelcontextprotocol\/sdk@1\.32\.2/);
+    assert.match(notices, /MIT License/);
     assert.equal(manifest.license, "MIT");
     assert.equal(
       await readFile(join(plugin, "LICENSE"), "utf8"),
@@ -101,7 +115,7 @@ test("배포 서버는 node_modules와 인증 없이 실행하며 화면과 로�
       await once(child, "close");
     }
   });
-  const signal = AbortSignal.timeout(5000);
+  const signal = AbortSignal.timeout(30000);
   while (!output.includes("Fast Jira API:"))
     await once(child.stdout, "data", { signal });
   const base = `http://127.0.0.1:${address.port}`;

@@ -26,5 +26,6 @@
       "onboardingSkill": "./skills/setup/SKILL.md"
     }
   },
-  "license": "MIT"
+  "license": "MIT",
+  "mcpServers": "./.mcp.json"
 }

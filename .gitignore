@@ -6,3 +6,5 @@ dist/
 .agent-history/
 .DS_Store
 *.log
+
+/config/

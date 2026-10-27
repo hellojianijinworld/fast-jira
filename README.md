@@ -36,7 +36,7 @@
 
 ## AI에게 맡기세요
 
-아래 문장을 **Codex 또는 Claude Code**에 전달하세요. 현재 저장소는 비공개이므로 접근 권한이 필요합니다.
+아래 문장을 **Codex 또는 Claude Code**에 전달하세요.
 
 > https://github.com/hellojianijinworld/fast-jira 의 INSTALL.md를 읽고 이 컴퓨터에 Fast Jira를 설치해줘. 기존 설정을 보존하고, 사용하는 AI에 맞는 플러그인을 등록한 뒤 화면을 열어줘. 토큰은 내가 앱에 직접 입력할게.
 
@@ -51,8 +51,8 @@
 ## 지원 범위
 
 - Jira Cloud · 개인 계정의 접근 권한에 따라 동작
-- Codex·Claude Code 플러그인 · macOS 로그인 세션의 상주 실행
-- Windows·Linux는 소스 실행 가능, 자동 서비스 설치는 현재 미지원
+- Codex·Claude Code 플러그인 · 공통 로컬 웹·MCP 서버
+- Node 백그라운드 실행 · OS 자동 시작 등록 없이 Managing으로 제어
 - 댓글 좋아요·이모지 반응 미지원. 답글은 Jira의 미문서화 동작에 의존
 
 ---

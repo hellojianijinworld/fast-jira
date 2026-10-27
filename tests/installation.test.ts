@@ -16,7 +16,7 @@ test("설치 경로는 플랫폼과 무관한 개인 설정을 분리하고 laun
   const first = installationPaths("/tmp/fast jira", "/Users/test");
   const second = installationPaths("/tmp/other", "/Users/test");
   assert.equal(first.runtime, "/tmp/fast jira/runtime");
-  assert.equal(first.config, "/tmp/fast jira/service.json");
+  assert.equal(first.config, "/tmp/fast jira/config/service.json");
   assert.ok(first.plist.startsWith("/Users/test/Library/LaunchAgents/"));
   assert.notEqual(first.label, second.label);
   assert.equal(nodeSupported("22.11.0"), false);

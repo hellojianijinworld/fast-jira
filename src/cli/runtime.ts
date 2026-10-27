@@ -44,6 +44,12 @@ export async function stageRuntime(
       });
     }
     await cp(join(source, "LICENSE"), join(stage, "LICENSE"));
+    await cp(
+      join(source, "THIRD_PARTY_NOTICES.txt"),
+      join(stage, "THIRD_PARTY_NOTICES.txt"),
+    ).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
     const pkg = JSON.parse(
       await readFile(join(source, "package.json"), "utf8"),
     ) as { version: string };

@@ -202,6 +202,12 @@ test("MCP 쓰기는 공통 일괄 변경을 사용하고 되돌리기 영수증�
   const writes = requests.filter((call) => call.method === "PUT");
   assert.equal(writes.length, 2);
   assert.deepEqual(record(writes[0]?.body).fields, { duedate: "2026-11-01" });
+  const preview = tools.describeChange("jira_undo", {
+    token: result.undoToken,
+  });
+  assert.equal(record(preview).field, "dueDate");
+  assert.equal((record(preview).changes as unknown[]).length, 2);
+  assert.equal(requests.filter((call) => call.method === "PUT").length, 2);
   const undone = record(
     await tools.call("jira_undo", { token: result.undoToken }),
   );

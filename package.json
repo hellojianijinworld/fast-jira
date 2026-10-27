@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server/dev.ts",
-    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/server/mcp.ts --outDir dist/server --emptyOutDir false && vite build --ssr src/cli/main.ts --outDir dist/cli && vite build --ssr src/cli/release-main.ts --outDir dist/cli --emptyOutDir false",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/server/mcp.ts --outDir dist/server --emptyOutDir false && vite build --ssr src/cli/main.ts --outDir dist/cli && vite build --ssr src/cli/release-main.ts --outDir dist/cli --emptyOutDir false && vite build --ssr src/cli/mcp-bridge.ts --outDir dist/cli --emptyOutDir false",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "lint": "biome check .",
@@ -16,7 +16,7 @@
     "check": "npm run typecheck && npm run lint && npm test",
     "dev:api": "tsx watch src/server/main.ts",
     "start": "tsx src/server/main.ts",
-    "mcp": "tsx src/server/mcp.ts",
+    "mcp": "tsx src/cli/mcp-bridge.ts",
     "dev:ui": "vite --host 127.0.0.1",
     "pretest": "npm run build",
     "prepare": "node scripts/install-hooks.mjs",
@@ -30,5 +30,8 @@
     "typescript": "7.0.2",
     "vite": "8.3.5"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
 }

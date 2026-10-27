@@ -18,7 +18,6 @@ export async function createRuntimeUpdater() {
   return createAppUpdater({
     currentVersion: typeof pkg.version === "string" ? pkg.version : "unknown",
     supported:
-      process.platform === "darwin" &&
       resolve(root) === resolve(paths.runtime) &&
       config?.instance === process.env.FAST_JIRA_INSTANCE,
     readJob: () => readUpdateJob(home),

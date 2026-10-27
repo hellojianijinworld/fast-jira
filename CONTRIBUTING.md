@@ -29,10 +29,10 @@ Node.js 22.12 이상이 필요합니다. 화면은 `http://127.0.0.1:5173`, API�
 
 | 플랫폼 | 진입점·스킬 발견 | 적용·설치 | 검증·지원 범위 |
 | --- | --- | --- | --- |
-| Codex | `.codex-plugin/plugin.json`이 `skills/` 참조 | 요청형 스킬, 공식 로컬 marketplace | 실제 설치·새 세션 스킬 발견 검사. macOS 공통 서비스로 변환 지원 |
-| Claude Code | `.claude-plugin/plugin.json`, 루트 `skills/` 자동 탐색 | 요청형 스킬, 공식 로컬 marketplace | manifest validate·설치·스킬 목록 검사. macOS 공통 서비스로 변환 지원 |
+| Codex | `.codex-plugin/plugin.json`이 `skills/` 참조 | 요청형 스킬, 공식 로컬 marketplace | 실제 설치·새 세션 스킬 발견 검사. 공통 Node 서비스와 MCP 중계 연결 |
+| Claude Code | `.claude-plugin/plugin.json`, 루트 `skills/` 자동 탐색 | 요청형 스킬, 공식 로컬 marketplace | manifest validate·설치·스킬 목록 검사. 공통 Node 서비스와 MCP 중계 연결 |
 
-Windows·Linux 상주 서비스와 일반 Claude 웹채팅은 현재 미지원입니다. 여러 AI 플랫폼이 같은 개인 서비스에 연결하므로 관리 작업은 개인 경로별 잠금과 launchd 레이블로 구분합니다.
+일반 Claude 웹채팅은 플러그인 지원 범위가 아닙니다. 여러 AI 플랫폼이 같은 개인 서비스에 연결하므로 관리 작업은 개인 경로별 잠금과 실행 인스턴스로 구분합니다. Node 독립 프로세스로 실행하며 OS 자동 시작은 등록하지 않습니다. Windows·Linux는 실제 장비 검증이 별도로 필요합니다. 인증은 config/connection.env, 실행본은 runtime/으로 분리합니다. 웹 /api와 MCP /mcp는 JiraService를 공유하며 수정은 MCP 기본 확인 UI로 승인받습니다.
 
 로컬 설치 확인은 `INSTALL.md`의 별도 `--home`과 포트를 사용합니다. 임시 설정에서 setup → HTTP 200 → stop → start → update → remove를 검증하고 개인 설정이 남는지 확인합니다. 정상 서비스의 포트와 실제 Jira 데이터를 사용하지 않습니다.
 

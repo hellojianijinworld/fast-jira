@@ -1,4 +1,12 @@
-import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +15,24 @@ const destination = join(root, "dist/marketplace");
 const stage = join(root, "dist/marketplace.next");
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 await rm(stage, { recursive: true, force: true });
+const lock = JSON.parse(
+  await readFile(join(root, "package-lock.json"), "utf8"),
+);
+const notices = [];
+for (const [location, dependency] of Object.entries(lock.packages)) {
+  if (!location || dependency.dev) continue;
+  const directory = join(root, location);
+  const metadata = JSON.parse(
+    await readFile(join(directory, "package.json"), "utf8"),
+  );
+  notices.push(
+    `## ${metadata.name}@${metadata.version} (${metadata.license ?? "see license"})`,
+  );
+  for (const file of await readdir(directory, { withFileTypes: true })) {
+    if (file.isFile() && /^(licen[cs]e|notice|copying)(\.|$)/i.test(file.name))
+      notices.push(await readFile(join(directory, file.name), "utf8"));
+  }
+}
 try {
   for (const platform of ["codex", "claude"]) {
     const manifestPath = `.${platform}-plugin/plugin.json`;
@@ -32,6 +58,26 @@ try {
     ]) {
       await cp(join(root, path), join(plugin, path), { recursive: true });
     }
+    await writeFile(
+      join(plugin, "THIRD_PARTY_NOTICES.txt"),
+      notices.join("\n\n"),
+    );
+    await writeFile(
+      join(plugin, ".mcp.json"),
+      JSON.stringify(
+        {
+          mcpServers: {
+            fast_jira: {
+              command: "node",
+              // biome-ignore lint/suspicious/noTemplateCurlyInString: AI 플랫폼이 설치 경로를 치환한다.
+              args: ["${CLAUDE_PLUGIN_ROOT}/dist/cli/mcp-bridge.js"],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
     await writeFile(
       join(plugin, "package.json"),
       JSON.stringify(

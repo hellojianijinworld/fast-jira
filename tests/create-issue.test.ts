@@ -362,19 +362,27 @@ test("Codex와 Claude 모두 생성 도구 결과를 초안으로만 반환한�
         command.args[command.args.indexOf("--mcp-config") + 1] ?? "{}",
       );
       const { url, headers } = config.mcpServers.fast_jira;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/call",
-          params: { name: "jira_prepare_issue", arguments: draft },
-        }),
+      const { Client } = await import(
+        "@modelcontextprotocol/sdk/client/index.js"
+      );
+      const { StreamableHTTPClientTransport } = await import(
+        "@modelcontextprotocol/sdk/client/streamableHttp.js"
+      );
+      const transport = new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers },
       });
-      assert.equal(response.status, 200);
-      const result = await response.json();
-      assert(!result.error);
+      const client = new Client({ name: "test", version: "1" });
+      try {
+        await client.connect(transport);
+        const result = await client.callTool({
+          name: "jira_prepare_issue",
+          arguments: draft,
+        });
+        assert(!result.isError);
+      } finally {
+        await transport.terminateSession();
+        await client.close();
+      }
       return { is_error: false, result: "생성안을 확인하세요." };
     },
   );

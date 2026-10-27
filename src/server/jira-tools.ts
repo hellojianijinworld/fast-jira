@@ -90,9 +90,11 @@ function integer(
 }
 /** 웹 에이전트와 MCP가 같은 Jira 조회·변경 서비스를 사용한다. 기본값은 쓰기를 노출하지 않는다. */
 export function createJiraTools(
-  service: JiraService,
+  source: JiraService | (() => JiraService),
   options: { allowMutations?: boolean } = {},
 ) {
+  const currentService = () =>
+    typeof source === "function" ? source() : source;
   const definitions = [
     definition(
       "jira_catalog",
@@ -220,10 +222,11 @@ export function createJiraTools(
   const projectInput = (input: Record<string, unknown>) =>
     projectKeys(strings(input, "projects").join(",")).join(",");
   const keysInput = (input: Record<string, unknown>) =>
-    agentIssueKeys(input.keys, service.site);
+    agentIssueKeys(input.keys, currentService().site);
   async function call(name: string, args: unknown): Promise<unknown> {
     if (!definitions.some((tool) => tool.name === name))
       throw new Error("지원하지 않는 도구입니다.");
+    const service = currentService();
     const input = args === undefined ? {} : record(args);
     const key = () => service.issueKey(input.key);
     switch (name) {
@@ -364,6 +367,10 @@ export function createJiraTools(
     }
     throw new Error("지원하지 않는 도구입니다.");
   }
-  return { definitions, call };
+  function describeChange(name: string, args: unknown) {
+    if (name !== "jira_undo") return args ?? {};
+    return currentService().bulk.previewUndo(string(record(args), "token"));
+  }
+  return { definitions, call, describeChange };
 }
 export type JiraTools = ReturnType<typeof createJiraTools>;

@@ -7,6 +7,7 @@ export interface ServiceConfig {
   port: number;
   instance: string;
   node: string;
+  publicUrl?: string;
 }
 
 export function nodeSupported(version: string): boolean {
@@ -14,9 +15,18 @@ export function nodeSupported(version: string): boolean {
   return major > 22 || (major === 22 && minor >= 12);
 }
 
+export function defaultHome() {
+  if (process.platform === "darwin")
+    return join(homedir(), "Library/Application Support/Fast Jira");
+  if (process.platform === "win32")
+    return join(process.env.LOCALAPPDATA ?? homedir(), "Fast Jira");
+  return join(
+    process.env.XDG_DATA_HOME ?? join(homedir(), ".local/share"),
+    "fast-jira",
+  );
+}
 export function installationPaths(
-  home = process.env.FAST_JIRA_HOME ??
-    join(homedir(), "Library/Application Support/Fast Jira"),
+  home = process.env.FAST_JIRA_HOME ?? defaultHome(),
   userHome = homedir(),
 ) {
   home = resolve(home);
@@ -26,7 +36,10 @@ export function installationPaths(
     home,
     label,
     runtime: join(home, "runtime"),
-    config: join(home, "service.json"),
+    config: join(home, "config/service.json"),
+    credentials: join(home, "config/connection.env"),
+    process: join(home, "config/process.json"),
+    mcpToken: join(home, "config/mcp-token"),
     log: join(home, "service.log"),
     lock: join(home, "service.lock"),
     plist: join(userHome, "Library/LaunchAgents", `${label}.plist`),
@@ -53,11 +66,19 @@ export function parseServiceConfig(value: unknown): ServiceConfig {
     throw new Error(
       "설치 설정 형식이 올바르지 않습니다. 기존 service.json을 보존하고 설정을 확인하세요.",
     );
+  if (
+    data.publicUrl !== undefined &&
+    data.publicUrl !== "https://fast-jira.local"
+  )
+    throw new Error("기본 도메인 설정이 올바르지 않습니다.");
   return {
     version: 1,
     port: data.port,
     instance: data.instance,
     node: data.node,
+    ...(typeof data.publicUrl === "string"
+      ? { publicUrl: data.publicUrl }
+      : {}),
   };
 }
 

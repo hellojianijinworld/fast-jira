@@ -1,10 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { Credentials } from "../domain/connection.ts";
 import { credentialsFromEnv } from "./jira-client.ts";
+export function credentialPath(
+  home = process.env.FAST_JIRA_HOME ?? process.cwd(),
+) {
+  return join(home, "config/connection.env");
+}
 export function loadEnvironment() {
-  if (existsSync(".env")) process.loadEnvFile(".env");
+  const path = credentialPath();
+  if (existsSync(path)) process.loadEnvFile(path);
+  else if (!process.env.FAST_JIRA_HOME && existsSync(".env"))
+    process.loadEnvFile(".env");
   return credentialsFromEnv(process.env);
 }
 export function serverPort(): number {
@@ -15,7 +24,11 @@ export function serverPort(): number {
 }
 
 /** 다른 설정을 보존하고 인증 값만 권한 0600 파일로 원자적으로 교체한다. */
-export async function saveCredentials(credentials: Credentials, path = ".env") {
+export async function saveCredentials(
+  credentials: Credentials,
+  path = credentialPath(),
+) {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   let contents = await readFile(path, "utf8").catch((error: unknown) => {
     if (error instanceof Error && "code" in error && error.code === "ENOENT")
       return "";

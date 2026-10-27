@@ -16,6 +16,7 @@ import type { Connection } from "./connection.ts";
 import { JiraError } from "./jira-client.ts";
 import type { BrowseOptions } from "./jira-query.ts";
 import type { JiraService } from "./jira-service.ts";
+import type { createMcpEndpoint } from "./mcp-server.ts";
 
 const invalid = (message: string) => new JiraError(message, 400);
 const messageOf = (error: unknown) =>
@@ -81,6 +82,7 @@ export function createHttpServer(
   connection?: Connection,
   assistant?: AssistantService,
   updates?: AppUpdater,
+  local?: { mcp: ReturnType<typeof createMcpEndpoint>; origin?: string },
 ) {
   const getService = () => (typeof source === "function" ? source() : source);
   const key = (value: unknown) => {
@@ -282,6 +284,18 @@ export function createHttpServer(
     res.setHeader("X-Content-Type-Options", "nosniff");
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const hosts = [
+        `127.0.0.1:${req.socket.localPort}`,
+        `localhost:${req.socket.localPort}`,
+        new URL(frontendOrigin).host,
+        ...(local?.origin ? [new URL(local.origin).host] : []),
+      ];
+      if (!hosts.includes(req.headers.host ?? ""))
+        throw new JiraError("허용되지 않은 로컬 주소입니다.", 403);
+      if (url.pathname === "/mcp" && local) {
+        await local.mcp.handle(req, res);
+        return;
+      }
       if (
         req.method === "GET" &&
         url.pathname === "/api/app-update/status" &&
@@ -393,7 +407,12 @@ export function createHttpServer(
         // Vite의 화면 Origin과 동일 포트의 배포 화면만 쓰기를 허용한다. 토큰은 서버에 남는다.
         const localOrigin = `http://127.0.0.1:${req.socket.localPort}`;
         if (
-          ![localOrigin, frontendOrigin].includes(req.headers.origin ?? "") ||
+          ![
+            localOrigin,
+            `http://localhost:${req.socket.localPort}`,
+            frontendOrigin,
+            ...(local?.origin ? [local.origin] : []),
+          ].includes(req.headers.origin ?? "") ||
           !req.headers["content-type"]?.startsWith("application/json")
         )
           throw new JiraError("로컬 화면에서 JSON으로 요청하세요.", 403);

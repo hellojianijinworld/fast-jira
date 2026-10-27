@@ -9,7 +9,9 @@ const credentials = loadEnvironment();
 const handler = createMcpHandler(
   createJiraClient(credentials),
   credentials.site,
-  createJiraTools(createJiraService({ credentials }), { allowMutations: true }),
+  createJiraTools(createJiraService({ credentials }), {
+    allowMutations: false,
+  }),
 );
 for await (const line of createInterface({
   input: process.stdin,

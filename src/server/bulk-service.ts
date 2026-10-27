@@ -193,12 +193,23 @@ export function createBulkService(
       undoToken,
     };
   }
-  async function undo(token: string): Promise<BulkResult> {
+  function receiptFor(token: string) {
     const receipt = receipts.get(token);
     if (!receipt || receipt.expires <= now()) {
       receipts.delete(token);
       throw invalid("되돌리기 시간이 만료되었거나 이미 처리했습니다.");
     }
+    return receipt;
+  }
+  function previewUndo(token: string) {
+    const receipt = receiptFor(token);
+    return {
+      field: receipt.field,
+      changes: receipt.entries.map((entry) => ({ ...entry })),
+    };
+  }
+  async function undo(token: string): Promise<BulkResult> {
+    const receipt = receiptFor(token);
     // 실행 전에 소비해 중복 요청이 같은 변경을 두 번 되돌리지 못하게 한다.
     receipts.delete(token);
     const result = await execute(receipt.entries, receipt.field, true);
@@ -209,5 +220,5 @@ export function createBulkService(
       undoToken: "",
     };
   }
-  return { options, apply, undo };
+  return { options, apply, undo, previewUndo };
 }

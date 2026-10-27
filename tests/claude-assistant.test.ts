@@ -32,17 +32,55 @@ const loggedIn = {
   authMethod: "oauth_token",
   apiProvider: "firstParty",
 };
+const sessions = new Map<string, string>();
 const rpc = async (
   url: string,
   headers: Record<string, string>,
   method: string,
-  params = {},
-) =>
-  fetch(url, {
-    method: "POST",
-    headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
+  params: Record<string, unknown> = {},
+): Promise<Response> => {
+  const send = (
+    method: string,
+    params: Record<string, unknown>,
+    id: number | null = 1,
+  ) =>
+    fetch(url, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        ...(sessions.has(url)
+          ? { "Mcp-Session-Id": sessions.get(url) ?? "" }
+          : {}),
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        ...(id === null ? {} : { id }),
+        method,
+        params,
+      }),
+    });
+  if (method !== "initialize" && !sessions.has(url)) {
+    const initialized = await rpc(url, headers, "initialize");
+    if (!initialized.ok) return initialized;
+    await send("notifications/initialized", {}, null);
+  }
+  const result = await send(
+    method,
+    method === "initialize"
+      ? {
+          protocolVersion: "2025-06-18",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1" },
+          ...params,
+        }
+      : params,
+  );
+  const session = result.headers.get("mcp-session-id");
+  if (session) sessions.set(url, session);
+  return result;
+};
 
 test("Claude는 API 키 없이 OAuth 로그인 상태만 확인하고 공식 별칭을 표시한다", async () => {
   for (const auth of [
@@ -137,7 +175,7 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
         name: "jira_update_issues",
         arguments: {},
       }).then((response) => response.json());
-      assert.equal(blocked.error.code, -32601);
+      assert.equal(blocked.result.isError, true);
       const proposed = await rpc(url, config.headers, "tools/call", {
         name: "jira_propose_change",
         arguments: { keys: ["AA-1"], field: "assignee", value: "member-1" },
@@ -312,6 +350,7 @@ test("한글 바이트 중간에서 나뉜 MCP 요청도 원문을 유지한다"
         params: { name: "jira_search", arguments: { query: "한글" } },
       }),
     );
+    await rpc(bridge.config.url, bridge.config.headers, "initialize");
     const split = body.indexOf(Buffer.from("한")) + 1;
     await new Promise<void>((resolve, reject) => {
       const req = request(
@@ -320,6 +359,8 @@ test("한글 바이트 중간에서 나뉜 MCP 요청도 원문을 유지한다"
           method: "POST",
           headers: {
             ...bridge.config.headers,
+            Accept: "application/json, text/event-stream",
+            "Mcp-Session-Id": sessions.get(bridge.config.url) ?? "",
             "Content-Type": "application/json",
           },
         },
