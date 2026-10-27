@@ -5,10 +5,16 @@ export interface AssistantModel {
   name: string;
   isDefault: boolean;
 }
+export interface AssistantProviderStatus {
+  id: "codex" | "claude";
+  ready: boolean;
+  error: string;
+}
 export interface AssistantStatus {
   ready: boolean;
   models: AssistantModel[];
   error: string;
+  providers?: AssistantProviderStatus[];
 }
 export interface AssistantReply {
   conversationId: string;
@@ -29,9 +35,25 @@ export function assistantStatus(value: unknown): AssistantStatus {
     typeof data.error !== "string"
   )
     throw new Error("AI 연결 응답이 올바르지 않습니다.");
+  let providers: AssistantProviderStatus[] | undefined;
+  if (data.providers !== undefined) {
+    if (!Array.isArray(data.providers))
+      throw new Error("AI 제공자 정보가 올바르지 않습니다.");
+    providers = data.providers.map<AssistantProviderStatus>((value) => {
+      const provider = record(value);
+      if (
+        (provider.id !== "codex" && provider.id !== "claude") ||
+        typeof provider.ready !== "boolean" ||
+        typeof provider.error !== "string"
+      )
+        throw new Error("AI 제공자 정보가 올바르지 않습니다.");
+      return { id: provider.id, ready: provider.ready, error: provider.error };
+    });
+  }
   return {
     ready: data.ready,
     error: data.error,
+    ...(providers ? { providers } : {}),
     models: data.models.map((value) => {
       const model = record(value);
       if (typeof model.isDefault !== "boolean")

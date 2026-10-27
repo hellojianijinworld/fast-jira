@@ -75,6 +75,17 @@ function fixture() {
   const assistant = createAssistantService(
     () => service,
     async () => client,
+    {
+      status: async () => ({
+        ready: false,
+        models: [],
+        error: "Claude 미설정",
+      }),
+      run: async () => {
+        throw new Error("Claude 미설정");
+      },
+      dispose() {},
+    },
   );
   const waitTurn = async () => {
     for (let i = 0; i < 30 && !turns; i++)

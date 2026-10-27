@@ -140,8 +140,17 @@ const api = createApi(async (input, init) => {
       models: [
         { id: "test", name: "검사 모델", isDefault: true },
         { id: "other", name: "다른 모델", isDefault: false },
+        {
+          id: "claude:sonnet",
+          name: "Claude · sonnet (CLI 별칭)",
+          isDefault: false,
+        },
       ],
       error: "",
+      providers: [
+        { id: "codex", ready: true, error: "" },
+        { id: "claude", ready: true, error: "" },
+      ],
     });
   if (path.pathname === "/api/assistant/run") {
     prompt = JSON.parse(String(init?.body)).prompt;
@@ -691,6 +700,31 @@ await check(
   },
 );
 await check(
+  "Claude 모델도 기본 선택을 저장하고 제공자·음성 지원을 구분한다",
+  async () => {
+    const select = dialog().querySelector<HTMLSelectElement>("select");
+    if (!select) throw new Error("모델 없음");
+    select.value = "claude:sonnet";
+    select.dispatchEvent(new Event("change"));
+    assert(
+      dialog().querySelector(".chat-provider")?.textContent === "Claude",
+      "제공자 표시가 Codex에 머묾",
+    );
+    assert(button("음성 입력").disabled, "Claude 전용 음성 입력으로 오인됨");
+    button("대화 시작").click();
+    assert(select.value === "claude:sonnet", "Claude 기본 모델 미보관");
+    assert(
+      dialog()
+        .querySelector(".chat-capabilities")
+        ?.textContent?.includes("CLI 별칭"),
+      "모델 조회 방식을 표시하지 않음",
+    );
+    select.value = "test";
+    select.dispatchEvent(new Event("change"));
+    assert(!button("음성 입력").disabled, "Codex로 돌아와도 마이크가 비활성");
+  },
+);
+await check(
   "실패한 요청은 입력을 복구하고 좁은 명령창에서 가로로 넘치지 않는다",
   async () => {
     fail = true;
@@ -743,6 +777,7 @@ await check(
       ...issue,
       summary: "짧은 제목",
       assignee: "검사자",
+      assigneeId: "member-test",
       commentCount: 3,
     };
     const options = { statusOrder: [], onSelect: () => {} };
@@ -768,7 +803,7 @@ await check(
               normalRow.getBoundingClientRect().height,
         "공통 카드 크기가 화면 밀도와 일치하지 않음",
       );
-      for (const selector of [".list-title", ".person-pill", ".status-pill"]) {
+      for (const selector of [".list-title", ".status-pill"]) {
         const normal = standard.querySelector<HTMLElement>(selector),
           compact = small.querySelector<HTMLElement>(selector);
         if (!normal || !compact) throw new Error("공통 카드 정보 누락");
@@ -781,6 +816,20 @@ await check(
           `${selector} 크기가 화면 밀도와 일치하지 않음`,
         );
       }
+      const normalAvatar = standard.querySelector<HTMLElement>(
+        ".participant-avatars .avatar",
+      );
+      const smallAvatar = small.querySelector<HTMLElement>(
+        ".participant-avatars .avatar",
+      );
+      if (!normalAvatar || !smallAvatar)
+        throw new Error("작업참여자 아바타 누락");
+      assert(
+        responsiveSmall
+          ? normalAvatar.offsetWidth === smallAvatar.offsetWidth
+          : normalAvatar.offsetWidth > smallAvatar.offsetWidth,
+        "아바타 크기가 공통 밀도와 다름",
+      );
       assert(
         small.textContent === standard.textContent,
         "sm 크기에서 카드 정보가 누락됨",

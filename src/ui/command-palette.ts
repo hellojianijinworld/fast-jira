@@ -11,7 +11,10 @@ import {
 } from "../client/conversation-store.ts";
 import type { LocalStore } from "../client/preferences.ts";
 import type { ChangeProposal } from "../domain/agent.ts";
-import type { AssistantContext } from "../domain/assistant.ts";
+import type {
+  AssistantContext,
+  AssistantProviderStatus,
+} from "../domain/assistant.ts";
 import type { BulkResult } from "../domain/bulk.ts";
 import {
   type CommandId,
@@ -204,6 +207,7 @@ export function createCommandPalette(config: {
     selectedModel = "",
     ready = false,
     loadingModels = false;
+  let providerStates: AssistantProviderStatus[] = [];
   let request: AbortController | undefined;
   let noticeParent: HTMLElement | null = null;
   function restoreNotice(modal: HTMLDialogElement) {
@@ -284,10 +288,14 @@ export function createCommandPalette(config: {
       !ready ||
       model.selectedOptions[0]?.disabled === true;
     cancel.hidden = !busy;
-    microphone.disabled = busy || applying;
+    const isClaude = selectedModel.startsWith("claude:");
+    provider.textContent = isClaude ? "Claude" : "Codex";
+    microphone.disabled = busy || applying || isClaude;
     microphone.title = recording
       ? "음성 입력 중지"
-      : "Codex 로그인으로 음성 입력";
+      : isClaude
+        ? "Claude 대화에서는 음성 입력을 지원하지 않아요."
+        : "Codex 로그인으로 음성 입력";
     form.setAttribute("aria-busy", String(busy));
     welcome.hidden = aiResults.childElementCount > 0;
     status.classList.toggle("chat-thinking", busy);
@@ -306,7 +314,7 @@ export function createCommandPalette(config: {
       policyText.textContent =
         storageError ||
         (historyStore
-          ? "대화는 이 브라우저에 직접 삭제할 때까지 남습니다. 브라우저 데이터를 지우면 기록도 삭제됩니다. Codex 연결은 30분 미사용 또는 서버 재시작 시 만료되며, 최근 20개 메시지·최대 2만 자를 참고해 새 연결로 이어갑니다."
+          ? "대화는 이 브라우저에 직접 삭제할 때까지 남습니다. 브라우저 데이터를 지우면 기록도 삭제됩니다. Codex 연결은 30분 미사용 또는 서버 재시작 시 만료됩니다. Claude는 매 요청마다 최근 기록을 참고합니다. 이전 대화는 최근 20개 메시지·최대 2만 자까지 전달합니다."
           : "현재 화면에서만 대화를 보관합니다.");
     if (storageError) policy.open = true;
     policy.classList.toggle("error", Boolean(storageError));
@@ -321,6 +329,7 @@ export function createCommandPalette(config: {
       const state = await config.api.assistantStatus();
       if (!alive) return;
       ready = state.ready && state.models.length > 0;
+      providerStates = state.providers ?? [];
       model.replaceChildren(
         ...state.models.map((item) => {
           const option = element("option", "", item.name);
@@ -542,9 +551,19 @@ export function createCommandPalette(config: {
     for (const label of ["제공자", "모델 조회", "대화", "음성 입력"])
       head.append(element("th", "", label));
     table.append(head);
+    const stateOf = (id: "codex" | "claude") => {
+      const state = providerStates.find((state) => state.id === id);
+      return state
+        ? state.ready
+          ? "연결됨"
+          : state.error
+        : id === "codex"
+          ? codex
+          : "미확인";
+    };
     for (const values of [
-      ["Codex", codex, codex, "지원 · Codex 앱 필요"],
-      ["Claude", "Fast Jira 미연동", "Fast Jira 미연동", "Fast Jira 미연동"],
+      ["Codex", stateOf("codex"), stateOf("codex"), "지원 · Codex 앱 필요"],
+      ["Claude", "CLI 별칭 · 계정 권한에 따름", stateOf("claude"), "미지원"],
     ]) {
       const row = element("tr");
       for (const value of values) row.append(element("td", "", value));
