@@ -165,17 +165,18 @@ test("잘못된 도구 입력은 isError로 반환하고 외부 사이트 요청
   assert.equal(calls.length, 0);
 });
 
-test("MCP stdio 실행은 초기화·목록 응답만 출력한다", () => {
+test("MCP 소스와 배포 stdio 실행은 초기화·목록 응답만 출력한다", () => {
   const input = `${[
     { jsonrpc: "2.0", id: 1, method: "initialize" },
     { jsonrpc: "2.0", id: 2, method: "tools/list" },
   ]
     .map((value) => JSON.stringify(value))
     .join("\n")}\n`;
-  const run = spawnSync(
-    process.execPath,
+  for (const command of [
     ["--import", "tsx", "src/server/mcp.ts"],
-    {
+    ["dist/server/mcp.js"],
+  ]) {
+    const run = spawnSync(process.execPath, command, {
       cwd: new URL("../", import.meta.url),
       encoding: "utf8",
       input,
@@ -186,20 +187,20 @@ test("MCP stdio 실행은 초기화·목록 응답만 출력한다", () => {
         JIRA_EMAIL: "test@example.com",
         JIRA_API_TOKEN: "fake-token",
       },
-    },
-  );
-  assert.equal(run.status, 0, run.stderr);
-  assert.equal(run.stderr, "");
-  const lines = run.stdout
-    .trim()
-    .split("\n")
-    .map((line) => {
-      const value: unknown = JSON.parse(line);
-      return record(value);
     });
-  assert.deepEqual(
-    lines.map((line) => line.id),
-    [1, 2],
-  );
-  assert.ok(!run.stdout.includes("fake-token"));
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(run.stderr, "");
+    const lines = run.stdout
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const value: unknown = JSON.parse(line);
+        return record(value);
+      });
+    assert.deepEqual(
+      lines.map((line) => line.id),
+      [1, 2],
+    );
+    assert.ok(!run.stdout.includes("fake-token"));
+  }
 });

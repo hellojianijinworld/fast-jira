@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server/dev.ts",
-    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/cli/main.ts --outDir dist/cli",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/server/mcp.ts --outDir dist/server --emptyOutDir false && vite build --ssr src/cli/main.ts --outDir dist/cli",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "lint": "biome check .",

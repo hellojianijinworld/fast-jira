@@ -1,5 +1,6 @@
 import type { Credentials } from "../domain/connection.ts";
 import type { LogEntry } from "../domain/log.ts";
+import { createAssistantService } from "./assistant-service.ts";
 import { createConnection } from "./connection.ts";
 import { loadEnvironment, serverPort } from "./environment.ts";
 import { createHttpServer } from "./http.ts";
@@ -30,6 +31,7 @@ export async function startApi() {
       for (const listener of listeners) listener(entry);
     },
   });
+  const assistant = createAssistantService(connection.service);
   const server = createHttpServer(
     connection.service,
     (listener) => {
@@ -38,7 +40,9 @@ export async function startApi() {
     },
     undefined,
     connection,
+    assistant,
   );
+  server.once("close", () => assistant.dispose());
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => {

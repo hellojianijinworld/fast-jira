@@ -11,6 +11,7 @@ import {
 } from "./meta.ts";
 
 export interface CardOptions {
+  size?: "sm" | "md";
   selectedKey?: string;
   context?: string;
   statusOrder: readonly string[];
@@ -27,6 +28,7 @@ export interface CardOptions {
 /** 모든 이슈 목록은 카드·즐겨찾기·배지 표시 규칙을 공유한다. */
 export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
   const root = element("div", "issue-card");
+  root.dataset.size = options.size ?? "md";
   const link = element("div", "list-item");
   const title = element("a", "list-title", issue.summary);
   title.href = `?issue=${encodeURIComponent(issue.key)}`;

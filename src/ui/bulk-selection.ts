@@ -341,6 +341,9 @@ export function createBulkSelection(config: {
       wrapper.append(check, card);
       return wrapper;
     },
+    get keys() {
+      return [...selected];
+    },
     get active() {
       return active;
     },

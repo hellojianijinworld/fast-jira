@@ -1,4 +1,5 @@
 import type { TreeCatalog } from "../domain/catalog.ts";
+import { shortcutAria, shortcutLabel } from "../domain/commands.ts";
 import { sameIssue, updateFavorites } from "../domain/favorites.ts";
 import { branchDefaults } from "../domain/filters.ts";
 import type { Issue } from "../domain/issue.ts";
@@ -7,6 +8,7 @@ import type { LogEntry } from "../domain/log.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
+import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { developerLog } from "../ui/developer-log.ts";
 import { actionButton, element, iconButton } from "../ui/dom.ts";
@@ -55,15 +57,24 @@ export async function createApp(
   const nav = element("header", "top-nav"),
     tools = element("div", "nav-tools");
   const searchToggle = iconButton("검색", "search"),
+    aiToggle = iconButton("AI 대화", "sparkles"),
     projects = iconButton("프로젝트 선택", "folder"),
     filters = iconButton("필터 및 뷰", "list-filter"),
     help = iconButton("도움말", "circle-help"),
     settings = iconButton("설정", "settings"),
     selection = iconButton("이슈 선택 모드", "check"),
     logToggle = iconButton("개발자 로그 켜기", "code-xml");
+  searchToggle.title = `이슈 검색 (${shortcutLabel(navigator.platform)})`;
+  searchToggle.setAttribute("aria-keyshortcuts", "Control+k Meta+k");
+  aiToggle.title = `AI 대화 (${shortcutLabel(navigator.platform, "ai")})`;
+  aiToggle.setAttribute(
+    "aria-keyshortcuts",
+    shortcutAria(navigator.platform, "ai"),
+  );
   logToggle.hidden = true;
   tools.append(
     searchToggle,
+    aiToggle,
     projects,
     filters,
     selection,
@@ -73,22 +84,11 @@ export async function createApp(
   );
   nav.append(element("h1", "", "Fast Jira"), tools);
   const workspace = element("main", "workspace"),
-    browse = element("section", "browse"),
-    search = element("form", "search-form");
-  search.setAttribute("aria-label", "이슈 검색");
-  search.hidden = true;
-  const input = element("input");
-  input.type = "search";
-  input.placeholder = "이슈 키 또는 제목 검색";
-  input.setAttribute("aria-label", "이슈 키 또는 제목");
-  const submit = actionButton("검색", "search");
-  submit.type = "submit";
-  const reset = actionButton("검색 초기화", "x");
-  search.append(input, submit, reset);
+    browse = element("section", "browse");
   const searchInfo = element("div", "search-info"),
     listHost = element("div", "browse-list");
   const browseContent = element("div", "browse-content");
-  browseContent.append(search, searchInfo, listHost);
+  browseContent.append(searchInfo, listHost);
   browse.append(browseContent);
   const side = element("aside", "detail-pane"),
     splitter = element("div", "splitter"),
@@ -249,60 +249,58 @@ export async function createApp(
       render();
     },
     notice: notice.show,
-    async changed(issues) {
-      const versions = new Map<string, number>();
-      for (const issue of issues) {
-        changedVersions.set(
-          issue.key,
-          (changedVersions.get(issue.key) ?? 0) + 1,
-        );
-        versions.set(issue.key, changedVersions.get(issue.key) ?? 0);
-        recent = recent.map((item) =>
-          item.key === issue.key ? { ...item, ...issue } : item,
-        );
-      }
-      store.saveRecent(recent);
-      refreshFavorites(issues);
-      if (!issues.length) return;
-      const filters = list.filters,
-        visible = list.visibleItems();
-      const matches = await api
-        .matchesMany(
-          issues.map((issue) => issue.key),
-          filters,
-          [
-            ...new Set(
-              issues
-                .map((issue) => issue.parent)
-                .filter((key) => key && !visible.has(key)),
-            ),
-          ],
-        )
-        .catch(() => ({
-          ancestors: [],
-          keys: new Set(
-            issues
-              .filter((issue) => list.direct.has(issue.key))
-              .map((issue) => issue.key),
-          ),
-        }));
-      // 목록·하위 커서를 유지한다. 변경한 키만 묶음 판정하고 한 번 갱신한다.
-      if (!destroyed && list.filters === filters)
-        list.updateMany(
-          issues.filter(
-            (issue) =>
-              changedVersions.get(issue.key) === versions.get(issue.key),
-          ),
-          matches.keys,
-          matches.ancestors,
-        );
-      if (
-        issues.some((issue) => issue.key === selectedKey) &&
-        detailView?.canRefresh()
-      )
-        await select(selectedKey, false, true);
-    },
+    changed: applyChangedIssues,
   });
+  async function applyChangedIssues(issues: Issue[]) {
+    const versions = new Map<string, number>();
+    for (const issue of issues) {
+      changedVersions.set(issue.key, (changedVersions.get(issue.key) ?? 0) + 1);
+      versions.set(issue.key, changedVersions.get(issue.key) ?? 0);
+      recent = recent.map((item) =>
+        item.key === issue.key ? { ...item, ...issue } : item,
+      );
+    }
+    store.saveRecent(recent);
+    refreshFavorites(issues);
+    if (!issues.length) return;
+    const filters = list.filters,
+      visible = list.visibleItems();
+    const matches = await api
+      .matchesMany(
+        issues.map((issue) => issue.key),
+        filters,
+        [
+          ...new Set(
+            issues
+              .map((issue) => issue.parent)
+              .filter((key) => key && !visible.has(key)),
+          ),
+        ],
+      )
+      .catch(() => ({
+        ancestors: [],
+        keys: new Set(
+          issues
+            .filter((issue) => list.direct.has(issue.key))
+            .map((issue) => issue.key),
+        ),
+      }));
+    // 목록·하위 커서를 유지한다. 변경한 키만 묶음 판정하고 한 번 갱신한다.
+    if (!destroyed && list.filters === filters)
+      list.updateMany(
+        issues.filter(
+          (issue) => changedVersions.get(issue.key) === versions.get(issue.key),
+        ),
+        matches.keys,
+        matches.ancestors,
+      );
+    if (
+      issues.some((issue) => issue.key === selectedKey) &&
+      detailView?.canRefresh()
+    )
+      await select(selectedKey, false, true);
+  }
+
   function applyPreferences() {
     debug.setEnabled(preferences.developerMode);
     document.documentElement.dataset.theme = preferences.theme;
@@ -407,16 +405,18 @@ export async function createApp(
     renderDashboard(entries);
   }
   function placeDetail() {
+    const commandOpen = Boolean(root.querySelector(".command-modal[open]"));
     if (layout.matches) {
       if (detailHost.parentElement !== mobile) mobile.append(detailHost);
-      if (noticeHost.parentElement !== mobile) mobile.append(noticeHost);
+      if (!commandOpen && noticeHost.parentElement !== mobile)
+        mobile.append(noticeHost);
       debug.place(selectedKey && !bulk.active ? mobile : root);
       if (bulk.active && mobile.open) mobile.close();
-      else if (selectedKey && !mobile.open) mobile.showModal();
+      else if (selectedKey && !mobile.open && !commandOpen) mobile.showModal();
     } else {
       if (mobile.open) mobile.close();
       if (detailHost.parentElement !== side) side.append(detailHost);
-      root.append(noticeHost);
+      if (!commandOpen) root.append(noticeHost);
       debug.place(root);
     }
   }
@@ -733,34 +733,54 @@ export async function createApp(
   function clearSearch() {
     if (bulk.busy) return;
     bulk.reset();
-    input.value = "";
     void list.load({ ...list.filters, q: "" });
   }
-  reset.addEventListener("click", clearSearch);
-  searchToggle.addEventListener("click", () => {
-    search.hidden = !search.hidden;
-    if (!search.hidden) input.focus();
-  });
-  search.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (bulk.busy) return;
-    bulk.reset();
-    const query = input.value.trim();
-    if (
-      /^[A-Za-z][A-Za-z0-9_]*-\d+$/.test(query) ||
-      /^https?:\/\//.test(query)
-    ) {
-      try {
-        void select(parseIssueKey(query, bootstrap.site));
-      } catch (reason) {
-        notice.show(
-          reason instanceof Error ? reason.message : "이슈 키를 확인하세요.",
-        );
+  const commands = createCommandPalette({
+    host: root,
+    api,
+    site: bootstrap.site,
+    storage,
+    scope: store.scope,
+    unread: (value) => {
+      aiToggle.classList.toggle("ai-has-update", value);
+      aiToggle.setAttribute(
+        "aria-label",
+        value ? "AI 대화 · 새 답변" : "AI 대화",
+      );
+    },
+    context: () => ({
+      projects: list.filters.projects,
+      issue: selectedKey,
+      keys: bulk.keys,
+    }),
+    recent: () => recent,
+    localIssues: () =>
+      list.cacheDenied
+        ? []
+        : [
+            ...favorites,
+            ...recent,
+            ...[...list.pages.values()].flatMap((page) => [
+              ...page.issues.values(),
+            ]),
+            ...list.items.values(),
+          ],
+    order: () => catalog.statuses.map((status) => status.name),
+    favorites: cardFavorites,
+    select: (key) => {
+      if (!bulk.busy) {
+        bulk.reset();
+        void select(key);
       }
-    } else {
-      void list.load({ ...list.filters, q: query });
-    }
+    },
+    changed: applyChangedIssues,
+    canMutate: () => !bulk.busy && !destroyed,
+    notice: notice.show,
+    noticeHost,
+    restoreNotice: placeDetail,
   });
+  searchToggle.addEventListener("click", () => commands.open("search"));
+  aiToggle.addEventListener("click", () => commands.open("ai"));
   projects.addEventListener("click", () => projectPanel.open(projects));
   filters.addEventListener("click", () => panel.open(filters));
   let firstSetup = !saved.configured;
@@ -970,6 +990,7 @@ export async function createApp(
       window.removeEventListener("pagehide", persistPosition);
       detailView?.destroy();
       bulk.destroy();
+      commands.destroy();
       detailRevision++;
       polling.destroy();
       live.destroy();

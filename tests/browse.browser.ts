@@ -672,22 +672,21 @@ checks.push([
   },
 ]);
 checks.push([
-  "API 검색 적용 정보와 초기화가 같은 필터 상태를 사용한다",
+  "글로벌 검색은 기존 목록 필터를 변경하지 않는다",
   async () => {
     button("검색").click();
-    const input = root.querySelector<HTMLInputElement>(".search-form input");
-    assert(input, "검색 입력 누락");
+    const dialog = root.querySelector<HTMLDialogElement>(".command-modal");
+    const input = dialog?.querySelector<HTMLTextAreaElement>("textarea");
+    assert(input && dialog?.open, "글로벌 검색창 누락");
     input.value = "없음";
-    root.querySelector<HTMLFormElement>(".search-form")?.requestSubmit();
+    dialog.querySelector<HTMLFormElement>("form")?.requestSubmit();
     await tick();
+    assert(app.list.filters.q === "", "글로벌 검색이 왼쪽 필터를 변경했다");
     assert(
-      app.list.filters.q === "없음" &&
-        root.querySelector(".search-info")?.textContent?.includes("없음"),
-      "검색 적용 정보 누락",
+      !root.querySelector(".search-form"),
+      "이전 인라인 검색창이 남아 있다",
     );
-    button("검색 초기화").click();
-    await tick();
-    assert(String(app.list.filters.q) === "", "검색 초기화 누락");
+    dialog.close();
   },
 ]);
 checks.push([
@@ -1913,6 +1912,7 @@ checks.push([
       root.querySelector(".debug-line.action")?.textContent?.includes("검색"),
       "클릭 동작 기록 누락",
     );
+    root.querySelector<HTMLDialogElement>(".command-modal")?.close();
     const resize = root.querySelector<HTMLElement>(".debug-resize"),
       panel = root.querySelector<HTMLElement>(".developer-panel");
     assert(resize && panel, "로그 높이 조절 누락");

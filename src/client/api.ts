@@ -1,4 +1,9 @@
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
+import {
+  type AssistantContext,
+  assistantReply,
+  assistantStatus,
+} from "../domain/assistant.ts";
 import type { BulkField } from "../domain/bulk.ts";
 import type { ConnectionSettings, Credentials } from "../domain/connection.ts";
 import type { Filters } from "../domain/filters.ts";
@@ -77,6 +82,49 @@ export function createApi(fetcher: typeof fetch = fetch) {
   };
   return {
     request,
+    voiceStart: (sdp: string, signal: AbortSignal) =>
+      request(
+        "/api/assistant/voice/start",
+        (value) => {
+          const data = record(value);
+          if (typeof data.id !== "string" || typeof data.sdp !== "string")
+            throw new Error("음성 연결 응답을 확인하세요.");
+          return { id: data.id, sdp: data.sdp };
+        },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sdp }),
+          signal,
+        },
+      ),
+    voiceStop: (id: string) =>
+      request("/api/assistant/voice/stop", record, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      }),
+    assistantStatus: () => request("/api/assistant/status", assistantStatus),
+    assistantRun: (
+      prompt: string,
+      context: AssistantContext,
+      conversationId: string,
+      model: string,
+      signal: AbortSignal,
+      history: import("../domain/conversation.ts").ChatMessage[] = [],
+    ) =>
+      request("/api/assistant/run", assistantReply, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          context,
+          conversationId,
+          model,
+          history,
+        }),
+        signal,
+      }),
     activity: (projects: readonly string[]) =>
       request(
         `/api/activity?${new URLSearchParams({ projects: projects.join(",") })}`,
@@ -277,5 +325,38 @@ export function subscribeLogs(listener: (entry: LogEntry) => void): () => void {
       /* 잘못된 이벤트는 표시하지 않고 다음 정상 이벤트를 기다린다. */
     }
   });
+  return () => stream.close();
+}
+
+export function subscribeVoice(
+  id: string,
+  listener: (event: import("./codex-voice.ts").VoiceSnapshot) => void,
+): () => void {
+  const stream = new EventSource(
+    `/api/assistant/voice/events?${new URLSearchParams({ id })}`,
+  );
+  stream.onmessage = (event) => {
+    try {
+      const data = record(JSON.parse(event.data));
+      if (
+        typeof data.text !== "string" ||
+        typeof data.error !== "string" ||
+        typeof data.ended !== "boolean"
+      )
+        throw new Error("전사 응답 오류");
+      listener({ text: data.text, error: data.error, ended: data.ended });
+    } catch {
+      stream.close();
+      listener({
+        text: "",
+        error: "음성 전사 응답을 읽지 못했어요.",
+        ended: true,
+      });
+    }
+  };
+  stream.onerror = () => {
+    stream.close();
+    listener({ text: "", error: "음성 전사 연결이 끊겼어요.", ended: true });
+  };
   return () => stream.close();
 }

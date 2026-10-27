@@ -10,6 +10,7 @@ import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import type { PeopleFilter } from "../domain/issue.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { record } from "../domain/validation.ts";
+import type { AssistantService } from "./assistant-service.ts";
 import type { Connection } from "./connection.ts";
 import { JiraError } from "./jira-client.ts";
 import type { BrowseOptions } from "./jira-query.ts";
@@ -77,6 +78,7 @@ export function createHttpServer(
   subscribe: (listener: (entry: LogEntry) => void) => () => void,
   frontendOrigin = "http://127.0.0.1:5173",
   connection?: Connection,
+  assistant?: AssistantService,
 ) {
   const getService = () => (typeof source === "function" ? source() : source);
   const key = (value: unknown) => {
@@ -239,6 +241,37 @@ export function createHttpServer(
     res.setHeader("X-Content-Type-Options", "nosniff");
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (
+        req.method === "GET" &&
+        url.pathname === "/api/assistant/status" &&
+        assistant
+      ) {
+        json(res, await assistant.status());
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname === "/api/assistant/voice/events" &&
+        assistant
+      ) {
+        const unsubscribe = assistant.voice.subscribe(
+          url.searchParams.get("id") ?? "",
+          (event) => {
+            if (!res.headersSent)
+              res.writeHead(200, {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-store",
+                Connection: "keep-alive",
+              });
+            if (!res.destroyed) {
+              res.write(`data: ${JSON.stringify(event)}\n\n`);
+              if (event.ended) res.end();
+            }
+          },
+        );
+        res.once("close", unsubscribe);
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/api/health") {
         json(res, {
           app: "fast-jira",
@@ -319,15 +352,46 @@ export function createHttpServer(
           req,
           url.pathname === "/api/sync"
             ? 2000000
-            : [
-                  "/api/description",
-                  "/api/comment",
-                  "/api/comment-edit",
-                ].includes(url.pathname)
-              ? 500000
-              : 20000,
+            : ["/api/assistant/run", "/api/assistant/voice/start"].includes(
+                  url.pathname,
+                )
+              ? 120000
+              : [
+                    "/api/description",
+                    "/api/comment",
+                    "/api/comment-edit",
+                  ].includes(url.pathname)
+                ? 500000
+                : 20000,
         );
-        json(res, await writeData(url.pathname, input));
+        if (url.pathname === "/api/assistant/voice/stop" && assistant) {
+          if (typeof input.id !== "string")
+            throw invalid("음성 연결을 확인하세요.");
+          assistant.voice.stop(input.id);
+          json(res, {});
+        } else if (url.pathname === "/api/assistant/voice/start" && assistant) {
+          const controller = new AbortController();
+          const cancel = () => {
+            if (!res.writableEnded) controller.abort();
+          };
+          res.once("close", cancel);
+          try {
+            json(res, await assistant.voice.start(input, controller.signal));
+          } finally {
+            res.off("close", cancel);
+          }
+        } else if (url.pathname === "/api/assistant/run" && assistant) {
+          const controller = new AbortController();
+          const cancel = () => {
+            if (!res.writableEnded) controller.abort();
+          };
+          res.once("close", cancel);
+          try {
+            json(res, await assistant.run(input, controller.signal));
+          } finally {
+            res.off("close", cancel);
+          }
+        } else json(res, await writeData(url.pathname, input));
         return;
       }
       if (

@@ -338,6 +338,7 @@ a {
   width: var(--tree-gutter);
   height: 24px;
 }
+.tree-toggle .ui-icon,
 .tree-section-toggle .ui-icon {
   width: 14px;
   height: 14px;
@@ -1423,4 +1424,58 @@ a {
 }
 .tree-section-toggle:hover {
   color: var(--text);
+}
+
+/* 공통 카드의 sm 크기: 제목·보조 정보·배지·아이콘·행 여백을 함께 줄인다. */
+:root .issue-card[data-size="sm"] .list-item {
+  min-height: 34px;
+  margin: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 22px;
+}
+:root .issue-card[data-size="sm"] :is(.list-main, .list-title) {
+  font-size: 12px;
+}
+:root .issue-card[data-size="sm"] .key {
+  font-size: 11px;
+}
+:root .issue-card[data-size="sm"] .issue-identity {
+  gap: 4px;
+  margin-inline-end: 6px;
+}
+:root .issue-card[data-size="sm"] .list-meta {
+  gap: 4px;
+  margin-left: 6px;
+  font-size: 11px;
+}
+:root
+  .issue-card[data-size="sm"]
+  :is(
+    .status-pill,
+    .person-pill,
+    .date-pill,
+    .comment-pill,
+    .priority-pill,
+    .context-label
+  ) {
+  min-height: 20px;
+  gap: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+:root
+  .issue-card[data-size="sm"]
+  :is(.issue-type-icon, .priority-icon, .avatar) {
+  width: 14px;
+  height: 14px;
+}
+:root .issue-card[data-size="sm"] .ui-icon {
+  width: 12px;
+  height: 12px;
+}
+:root .issue-card[data-size="sm"] .status-dot {
+  width: 6px;
+  height: 6px;
 }

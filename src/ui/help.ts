@@ -1,8 +1,17 @@
+import { shortcutLabel } from "../domain/commands.ts";
 import { element } from "./dom.ts";
 
 export function helpContent(): DocumentFragment {
   const content = document.createDocumentFragment();
   const sections: [string, string[]][] = [
+    [
+      "단축키",
+      [
+        `${shortcutLabel(navigator.platform)}: 이슈 검색`,
+        `${shortcutLabel(navigator.platform, "ai")}: AI 대화`,
+        `${shortcutLabel(navigator.platform, "palette")}: 명령 팔레트`,
+      ],
+    ],
     [
       "어떤 서비스인가요?",
       [
