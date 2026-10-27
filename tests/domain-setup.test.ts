@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { configureLocalDomain } from "../src/cli/local-domain.ts";
+import { configureLocalDomain, npmScript } from "../src/cli/local-domain.ts";
 
 test("도메인 동의를 하지 않으면 도구 설치와 시스템 설정을 시도하지 않는다", async () => {
   const result = await configureLocalDomain(
@@ -65,4 +75,23 @@ test("설정 거부·실패·낮은 Node 버전은 기존 서비스 주소를 �
     assert.equal(result.url, "http://localhost:4184");
     assert.ok(result.message);
   }
+});
+
+test("Homebrew npm 심볼릭 링크와 표준 설치의 npm 스크립트를 찾는다", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "jira-npm-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const bin = join(home, "node/bin"),
+    global = join(home, "global/npm-cli.js");
+  await mkdir(bin, { recursive: true });
+  await mkdir(join(home, "global"));
+  await writeFile(global, "// fake npm");
+  await symlink(global, join(bin, "npm"));
+  assert.equal(npmScript(join(bin, "node")), await realpath(global));
+  const standard = join(bin, "node_modules/npm/bin/npm-cli.js");
+  await mkdir(join(bin, "node_modules/npm/bin"), { recursive: true });
+  await writeFile(standard, "// fake npm");
+  assert.equal(npmScript(join(bin, "node")), await realpath(standard));
+  assert.equal(npmScript(join(home, "missing/node")), undefined);
 });

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { get } from "node:https";
 import { dirname, join } from "node:path";
@@ -21,6 +21,21 @@ const execute: Run = async (command, args, env) => {
   if (result.error || result.status !== 0)
     throw new Error("로컬 도메인 설정을 완료하지 못했어요.");
 };
+export function npmScript(node: string) {
+  const bin = dirname(node);
+  for (const candidate of [
+    join(bin, "node_modules/npm/bin/npm-cli.js"),
+    join(bin, "../lib/node_modules/npm/bin/npm-cli.js"),
+    join(bin, "npm"),
+  ]) {
+    try {
+      const target = realpathSync(candidate);
+      if (target.endsWith(".js")) return target;
+    } catch {
+      /* 설치 방식에 따라 없는 경로는 다음 후보를 확인한다. */
+    }
+  }
+}
 export async function verifyAddress(state: string, instance: string) {
   const ca = await readFile(join(state, "ca.pem"));
   return new Promise<boolean>((resolve) => {
@@ -88,13 +103,7 @@ export async function configureLocalDomain(
     if (key.startsWith("JIRA_") || key === "NODE_OPTIONS") delete env[key];
   try {
     if (!existsSync(cli)) {
-      const npm = [
-        join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js"),
-        join(
-          dirname(process.execPath),
-          "../lib/node_modules/npm/bin/npm-cli.js",
-        ),
-      ].find(existsSync);
+      const npm = npmScript(process.execPath);
       if (!npm && !options.run) throw new Error("npm을 찾지 못했어요.");
       await run(
         process.execPath,
