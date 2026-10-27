@@ -16,6 +16,7 @@ export const certificateCheck = (state: string) => [
 export async function verifyLocalCertificate(state: string, run: Run) {
   await run("/usr/bin/security", certificateCheck(state));
   await run("/usr/bin/curl", [
+    "--disable",
     "--fail",
     "--silent",
     "--show-error",

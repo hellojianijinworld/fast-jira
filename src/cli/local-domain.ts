@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { get } from "node:https";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 
 import {
   trustLocalCertificate,
@@ -42,35 +41,37 @@ export function npmScript(node: string) {
     }
   }
 }
-export async function verifyAddress(state: string, instance: string) {
-  const ca = await readFile(join(state, "ca.pem"));
-  return new Promise<boolean>((resolve) => {
-    const req = get(
+const curl = promisify(execFile);
+async function readDomainHealth(state: string) {
+  const { stdout } = await curl(
+    "/usr/bin/curl",
+    [
+      "--disable",
+      "--silent",
+      "--fail",
+      "--noproxy",
+      "fast-jira.local",
+      "--cacert",
+      join(state, "ca.pem"),
+      "--max-time",
+      "10",
       `${LOCAL_DOMAIN}/api/health`,
-      { ca, timeout: 5000 },
-      (res) => {
-        let body = "";
-        res.on("data", (chunk) => {
-          body += String(chunk);
-          if (body.length > 4000) req.destroy();
-        });
-        res.on("end", () => {
-          try {
-            const data = JSON.parse(body);
-            resolve(
-              res.statusCode === 200 &&
-                data.app === "fast-jira" &&
-                data.instance === instance,
-            );
-          } catch {
-            resolve(false);
-          }
-        });
-      },
-    );
-    req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(false));
-  });
+    ],
+    { encoding: "utf8", timeout: 15000, maxBuffer: 4096, windowsHide: true },
+  );
+  return stdout;
+}
+export async function verifyAddress(
+  state: string,
+  instance: string,
+  request = readDomainHealth,
+) {
+  try {
+    const data = JSON.parse(await request(state));
+    return data?.app === "fast-jira" && data.instance === instance;
+  } catch {
+    return false;
+  }
 }
 /** 시스템 변경은 명시적으로 도메인 설정에 동의한 설치에서만 시도한다. */
 export async function configureLocalDomain(

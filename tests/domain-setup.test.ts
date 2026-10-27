@@ -10,7 +10,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { configureLocalDomain, npmScript } from "../src/cli/local-domain.ts";
+import {
+  configureLocalDomain,
+  npmScript,
+  verifyAddress,
+} from "../src/cli/local-domain.ts";
 
 test("도메인 동의를 하지 않으면 도구 설치와 시스템 설정을 시도하지 않는다", async () => {
   const result = await configureLocalDomain(
@@ -216,4 +220,25 @@ test("실행 중인 본인 프록시는 실제 접속 확인 후 관리자 인�
   });
   assert.equal(result.url, "https://fast-jira.local");
   assert.ok(!commands.includes("/usr/bin/osascript"));
+});
+
+test("도메인 응답은 같은 앱·인스턴스인 경우에만 인정한다", async () => {
+  for (const [body, expected] of [
+    [JSON.stringify({ app: "fast-jira", instance: "mine" }), true],
+    [JSON.stringify({ app: "fast-jira", instance: "other" }), false],
+    [JSON.stringify({ app: "other", instance: "mine" }), false],
+    ["not JSON", false],
+    ["null", false],
+  ] as const) {
+    assert.equal(
+      await verifyAddress("/tmp/state", "mine", async () => body),
+      expected,
+    );
+  }
+  assert.equal(
+    await verifyAddress("/tmp/state", "mine", async () => {
+      throw new Error("network");
+    }),
+    false,
+  );
 });
