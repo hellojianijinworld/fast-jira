@@ -56,6 +56,7 @@ export async function createApp(
     listener: (entry: LogEntry) => void,
   ) => () => void = subscribeLogs,
   cache?: ListCache,
+  updates?: HTMLElement,
 ) {
   const nav = element("header", "top-nav"),
     tools = element("div", "nav-tools");
@@ -859,6 +860,7 @@ export async function createApp(
       },
       firstSetup ? () => popup.close() : undefined,
       connectionForm(api, () => location.reload()),
+      updates,
     );
     showModal(popup, {
       title: firstSetup ? "처음 설정" : "설정",

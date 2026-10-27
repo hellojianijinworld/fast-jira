@@ -1,4 +1,5 @@
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
+import { type AppRelease, decodeUpdateStatus } from "../domain/app-update.ts";
 import {
   type AssistantContext,
   assistantReply,
@@ -133,6 +134,23 @@ export function createApi(fetcher: typeof fetch = fetch) {
         `/api/activity?${new URLSearchParams({ projects: projects.join(",") })}`,
         (value) => parseActivityFeed(wireString(record(value).feed), projects),
       ),
+    appUpdateStatus: () =>
+      request("/api/app-update/status", decodeUpdateStatus),
+    checkAppUpdate: (force = false) =>
+      request("/api/app-update/check", decodeUpdateStatus, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      }),
+    installAppUpdate: (release: AppRelease) =>
+      request("/api/app-update/install", decodeUpdateStatus, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version: release.version,
+          commit: release.commit,
+        }),
+      }),
     connection: () => request("/api/connection", decodeConnection),
     saveConnection: (credentials: Credentials) =>
       request("/api/connection", decodeConnection, {

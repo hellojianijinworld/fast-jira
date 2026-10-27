@@ -1,5 +1,6 @@
 /** 비활성 화면의 예약을 멈추고, 복귀 시 남은 갱신 주기를 이어간다. */
 export function createRefreshLoop(options: {
+  intervalMs?: number;
   active: () => boolean;
   refresh: () => Promise<void>;
   failed: (reason: unknown) => void;
@@ -14,7 +15,7 @@ export function createRefreshLoop(options: {
     if (!alive || busy || !options.active()) return;
     timer = setTimeout(
       () => void check(),
-      Math.max(0, 60000 - (Date.now() - lastCheck)),
+      Math.max(0, (options.intervalMs ?? 60000) - (Date.now() - lastCheck)),
     );
   }
   async function check() {

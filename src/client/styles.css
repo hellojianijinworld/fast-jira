@@ -1523,3 +1523,88 @@ button.debug-line[aria-pressed="true"] {
     display: none;
   }
 }
+
+/* 업데이트는 설정의 관리 패널 안에서 확인한다. */
+.app-update-content {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.app-update-content h3,
+.app-update-content p {
+  margin: 0;
+}
+.app-update-content h3 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.app-update-versions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.app-update-versions > span,
+.app-update-checked,
+.app-update-support {
+  color: var(--muted);
+}
+.app-update-versions > strong {
+  color: var(--blue);
+  font-weight: 600;
+}
+.app-update-message,
+.app-update-warning {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.app-update-checked,
+.app-update-support {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.app-update-notes {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.app-update-warning {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--blue-soft);
+  color: var(--secondary-text);
+}
+.app-update-content > a {
+  font-size: 12px;
+}
+.app-update-content > [hidden] {
+  display: none;
+}
+.connection-setup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.app-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.connection-update-settings {
+  margin-top: 20px;
+  color: var(--muted);
+}

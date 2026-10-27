@@ -104,3 +104,35 @@ test("조회 실패 후에도 즉시 재시도 폭주 없이 다음 주기에 �
   await settle();
   assert.equal(calls, 2);
 });
+
+test("업데이트 확인은 5분 주기를 사용하고 비활성 화면에서는 요청하지 않는다", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
+  let active = true;
+  let calls = 0;
+  const loop = createRefreshLoop({
+    intervalMs: 300000,
+    active: () => active,
+    refresh: async () => {
+      calls++;
+    },
+    failed: () => assert.fail("조회 실패"),
+  });
+  t.after(() => loop.destroy());
+  loop.update();
+  t.mock.timers.tick(299999);
+  await settle();
+  assert.equal(calls, 0);
+  t.mock.timers.tick(1);
+  await settle();
+  assert.equal(calls, 1);
+  active = false;
+  loop.update();
+  t.mock.timers.tick(600000);
+  await settle();
+  assert.equal(calls, 1);
+  active = true;
+  loop.update();
+  t.mock.timers.tick(0);
+  await settle();
+  assert.equal(calls, 2);
+});

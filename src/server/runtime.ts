@@ -4,6 +4,7 @@ import { createAssistantService } from "./assistant-service.ts";
 import { createConnection } from "./connection.ts";
 import { loadEnvironment, serverPort } from "./environment.ts";
 import { createHttpServer } from "./http.ts";
+import { createRuntimeUpdater } from "./update-runtime.ts";
 export async function startApi() {
   let credentials: Credentials | null = null;
   try {
@@ -34,6 +35,7 @@ export async function startApi() {
     undefined,
     connection,
     assistant,
+    await createRuntimeUpdater(),
   );
   server.once("close", () => assistant.dispose());
   await new Promise<void>((resolve, reject) => {

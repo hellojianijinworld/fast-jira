@@ -1,3 +1,4 @@
+import { appUpdate } from "../ui/app-update.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { actionButton, element } from "../ui/dom.ts";
 import { startTooltips } from "../ui/tooltip.ts";
@@ -15,20 +16,30 @@ const storage: LocalStore = {
   setItem: (key, value) => localStorage.setItem(key, value),
 };
 document.documentElement.dataset.theme = readPreferences(storage).theme;
+const updates = appUpdate(createApi());
 async function start(root: HTMLElement) {
   const api = createApi();
   let failure: unknown;
   try {
     const settings = await api.connection();
     if (settings.tokenConfigured) {
-      await createApp(root, api, storage, undefined, createListCache());
+      await createApp(
+        root,
+        api,
+        storage,
+        undefined,
+        createListCache(),
+        updates.element,
+      );
       return;
     }
   } catch (reason) {
     failure = reason;
   }
   const setup = element("section", "connection-setup");
-  setup.append(element("h1", "", "Fast Jira"));
+  const head = element("div", "connection-setup-head");
+  head.append(element("h1", "", "Fast Jira"));
+  setup.append(head);
   if (failure)
     setup.append(
       element(
@@ -55,6 +66,9 @@ async function start(root: HTMLElement) {
     });
     setup.append(retry);
   }
+  const updateSettings = element("details", "connection-update-settings");
+  updateSettings.append(element("summary", "", "업데이트"), updates.element);
+  setup.append(updateSettings);
   root.replaceChildren(setup);
 }
 

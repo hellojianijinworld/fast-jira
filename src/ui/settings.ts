@@ -8,6 +8,7 @@ export function settingsContent(
   save: (preferences: Preferences) => void,
   start?: () => void,
   connection?: HTMLElement,
+  updates?: HTMLElement,
 ) {
   const root = element("section", "settings-content"),
     draft = { ...current },
@@ -19,7 +20,7 @@ export function settingsContent(
   const categories = [
     { name: "Jira 연결", panel: element("section", "settings-panel") },
     { name: "화면 표시", panel: element("section", "settings-panel") },
-    { name: "개발자", panel: element("section", "settings-panel") },
+    { name: "관리", panel: element("section", "settings-panel") },
   ] as const;
   const buttons = categories.map(({ name, panel }, index) => {
     const button = element("button", "settings-tab", name);
@@ -137,6 +138,7 @@ export function settingsContent(
     row.append(check, text);
     categories[category].panel.append(row);
   }
+  if (updates) categories[2].panel.append(updates);
   const actions: HTMLButtonElement[] = [];
   if (start) {
     const button = actionButton("시작하기", "check");

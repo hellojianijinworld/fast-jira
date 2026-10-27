@@ -10,6 +10,7 @@ import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import type { PeopleFilter } from "../domain/issue.ts";
 import type { LogEntry } from "../domain/log.ts";
 import { record } from "../domain/validation.ts";
+import { AppUpdateError, type AppUpdater } from "./app-update.ts";
 import type { AssistantService } from "./assistant-service.ts";
 import type { Connection } from "./connection.ts";
 import { JiraError } from "./jira-client.ts";
@@ -79,6 +80,7 @@ export function createHttpServer(
   frontendOrigin = "http://127.0.0.1:5173",
   connection?: Connection,
   assistant?: AssistantService,
+  updates?: AppUpdater,
 ) {
   const getService = () => (typeof source === "function" ? source() : source);
   const key = (value: unknown) => {
@@ -210,6 +212,13 @@ export function createHttpServer(
   }
   async function writeData(path: string, input: Record<string, unknown>) {
     if (path === "/api/connection" && connection) return connection.save(input);
+    if (path === "/api/app-update/check" && updates) {
+      if (typeof input.force !== "boolean")
+        throw new AppUpdateError("확인 요청 형식이 올바르지 않습니다.", 400);
+      return updates.check(input.force);
+    }
+    if (path === "/api/app-update/install" && updates)
+      return updates.install(input);
     const service = getService();
     const string = (name: string) => inputString(input[name], name);
     const keys = () => {
@@ -273,6 +282,14 @@ export function createHttpServer(
     res.setHeader("X-Content-Type-Options", "nosniff");
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (
+        req.method === "GET" &&
+        url.pathname === "/api/app-update/status" &&
+        updates
+      ) {
+        json(res, await updates.status());
+        return;
+      }
       if (
         req.method === "GET" &&
         url.pathname === "/api/assistant/status" &&
@@ -467,7 +484,7 @@ export function createHttpServer(
       json(
         res,
         { error: messageOf(error) },
-        error instanceof JiraError
+        error instanceof JiraError || error instanceof AppUpdateError
           ? error.status
           : error instanceof SyntaxError
             ? 400
