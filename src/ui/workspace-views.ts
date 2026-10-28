@@ -7,9 +7,9 @@ import type {
   WorkspaceViews,
 } from "../domain/workspace-views.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
-import { filterChecklist } from "./filter-checklist.ts";
 import { popoverPosition } from "./geometry.ts";
 import { showModal } from "./modal.ts";
+import { projectChecklist } from "./project-checklist.ts";
 import { createViewEditor } from "./view-editor.ts";
 
 /** 탭의 표현과 편집 초안만 담당한다. 저장·조회 전환은 앱에서 수행한다. */
@@ -224,24 +224,14 @@ export function createWorkspaceNavigation(options: {
     function renderProjects() {
       const focused = document.activeElement?.getAttribute("aria-label");
       projectHost.replaceChildren(
-        filterChecklist(
-          "프로젝트",
-          options.projects.map((project) => ({
-            id: project.key,
-            name: `${project.name} (${project.key})`,
-          })),
-          selected,
-          (choice) => document.createTextNode(choice.name),
-          [],
-          (value) => {
-            selected =
-              value === null
-                ? options.projects.map((project) => project.key)
-                : [...value];
-            renderProjects();
-            void loadEditor();
-          },
-        ),
+        projectChecklist(options.projects, selected, (value) => {
+          selected =
+            value === null
+              ? options.projects.map((project) => project.key)
+              : [...value];
+          renderProjects();
+          void loadEditor();
+        }),
       );
       if (focused)
         [...projectHost.querySelectorAll<HTMLInputElement>("input")]

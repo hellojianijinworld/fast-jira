@@ -1,8 +1,7 @@
 import type { ProjectOption } from "../domain/catalog.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
-import { filterChecklist } from "./filter-checklist.ts";
 import { popoverPosition } from "./geometry.ts";
-import { projectIcon } from "./meta.ts";
+import { projectChecklist } from "./project-checklist.ts";
 
 /** 현재 탭의 프로젝트 조회 범위를 편집한다. */
 export function createProjectPanel(options: {
@@ -36,35 +35,16 @@ export function createProjectPanel(options: {
   function render() {
     const projects = options.projects();
     body.replaceChildren(
-      filterChecklist(
-        "프로젝트",
-        projects.map((project) => ({
-          id: project.key,
-          name: project.name,
-        })),
-        selected,
-        (choice) => {
-          const copy = element("span", "project-choice");
-          const project = projects.find((project) => project.key === choice.id);
-          const icon = project ? projectIcon(project) : null;
-          if (icon) copy.append(icon);
-          copy.append(document.createTextNode(`${choice.name} (${choice.id})`));
-          return copy;
-        },
-        [],
-        (value) => {
-          const focused = document.activeElement?.getAttribute("aria-label");
-          selected =
-            value === null
-              ? projects.map((project) => project.key)
-              : [...value];
-          render();
-          if (focused)
-            [...body.querySelectorAll<HTMLInputElement>("input")]
-              .find((input) => input.getAttribute("aria-label") === focused)
-              ?.focus();
-        },
-      ),
+      projectChecklist(projects, selected, (value) => {
+        const focused = document.activeElement?.getAttribute("aria-label");
+        selected =
+          value === null ? projects.map((project) => project.key) : [...value];
+        render();
+        if (focused)
+          [...body.querySelectorAll<HTMLInputElement>("input")]
+            .find((input) => input.getAttribute("aria-label") === focused)
+            ?.focus();
+      }),
     );
   }
   function close() {

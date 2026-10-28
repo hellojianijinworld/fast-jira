@@ -35,8 +35,16 @@ const api = createApi(async (input, init) => {
         site: "fixture.atlassian.net",
         me: { accountId: "my-account", displayName: "검사 사용자" },
         projects: [
-          { key: "TEST", name: "제품 개발", avatar: "" },
-          { key: "DESIGN", name: "디자인", avatar: "" },
+          {
+            key: "TEST",
+            name: "제품 개발",
+            avatar: "https://fixture.atlassian.net/project-avatar/test.png",
+          },
+          {
+            key: "DESIGN",
+            name: "디자인",
+            avatar: "https://fixture.atlassian.net/project-avatar/design.png",
+          },
         ],
         priorities: [],
       });
@@ -119,6 +127,18 @@ await check(
   "탭 생성에서 프로젝트와 필터를 함께 저장하고 전환한다",
   async () => {
     button("뷰 만들기").click();
+    const projectIcons = document.querySelectorAll<HTMLImageElement>(
+      ".workspace-view-modal .project-checks img.project-icon",
+    );
+    assert(projectIcons.length === 2, "뷰 생성의 프로젝트 이미지 누락");
+    assert(
+      projectIcons[0]?.src.includes(
+        encodeURIComponent(
+          "https://fixture.atlassian.net/project-avatar/test.png",
+        ),
+      ),
+      "프로젝트 이미지 정보 보존",
+    );
     await wait();
     const dialog = document.querySelector<HTMLDialogElement>(
       ".workspace-view-modal[open]",
@@ -218,6 +238,12 @@ await check(
     const before = calls.filter((url) => url.pathname === "/api/issues").length;
     button("내 작업 뷰 메뉴").click();
     button("뷰 편집").click();
+    assert(
+      document.querySelectorAll(
+        ".workspace-view-modal .project-checks img.project-icon",
+      ).length === 2,
+      "뷰 편집의 프로젝트 이미지 누락",
+    );
     await wait();
     const dialog = document.querySelector<HTMLDialogElement>(
       ".workspace-view-modal[open]",
@@ -420,6 +446,12 @@ await check(
       }),
     );
     button("뷰 편집").click();
+    assert(
+      document.querySelectorAll(
+        ".workspace-view-modal .project-checks img.project-icon",
+      ).length === 2,
+      "뷰 편집의 프로젝트 이미지 누락",
+    );
     await wait();
     const dialog = document.querySelector<HTMLDialogElement>(
       ".workspace-view-modal[open]",
