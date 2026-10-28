@@ -44,7 +44,6 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
       issue.key,
       options.site ? `https://${options.site}/browse/${issue.key}` : null,
       options.copied,
-      issue.key.replace(/^.+-(\d+)$/, "$1"),
     ),
   );
   const meta = element("span", "list-meta");
@@ -87,8 +86,8 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
     );
   if (issue.status) meta.append(statusPill(issue.status, options.statusOrder));
   const main = element("span", "list-main");
-  main.append(identity, title);
-  link.append(main, meta);
+  main.append(identity, meta);
+  link.append(main, title);
   root.append(link);
   root.addEventListener("click", (event) => {
     if (

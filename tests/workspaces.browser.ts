@@ -190,7 +190,7 @@ await check(
       "상위 연결 없는 작업 그룹이 남음",
     );
     const count = calls.filter((url) => url.pathname === "/api/issues").length;
-    button("제품 개발 (TEST) 접기").click();
+    button("제품 개발 접기").click();
     assert(
       root.querySelector<HTMLElement>(".project-tree")?.hidden,
       "프로젝트가 접히지 않음",
@@ -209,7 +209,7 @@ await check(
       root.querySelector<HTMLElement>(".project-tree")?.hidden,
       "프로젝트 접힘 상태가 복원되지 않음",
     );
-    button("제품 개발 (TEST) 펼치기").click();
+    button("제품 개발 펼치기").click();
     assert(
       root.querySelector<HTMLElement>(".project-tree")?.hidden === false,
       "프로젝트가 다시 펼쳐지지 않음",

@@ -321,199 +321,56 @@ function exampleCards(size: ComponentSize = "auto") {
   return host;
 }
 await check(
-  "짧은 카드는 한 줄, 긴 제목은 필요한 높이를 사용하고 배지는 넘치지 않는다",
+  "카드는 번호와 배지를 위에 모으고 제목은 아래 전체 폭에서 최대 두 줄로 표시한다",
   () => {
     const compact = document.documentElement.dataset.compact;
-    document.documentElement.dataset.compact = "false";
-    const host = exampleCards("md");
-    host.style.width = "760px";
-    const longTitle = host.querySelectorAll(".list-title")[2];
-    if (longTitle) longTitle.textContent = cardExamples[2][1].repeat(3);
-    fixture.append(host);
     try {
-      const rows = [...host.querySelectorAll<HTMLElement>(".list-item")];
-      rows.forEach((row, index) => {
-        const titleElement = row.querySelector<HTMLElement>(".list-title");
-        const metaElement = row.querySelector<HTMLElement>(".list-meta");
-        assert(titleElement !== null && metaElement !== null, "카드 구성 누락");
-        const title = titleElement.getBoundingClientRect();
-        const meta = metaElement.getBoundingClientRect();
-        assert(
-          index < 2
-            ? meta.top < title.bottom && meta.bottom > title.top
-            : meta.bottom >= title.bottom,
-          "제목 길이에 맞는 줄 배치가 아님",
-        );
-        assert(row.scrollWidth <= row.clientWidth + 1, "카드 가로 넘침");
-      });
-      const first = rows[0],
-        last = rows[2];
-      assert(first !== undefined && last !== undefined, "비교 카드 누락");
-      assert(
-        first.getBoundingClientRect().height <
-          last.getBoundingClientRect().height,
-        "카드 높이가 불필요하게 같음",
-      );
+      for (const condensed of [false, true]) {
+        document.documentElement.dataset.compact = String(condensed);
+        for (const width of [760, 480, 240]) {
+          const host = exampleCards("md");
+          host.style.width = `${width}px`;
+          fixture.append(host);
+          try {
+            for (const row of host.querySelectorAll<HTMLElement>(
+              ".list-item",
+            )) {
+              const head = row.querySelector<HTMLElement>(".list-main");
+              const title = row.querySelector<HTMLElement>(".list-title");
+              const key = head?.querySelector(".key");
+              const badges = head?.querySelector(".list-meta");
+              assert(
+                head !== null &&
+                  title !== null &&
+                  key != null &&
+                  badges != null,
+                "카드 헤더 구성 누락",
+              );
+              assert(
+                title.getBoundingClientRect().top >=
+                  head.getBoundingClientRect().bottom,
+                "제목이 헤더와 겹친다",
+              );
+              assert(
+                Math.abs(
+                  title.getBoundingClientRect().width -
+                    head.getBoundingClientRect().width,
+                ) < 1,
+                "제목이 전체 폭을 쓰지 않는다",
+              );
+              assert(
+                getComputedStyle(title).webkitLineClamp ===
+                  (condensed ? "1" : "2"),
+                "제목 줄 제한 누락",
+              );
+              assert(row.scrollWidth <= row.clientWidth + 1, "카드 가로 넘침");
+            }
+          } finally {
+            host.remove();
+          }
+        }
+      }
     } finally {
-      host.remove();
-      if (compact === undefined)
-        delete document.documentElement.dataset.compact;
-      else document.documentElement.dataset.compact = compact;
-    }
-  },
-);
-
-await check(
-  "제목 마지막 줄에 공간이 있으면 배지가 같은 줄 오른쪽에 붙는다",
-  () => {
-    const compact = document.documentElement.dataset.compact;
-    document.documentElement.dataset.compact = "false";
-    const host = exampleCards("md");
-    host.style.width = "360px";
-    fixture.append(host);
-    try {
-      const row = host.querySelector(".list-item");
-      const title = row?.querySelector(".list-title");
-      const meta = row?.querySelector(".list-meta");
-      assert(Boolean(row && title && meta), "카드 내용 누락");
-      const range = document.createRange();
-      range.selectNodeContents(title as Node);
-      const lines = [...range.getClientRects()];
-      const last = lines.at(-1);
-      const badges = meta?.getBoundingClientRect();
-      assert(lines.length > 1, "여러 줄 제목이 아니다");
-      assert(
-        Boolean(
-          last &&
-            badges &&
-            badges.top < last.bottom &&
-            badges.bottom > last.top,
-        ),
-        "배지가 마지막 줄의 빈 공간을 사용하지 않는다",
-      );
-      assert(
-        Boolean(last && badges && last.right < badges.left),
-        "제목과 배지가 겹친다",
-      );
-    } finally {
-      host.remove();
-      if (compact === undefined)
-        delete document.documentElement.dataset.compact;
-      else document.documentElement.dataset.compact = compact;
-    }
-  },
-);
-
-await check(
-  "긴 제목은 번호 옆에서 시작하고 다음 줄은 카드 왼쪽부터 이어진다",
-  () => {
-    const compact = document.documentElement.dataset.compact;
-    document.documentElement.dataset.compact = "false";
-    const host = element("div", "issue-list-container");
-    host.style.width = "480px";
-    const card = issueCard(issue, {
-      size: "md",
-      statusOrder: order,
-      onSelect: () => {},
-    });
-    host.append(card);
-    fixture.append(host);
-    try {
-      const title = card.querySelector(".list-title");
-      const identity = card.querySelector(".issue-identity");
-      const main = card.querySelector(".list-main");
-      assert(
-        title !== null && identity !== null && main !== null,
-        "카드 내용 누락",
-      );
-      const range = document.createRange();
-      range.selectNodeContents(title);
-      const lines = [...range.getClientRects()];
-      const first = lines[0],
-        second = lines[1];
-      assert(
-        first !== undefined && second !== undefined,
-        "긴 제목이 여러 줄로 표시되지 않는다",
-      );
-      assert(
-        first.left >= identity.getBoundingClientRect().right,
-        "첫 줄 제목이 번호 옆에서 시작하지 않는다",
-      );
-      assert(
-        Math.abs(second.left - main.getBoundingClientRect().left) < 1,
-        "두 번째 줄이 번호 옆의 별도 칸에 갇혀 있다",
-      );
-      const identityBounds = identity.getBoundingClientRect();
-      assert(
-        Math.abs(
-          identityBounds.top +
-            identityBounds.height / 2 -
-            (first.top + first.height / 2),
-        ) <
-          (second.top - first.top) / 2,
-        "유형·번호 영역이 첫 줄 대신 제목 전체 높이 가운데로 내려간다",
-      );
-      assert(
-        second.top - first.bottom >= 9,
-        "여러 줄 제목의 줄 간격이 너무 좁다",
-      );
-    } finally {
-      host.remove();
-      if (compact === undefined)
-        delete document.documentElement.dataset.compact;
-      else document.documentElement.dataset.compact = compact;
-    }
-  },
-);
-
-await check(
-  "작은 카드의 긴 제목은 키 아래 전체 폭을 사용하고 배지는 오른쪽에 남는다",
-  () => {
-    const compact = document.documentElement.dataset.compact;
-    document.documentElement.dataset.compact = "false";
-    const host = element("div", "issue-list-container");
-    host.style.width = "180px";
-    const card = issueCard(issue, { statusOrder: order, onSelect: () => {} });
-    host.append(card);
-    fixture.append(host);
-    try {
-      const row = card.querySelector<HTMLElement>(".list-item");
-      const title = card.querySelector<HTMLElement>(".list-title");
-      const identity = card.querySelector<HTMLElement>(".issue-identity");
-      const meta = card.querySelector<HTMLElement>(".list-meta");
-      assert(
-        row !== null && title !== null && identity !== null && meta !== null,
-        "카드 구성 누락",
-      );
-
-      const range = document.createRange();
-      range.selectNodeContents(title);
-      const lines = [...range.getClientRects()];
-      const main = card.querySelector(".list-main");
-      assert(
-        Boolean(lines[1] && main) &&
-          Math.abs(
-            (lines[1]?.left ?? 0) - (main?.getBoundingClientRect().left ?? 0),
-          ) < 1,
-        "작은 카드의 다음 줄에 번호 칸이 남는다",
-      );
-      assert(
-        Boolean(lines[0] && lines[1]) &&
-          (lines[0]?.left ?? 0) >= identity.getBoundingClientRect().right,
-        "작은 카드도 번호 옆부터 제목을 이어 쓴다",
-      );
-      assert(
-        Math.abs(
-          meta.getBoundingClientRect().right -
-            (row.getBoundingClientRect().right -
-              parseFloat(getComputedStyle(row).paddingRight) -
-              1),
-        ) < 1,
-        "배지 우측 정렬이 깨진다",
-      );
-      assert(row.scrollWidth <= row.clientWidth + 1, "카드가 가로로 넘친다");
-    } finally {
-      host.remove();
       if (compact === undefined)
         delete document.documentElement.dataset.compact;
       else document.documentElement.dataset.compact = compact;
@@ -1674,7 +1531,7 @@ await check(
       site: "example.atlassian.net",
     });
     const key = card.querySelector(".key");
-    assert(key?.textContent === "820", "카드에 프로젝트 접두어가 남음");
+    assert(key?.textContent === "CLIPO-820", "카드 전체 이슈 키 누락");
     assert(
       key?.getAttribute("aria-label") === "CLIPO-820 이슈 링크 복사" &&
         card.querySelector("a")?.getAttribute("href") === "?issue=CLIPO-820",
@@ -1749,7 +1606,7 @@ await check(
     try {
       const copy = card.querySelector<HTMLButtonElement>(".card-copy");
       assert(
-        copy?.textContent === "711" && !copy.closest("a"),
+        copy?.textContent === issue.key && !copy.closest("a"),
         "이슈키 자체가 독립된 복사 버튼이어야 함",
       );
       copy.click();
@@ -2088,16 +1945,16 @@ await check(
           identity = tile.querySelector<HTMLElement>(".issue-identity");
         assert(label !== null && identity !== null, "완료 카드 내용 누락");
         assert(
-          getComputedStyle(tile.querySelector(".list-main") as Element)
+          getComputedStyle(tile.querySelector(".list-title") as Element)
             .webkitLineClamp === "2",
-          "번호와 제목 전체가 최대 두 줄로 제한되지 않는다",
+          "완료 제목이 최대 두 줄로 제한되지 않는다",
         );
         const firstLine = label.getClientRects()[0];
         assert(firstLine !== undefined, "완료 카드 제목 줄 누락");
         assert(
-          firstLine.left >= identity.getBoundingClientRect().right &&
-            firstLine.top < identity.getBoundingClientRect().bottom,
-          "제목이 번호 바로 뒤에서 시작하지 않는다",
+          Math.abs(firstLine.left - identity.getBoundingClientRect().left) <
+            1 && firstLine.top >= identity.getBoundingClientRect().bottom,
+          "완료 제목이 번호 아래에서 시작하지 않는다",
         );
       }
       const title = grid?.querySelector<HTMLAnchorElement>(".list-title");
@@ -2680,7 +2537,7 @@ await check(
       );
       assert(
         nav?.querySelector(".tree-context-project")?.textContent ===
-          "검사 프로젝트 (TEST)",
+          "검사 프로젝트",
         "프로젝트 이름과 키가 경로에 없다",
       );
       assert(
@@ -3639,9 +3496,9 @@ await check(
         "프로젝트 제목을 아직 보고 있는데 중복 경로가 나온다",
       );
       for (const [selector, label, expectedGroups] of [
-        ['[data-tree-key="AA"] .list-item', "첫 프로젝트 (AA)", []],
-        ['[data-tree-key="completed:AA:tree"]', "첫 프로젝트 (AA)", ["완료"]],
-        ['[data-tree-key="BB"] .list-item', "다른 프로젝트 (BB)", []],
+        ['[data-tree-key="AA"] .list-item', "첫 프로젝트", []],
+        ['[data-tree-key="completed:AA:tree"]', "첫 프로젝트", ["완료"]],
+        ['[data-tree-key="BB"] .list-item', "다른 프로젝트", []],
       ] as const) {
         const target = host.querySelector<HTMLElement>(selector ?? "");
         assert(target !== null, "스크롤 검사 대상 누락");

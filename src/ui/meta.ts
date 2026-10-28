@@ -129,11 +129,3 @@ export function projectIcon(project: ProjectOption): HTMLImageElement | null {
   icon.addEventListener("error", () => icon.remove(), { once: true });
   return icon;
 }
-
-export function projectLabel(
-  project: Pick<ProjectOption, "name" | "key">,
-): string {
-  return project.name && project.name !== project.key
-    ? `${project.name} (${project.key})`
-    : project.key;
-}

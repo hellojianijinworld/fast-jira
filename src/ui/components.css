@@ -113,7 +113,9 @@ a {
   container: issue-list / inline-size;
 }
 .list-item {
-  display: flow-root;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
   min-height: var(--card-height);
   padding: var(--card-padding);
   margin: var(--card-margin);
@@ -142,7 +144,11 @@ a {
   background: var(--selected);
 }
 .list-main {
-  display: inline;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--density-space-2);
   min-width: 0;
   max-width: 100%;
   font-size: var(--card-font-size);
@@ -155,10 +161,6 @@ a {
   gap: var(--card-identity-gap);
   min-width: 0;
 }
-.list-main > .issue-identity {
-  margin-inline-end: var(--card-identity-margin);
-  vertical-align: middle;
-}
 .key {
   color: var(--muted);
   font-size: var(--card-meta-font-size);
@@ -166,6 +168,11 @@ a {
   white-space: nowrap;
 }
 .list-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: var(--line-height-label);
   color: inherit;
   text-decoration: none;
   min-width: 0;
@@ -174,11 +181,11 @@ a {
   overflow-wrap: anywhere;
 }
 .list-meta {
-  float: right;
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
   max-width: 100%;
-  margin-left: var(--card-meta-margin);
+  margin-left: 0;
   min-width: 0;
   align-items: center;
   justify-content: flex-end;
@@ -424,52 +431,8 @@ a {
   font-size: var(--font-size-13);
 }
 
-:root[data-compact="true"] .list-item {
-  display: grid;
-  align-items: center;
-  gap: 4px var(--density-space-2-5);
-  grid-template-columns: max-content minmax(2rem, 1fr) minmax(0, max-content);
-}
-:root[data-compact="true"] .list-main {
-  display: contents;
-}
-:where(:root[data-compact="true"]) .list-main > .issue-identity {
-  margin-inline-end: 0;
-}
 :root[data-compact="true"] .list-title {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-:root[data-compact="true"] .list-meta {
-  float: none;
-  grid-column: 3;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-
-/* 중첩 깊이와 무관하게 카드 자체의 가독폭을 확보한다. */
-@container issue-card (max-width: 480px) {
-  :root .issue-card .list-item {
-    grid-template-columns: max-content minmax(0, 1fr);
-  }
-  :root .issue-card .list-meta {
-    grid-column: 1 / -1;
-    flex-wrap: wrap;
-    overflow: visible;
-  }
-}
-@container issue-card (max-width: 360px) {
-  :root .issue-card .list-main {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  :root .issue-card .list-item {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  :root .issue-card .list-title {
-    grid-column: 1;
-  }
+  -webkit-line-clamp: 1;
 }
 
 .status-pill,
@@ -968,7 +931,7 @@ a {
 .completed-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
-  grid-auto-rows: 56px;
+  grid-auto-rows: 76px;
   gap: var(--tree-row-gap);
 }
 .tree-section > .completed-grid {
@@ -983,7 +946,7 @@ a {
   gap: 3px;
 }
 :root .completed-grid .list-item {
-  display: block;
+  display: flex;
   min-height: 0;
   height: 100%;
   padding: 4px 7px;
@@ -991,20 +954,15 @@ a {
   background: var(--soft);
 }
 :root .completed-grid .list-main {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   font-size: var(--font-size-12);
-  line-height: 22px;
+  line-height: 18px;
 }
 :root .completed-grid .list-title {
-  display: inline;
-  overflow: visible;
+  -webkit-line-clamp: 2;
   white-space: normal;
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-normal);
-  line-height: inherit;
+  line-height: 18px;
 }
 :root .completed-grid .list-meta {
   display: none;

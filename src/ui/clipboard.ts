@@ -50,9 +50,8 @@ export function issueKeyCopy(
   key: string,
   url: string | null,
   notify?: (message: string) => void,
-  label = key,
 ) {
-  const button = element("button", "key card-copy", label);
+  const button = element("button", "key card-copy", key);
   button.type = "button";
   button.setAttribute("aria-label", `${key} 이슈 링크 복사`);
   button.dataset.tooltip = "링크 복사";
