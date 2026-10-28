@@ -87,7 +87,7 @@
   border-top: 1px solid var(--border);
 }
 .project-heading .project-create {
-  margin-left: auto;
+  flex: none;
 }
 .detail-create-actions {
   display: flex;

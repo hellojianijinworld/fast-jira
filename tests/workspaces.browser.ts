@@ -146,6 +146,43 @@ await check(
   },
 );
 await check(
+  "프로젝트 생성 버튼은 제목 옆에 있고 로딩 중에도 이동하지 않는다",
+  async () => {
+    const create = root.querySelector<HTMLElement>(".project-create");
+    const count = root.querySelector<HTMLElement>(".project-count");
+    assert(create && count, "프로젝트 생성 버튼 없음");
+    const before = create.getBoundingClientRect();
+    assert(
+      before.left - count.getBoundingClientRect().right <= 12,
+      "생성 버튼이 제목에서 멀리 떨어짐",
+    );
+    const loading = app.list.load();
+    const active = root.querySelector<HTMLElement>(".project-create");
+    const spinner = root.querySelector<HTMLElement>(".project-loading");
+    assert(active && spinner, "프로젝트 로딩 상태 재현 실패");
+    const during = active.getBoundingClientRect();
+    assert(
+      Math.abs(before.left - during.left) < 1 &&
+        Math.abs(before.top - during.top) < 1,
+      "로딩 중 생성 버튼 위치 변경",
+    );
+    assert(
+      spinner.getBoundingClientRect().left >= during.right,
+      "로딩 표시가 버튼과 겹침",
+    );
+    await loading;
+    const after = root
+      .querySelector<HTMLElement>(".project-create")
+      ?.getBoundingClientRect();
+    assert(
+      after &&
+        Math.abs(before.left - after.left) < 1 &&
+        Math.abs(before.top - after.top) < 1,
+      "로딩 종료 후 생성 버튼 위치 변경",
+    );
+  },
+);
+await check(
   "탭 생성에서 프로젝트와 필터를 함께 저장하고 전환한다",
   async () => {
     button("뷰 만들기").click();
