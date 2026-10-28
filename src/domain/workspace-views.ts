@@ -4,6 +4,7 @@ import { decodeViews, type ViewState } from "./views.ts";
 export interface WorkspaceView {
   id: string;
   name: string;
+  icon?: string;
   projects: string[];
   views: ViewState;
 }
@@ -66,6 +67,11 @@ export function decodeWorkspaces(
       return {
         id: item.id,
         name: workspaceName(item.name),
+        ...(typeof item.icon === "string" &&
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.icon) &&
+        item.icon.length <= 100
+          ? { icon: item.icon }
+          : {}),
         projects: [
           ...new Set(item.projects.filter((key) => projects.includes(key))),
         ],

@@ -642,5 +642,88 @@ await check(
     assert(app.list.filters.statuses === null, "복제 뷰 변경 복원 실패");
   },
 );
+await check(
+  "뷰 아이콘은 필요할 때 검색하고 선택한 값을 탭과 복원에 보존한다",
+  async () => {
+    const originalFetch = window.fetch;
+    let requests = 0;
+    window.fetch = async (input, init) => {
+      if (String(input).includes("/collection?prefix=lucide")) {
+        requests++;
+        return Response.json({
+          uncategorized: ["briefcase", "folder", "star"],
+        });
+      }
+      return originalFetch(input, init);
+    };
+    try {
+      button("뷰 만들기").click();
+      assert(requests === 0, "아이콘 목록을 미리 불러옴");
+      const dialog = document.querySelector<HTMLDialogElement>(
+        ".workspace-view-modal[open]",
+      );
+      assert(dialog, "뷰 만들기 모달");
+      button("뷰 아이콘 선택", dialog).click();
+      await wait();
+      const search = dialog.querySelector<HTMLInputElement>(
+        '[aria-label="아이콘 검색"]',
+      );
+      assert(search, "아이콘 검색 누락");
+      search.value = "star";
+      search.dispatchEvent(new Event("input"));
+      assert(
+        dialog.querySelectorAll(".workspace-icon-choice").length === 1,
+        "아이콘 검색 결과",
+      );
+      button("star", dialog).click();
+      const picker = dialog.querySelector<HTMLElement>(".workspace-icon-panel");
+      assert(
+        picker && getComputedStyle(picker).display === "none",
+        "선택 후 아이콘 창이 남음",
+      );
+      const name = dialog.querySelector<HTMLInputElement>(
+        '[aria-label="뷰 이름"]',
+      );
+      assert(name, "뷰 이름");
+      name.value = "아이콘 뷰";
+      await wait();
+      dialog.querySelector("form")?.requestSubmit();
+      await wait();
+      assert(Number(requests) === 1, "아이콘 목록 요청 횟수");
+      assert(
+        root.querySelector(
+          '[role="tab"][aria-selected="true"] .workspace-icon',
+        ),
+        "탭 아이콘 누락",
+      );
+      const stored = JSON.parse(
+        values.get("fastJira:workspaces:fixture.atlassian.net:my-account") ??
+          "{}",
+      );
+      assert(activeWorkspace(stored).icon === "star", "아이콘 저장 누락");
+      app.destroy();
+      app = await createApp(root, api, storage, undefined, updates);
+      assert(
+        root.querySelector(
+          '[role="tab"][aria-selected="true"] .workspace-icon',
+        ),
+        "아이콘 복원 누락",
+      );
+      button("아이콘 뷰").click();
+      button("뷰 복제").click();
+      await wait();
+      const duplicated = JSON.parse(
+        values.get("fastJira:workspaces:fixture.atlassian.net:my-account") ??
+          "{}",
+      );
+      assert(
+        activeWorkspace(duplicated).icon === "star",
+        "복제 뷰 아이콘 누락",
+      );
+    } finally {
+      window.fetch = originalFetch;
+    }
+  },
+);
 results.dataset.failures = String(failures);
 results.dataset.complete = "true";

@@ -135,3 +135,21 @@ test("탭 전환은 임시 필터를 비우고 이후 편집은 새 탭의 실�
     "recent",
   );
 });
+
+test("뷰 아이콘은 저장과 복원을 거치며 기존 데이터와 잘못된 아이콘을 안전하게 처리한다", () => {
+  const original = initialWorkspaces(["TEST"], base);
+  const saved = saveWorkspace(original, {
+    ...activeWorkspace(original),
+    icon: "circle-check",
+  });
+  assert.equal(
+    decodeWorkspaces(saved, ["TEST"])?.tabs[0]?.icon,
+    "circle-check",
+  );
+  assert.equal(decodeWorkspaces(original, ["TEST"])?.tabs[0]?.icon, undefined);
+  const invalid = {
+    ...saved,
+    tabs: [{ ...saved.tabs[0], icon: "../bad.svg" }],
+  };
+  assert.equal(decodeWorkspaces(invalid, ["TEST"])?.tabs[0]?.icon, undefined);
+});

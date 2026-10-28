@@ -16,6 +16,7 @@ import { popoverPosition } from "./geometry.ts";
 import { showModal } from "./modal.ts";
 import { projectChecklist } from "./project-checklist.ts";
 import { createViewEditor } from "./view-editor.ts";
+import { workspaceIcon, workspaceIconPicker } from "./workspace-icons.ts";
 
 /** 탭의 표현과 편집 초안만 담당한다. 저장·조회 전환은 앱에서 수행한다. */
 export function createWorkspaceNavigation(options: {
@@ -90,12 +91,26 @@ export function createWorkspaceNavigation(options: {
     }
   });
   let editor: ReturnType<typeof createViewEditor> | undefined,
+    iconPicker: ReturnType<typeof workspaceIconPicker> | undefined,
     revision = 0;
   function report(reason: unknown) {
     options.error(
       reason instanceof Error ? reason.message : "뷰를 변경하지 못했어요.",
     );
   }
+  function revealActive() {
+    const active = tabs.querySelector<HTMLButtonElement>(
+      '[aria-selected="true"]',
+    );
+    if (!active) return;
+    const visible = tabs.getBoundingClientRect(),
+      item = active.getBoundingClientRect();
+    if (item.left < visible.left) tabs.scrollLeft -= visible.left - item.left;
+    else if (item.right > visible.right)
+      tabs.scrollLeft += item.right - visible.right;
+  }
+  const resize = new ResizeObserver(revealActive);
+  resize.observe(tabs);
   function render() {
     const focused = tabs.contains(document.activeElement);
     closeMenu();
@@ -104,6 +119,7 @@ export function createWorkspaceNavigation(options: {
       ...state.tabs.map((tab) => {
         const item = element("div", "workspace-tab-item"),
           button = element("button", "workspace-tab");
+        if (tab.icon) button.append(workspaceIcon(tab.icon));
         button.append(element("span", "workspace-tab-label", tab.name));
         item.setAttribute("role", "presentation");
         button.setAttribute("aria-haspopup", "menu");
@@ -168,6 +184,7 @@ export function createWorkspaceNavigation(options: {
         return item;
       }),
     );
+    requestAnimationFrame(revealActive);
     if (focused)
       tabs.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
   }
@@ -187,6 +204,7 @@ export function createWorkspaceNavigation(options: {
         : current,
       draft = createViewDraft(resolveView(original.views, { kind: "global" }));
     let selected = [...original.projects],
+      selectedIcon = original.icon ?? "",
       loading = false;
     const form = element("form", "workspace-view-form"),
       label = element("label", "view-name-field", "뷰 이름"),
@@ -201,7 +219,13 @@ export function createWorkspaceNavigation(options: {
     name.maxLength = 80;
     name.placeholder = "예: 이번 주 내 작업";
     name.setAttribute("aria-label", "뷰 이름");
-    label.append(name);
+    iconPicker?.destroy();
+    iconPicker = workspaceIconPicker(selectedIcon, (value) => {
+      selectedIcon = value;
+    });
+    const nameRow = element("div", "workspace-name-row");
+    nameRow.append(iconPicker.element, name);
+    label.append(nameRow);
     error.setAttribute("role", "alert");
     form.append(label, projectHost, editorHost, error);
     async function loadEditor() {
@@ -257,6 +281,7 @@ export function createWorkspaceNavigation(options: {
         options.save({
           ...original,
           name: name.value,
+          icon: selectedIcon,
           projects: selected,
           views: applyView(original.views, { kind: "global" }, draft.value),
         });
@@ -300,6 +325,8 @@ export function createWorkspaceNavigation(options: {
     revision++;
     editor?.destroy();
     editor = undefined;
+    iconPicker?.destroy();
+    iconPicker = undefined;
   });
   add.addEventListener("click", () => open(true));
   edit.addEventListener("click", () => {
@@ -339,7 +366,9 @@ export function createWorkspaceNavigation(options: {
     render,
     destroy() {
       revision++;
+      resize.disconnect();
       editor?.destroy();
+      iconPicker?.destroy();
       closeMenu();
       menu.remove();
       dialog.remove();
