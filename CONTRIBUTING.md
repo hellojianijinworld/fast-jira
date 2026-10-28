@@ -23,6 +23,14 @@ Node.js 22.12 이상이 필요합니다. 화면은 `http://127.0.0.1:5173`, API�
 - `npm run build`: UI와 Node용 서버·관리 CLI 생성. `npm run package:plugin`: 두 AI 플랫폼 배포본 생성.
 - 커밋 시 `.githooks/pre-commit`은 실제 스테이징한 내용의 TypeScript와 Biome을 검사합니다. 게이트를 우회하지 않습니다.
 
+## UI에 기여할 때
+
+[DESIGN.md](DESIGN.md)는 개발자·기여자·AI 에이전트가 공유하는 디자인 판단 기준입니다. UI·사용자 안내를 수정할 때 먼저 읽고, 실제 값은 `src/ui/theme.css`, 컴포넌트 역할과 크기는 `src/ui/theme.ts` 및 기존 공통 컴포넌트를 확인하세요. 새로운 UI 라이브러리를 전제로 하지 않습니다.
+
+- 유사 화면과 공통 컴포넌트를 먼저 찾고, 변경 범위의 화이트·다크·좁은 화면을 확인합니다.
+- 제출할 때 바뀐 사용 흐름, 재사용한 컴포넌트, 실제 확인한 상태와 미확인 범위를 적습니다. 시각 비교 캡처에는 민감한 내용을 포함하지 않습니다.
+- 새 디자인 기준이 필요하면 변경 이유를 먼저 논의합니다. Impeccable 같은 외부 검토 도구는 선택 사항이며 설치나 자동 훅을 요구하지 않습니다.
+
 ## 플러그인 개발
 
 공통 기능 지침은 `skills/setup`, `skills/managing`, `skills/contribute` 한 곳에 둡니다. Codex와 Claude Code의 manifest·marketplace만 분리합니다. 빌드 산출물은 개인 인증·소스·테스트·개발 의존성을 제외하는 allowlist로 만듭니다.

@@ -1,9 +1,11 @@
 ---
 name: contribute
-description: Prepare a Fast Jira source development environment and implement or verify explicitly requested contributions using the project's contribution guide.
+description: Set up a contributor's Fast Jira source development environment or guide an explicitly requested contribution workflow. Do not use for ordinary implementation or fixes in an existing source checkout.
 ---
 
 # Contribute
+
+Use this skill when a user asks to prepare a contributor environment, follow the contribution guide, or explicitly invokes Contribute. For ordinary feature development, debugging, or UI fixes in an existing checkout, follow that checkout’s AGENTS.md directly; do not invoke this skill solely because the task changes Fast Jira code.
 
 Read [CONTRIBUTING.md](../../CONTRIBUTING.md), then the source checkout's AGENTS.md before changing code. A plugin installation contains built assets, not the development source. Reuse the user's source checkout or obtain https://github.com/hellojianijinworld/fast-jira with their access.
 
