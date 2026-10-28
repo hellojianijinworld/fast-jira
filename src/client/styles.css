@@ -1513,7 +1513,7 @@ dialog::backdrop {
 .workspace-tabs {
   flex: 0 1 auto;
   display: flex;
-  gap: var(--density-space-1-5);
+  gap: var(--density-space-1);
   overflow-x: auto;
   min-width: 0;
 }
@@ -1524,7 +1524,8 @@ dialog::backdrop {
   text-overflow: ellipsis;
   white-space: nowrap;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--muted);
   padding: 4px 8px;
@@ -1533,14 +1534,25 @@ dialog::backdrop {
   font-size: var(--font-size-13);
   cursor: pointer;
 }
+.workspace-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .workspace-tab:hover {
   background: var(--soft);
   color: var(--text);
 }
 .workspace-tab[aria-selected="true"] {
   color: var(--blue);
-  background: var(--blue-soft);
+  border-bottom-color: var(--blue);
   font-weight: var(--font-weight-semibold);
+}
+.workspace-tab-arrow {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  transform: rotate(90deg);
 }
 .workspace-views > button {
   flex: none;
@@ -1553,17 +1565,8 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   flex: none;
-  border-radius: var(--radius-control);
 }
-.workspace-tab-item:has([aria-selected="true"]) {
-  background: var(--blue-soft);
-}
-.workspace-tab-item .tool-button {
-  width: 24px;
-  min-width: 24px;
-  height: 28px;
-  padding: 3px;
-}
+
 .workspace-views > .tool-button {
   width: 28px;
   min-width: 28px;
@@ -1591,6 +1594,7 @@ dialog::backdrop {
   display: grid;
   gap: var(--density-space-4);
   padding-block: var(--density-space-4);
+  padding-inline: 4px;
   overflow-y: auto;
   min-height: 0;
 }

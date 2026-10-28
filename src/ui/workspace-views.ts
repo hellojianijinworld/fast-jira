@@ -1,12 +1,17 @@
 import { createViewDraft } from "../client/view-editor-controller.ts";
 import type { ViewOptions } from "../client/view-options.ts";
 import type { ProjectOption } from "../domain/catalog.ts";
-import { applyView, initialViews, resolveView } from "../domain/views.ts";
+import {
+  applyView,
+  decodeViews,
+  initialViews,
+  resolveView,
+} from "../domain/views.ts";
 import type {
   WorkspaceView,
   WorkspaceViews,
 } from "../domain/workspace-views.ts";
-import { actionButton, element, elementId, iconButton } from "./dom.ts";
+import { actionButton, element, elementId, iconButton, uiIcon } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
 import { showModal } from "./modal.ts";
 import { projectChecklist } from "./project-checklist.ts";
@@ -39,8 +44,10 @@ export function createWorkspaceNavigation(options: {
   let menuTarget = "",
     menuAnchor: HTMLElement | undefined;
   const edit = actionButton("뷰 편집", "square-pen", { size: "sm" });
+  const duplicate = actionButton("뷰 복제", "copy", { size: "sm" });
   edit.setAttribute("role", "menuitem");
-  menu.append(edit);
+  duplicate.setAttribute("role", "menuitem");
+  menu.append(edit, duplicate);
   function closeMenu() {
     if (menu.matches(":popover-open")) menu.hidePopover();
     menuAnchor?.setAttribute("aria-expanded", "false");
@@ -61,7 +68,7 @@ export function createWorkspaceNavigation(options: {
           : { left: x, top: y ?? 0, bottom: y ?? 0, width: 0 },
         {
           width: 180,
-          maxHeight: 80,
+          maxHeight: 120,
           viewportWidth: innerWidth,
           viewportHeight: innerHeight,
         },
@@ -96,12 +103,16 @@ export function createWorkspaceNavigation(options: {
     tabs.replaceChildren(
       ...state.tabs.map((tab) => {
         const item = element("div", "workspace-tab-item"),
-          button = element("button", "workspace-tab", tab.name),
-          more = iconButton(`${tab.name} 뷰 메뉴`, "ellipsis", { size: "sm" });
+          button = element("button", "workspace-tab");
+        button.append(element("span", "workspace-tab-label", tab.name));
         item.setAttribute("role", "presentation");
-        more.setAttribute("aria-haspopup", "menu");
-        more.setAttribute("aria-expanded", "false");
-        more.addEventListener("click", () => showMenu(tab.id, more));
+        button.setAttribute("aria-haspopup", "menu");
+        button.setAttribute("aria-expanded", "false");
+        if (tab.id === state.activeId) {
+          const arrow = uiIcon("chevron-right");
+          arrow.classList.add("workspace-tab-arrow");
+          button.append(arrow);
+        }
         button.addEventListener("contextmenu", (event) => {
           event.preventDefault();
           showMenu(tab.id, button, event.clientX, event.clientY);
@@ -114,7 +125,8 @@ export function createWorkspaceNavigation(options: {
         button.tabIndex = tab.id === state.activeId ? 0 : -1;
         button.addEventListener("click", () => {
           try {
-            options.select(tab.id);
+            if (tab.id === options.state().activeId) showMenu(tab.id, button);
+            else options.select(tab.id);
           } catch (reason) {
             report(reason);
           }
@@ -152,7 +164,7 @@ export function createWorkspaceNavigation(options: {
             report(reason);
           }
         });
-        item.append(button, more);
+        item.append(button);
         return item;
       }),
     );
@@ -294,6 +306,32 @@ export function createWorkspaceNavigation(options: {
     const id = menuTarget;
     closeMenu();
     open(false, id);
+  });
+  duplicate.addEventListener("click", () => {
+    const current = options.state().tabs.find((tab) => tab.id === menuTarget);
+    closeMenu();
+    if (!current) return report(new Error("뷰를 찾을 수 없습니다."));
+    try {
+      const views = decodeViews(current.views);
+      if (!views) throw new Error("뷰를 복제하지 못했어요.");
+      const names = new Set(options.state().tabs.map((tab) => tab.name));
+      let suffix = " 복사본";
+      let count = 2;
+      let name = `${current.name.slice(0, 80 - suffix.length)}${suffix}`;
+      while (names.has(name)) {
+        suffix = ` 복사본 ${count++}`;
+        name = `${current.name.slice(0, 80 - suffix.length)}${suffix}`;
+      }
+      options.save({
+        ...current,
+        id: `workspace-${Date.now()}-${elementId("view")}`,
+        name,
+        projects: [...current.projects],
+        views,
+      });
+    } catch (reason) {
+      report(reason);
+    }
   });
   render();
   return {

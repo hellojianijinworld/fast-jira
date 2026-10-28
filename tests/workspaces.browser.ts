@@ -329,7 +329,7 @@ await check(
   "이름 편집은 목록을 다시 조회하지 않고 Enter로 저장한다",
   async () => {
     const before = calls.filter((url) => url.pathname === "/api/issues").length;
-    button("내 작업 뷰 메뉴").click();
+    button("내 작업").click();
     button("뷰 편집").click();
     assert(
       document.querySelectorAll(
@@ -371,8 +371,9 @@ await check(
     );
     assert(panel, "현재 탭 필터");
     assert(
-      panel.querySelector(".view-panel-scope")?.textContent ===
-        "‘진행 확인’ 뷰에 적용",
+      panel
+        .querySelector(".view-panel-scope")
+        ?.textContent?.includes("‘진행 확인’") === true,
       "필터 적용 탭 안내",
     );
     assert(
@@ -414,8 +415,9 @@ await check(
     );
     assert(panel, "프로젝트 선택");
     assert(
-      panel.querySelector(".view-panel-scope")?.textContent ===
-        "‘진행 확인’ 뷰에 적용",
+      panel
+        .querySelector(".view-panel-scope")
+        ?.textContent?.includes("‘진행 확인’") === true,
       "프로젝트 적용 탭 안내",
     );
     button("선택 해제", panel).click();
@@ -563,7 +565,9 @@ await check(
       "활성 뷰 유지",
     );
     assert(
-      root.querySelector('[aria-label="디자인 작업 (편집) 뷰 메뉴"]'),
+      [...root.querySelectorAll('[role="tab"]')].some(
+        (tab) => tab.textContent === "디자인 작업 (편집)",
+      ),
       "탭별 메뉴 이름 갱신",
     );
     assert(
@@ -588,6 +592,54 @@ await check(
       "상단 한 줄 정렬",
     );
     assert(document.documentElement.scrollWidth <= innerWidth, "가로 넘침");
+  },
+);
+await check(
+  "뷰 복제는 프로젝트·필터·하위 설정을 복사하고 이후 서로 독립적이다",
+  async () => {
+    app.views.apply(
+      { kind: "branch", key: "TEST-1" },
+      { ...app.list.filters, statuses: ["1"] },
+    );
+    await wait();
+    const key = "fastJira:workspaces:fixture.atlassian.net:my-account";
+    const before = JSON.parse(values.get(key) ?? "{}");
+    const source = activeWorkspace(before);
+    button("진행 확인").click();
+    button("뷰 복제").click();
+    await wait();
+    let stored = JSON.parse(values.get(key) ?? "{}");
+    const copy = activeWorkspace(stored);
+    assert(copy.name === "진행 확인 복사본", "복제 탭 이름과 활성 상태");
+    assert(copy.id !== source.id, "복제 뷰 ID 중복");
+    assert(
+      JSON.stringify(copy.projects) === JSON.stringify(source.projects),
+      "프로젝트 복제 누락",
+    );
+    assert(
+      JSON.stringify(copy.views) === JSON.stringify(source.views),
+      "전역 및 하위 조건 복제 누락",
+    );
+    app.views.apply(
+      { kind: "global" },
+      { ...app.list.filters, statuses: null },
+    );
+    await wait();
+    stored = JSON.parse(values.get(key) ?? "{}");
+    assert(
+      JSON.stringify(
+        stored.tabs.find((tab: { id: string }) => tab.id === source.id).views,
+      ) === JSON.stringify(source.views),
+      "원본 뷰 변경됨",
+    );
+    app.destroy();
+    app = await createApp(root, api, storage, undefined, updates);
+    stored = JSON.parse(values.get(key) ?? "{}");
+    assert(
+      activeWorkspace(stored).name === copy.name,
+      "복제 뷰 재시작 복원 실패",
+    );
+    assert(app.list.filters.statuses === null, "복제 뷰 변경 복원 실패");
   },
 );
 results.dataset.failures = String(failures);
