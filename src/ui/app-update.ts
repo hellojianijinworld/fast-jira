@@ -1,14 +1,22 @@
 import type { Api } from "../client/api.ts";
 import { createAppUpdateController } from "../client/app-update-controller.ts";
-import { actionButton, element, externalLink } from "./dom.ts";
+import { actionButton, element, externalLink, iconButton } from "./dom.ts";
 import { createFaviconBadge } from "./favicon.ts";
 import { relativeTime } from "./meta.ts";
+
+export interface AppUpdateUi {
+  element: HTMLElement;
+  trigger: HTMLButtonElement;
+}
 
 export function appUpdate(
   api: Pick<Api, "appUpdateStatus" | "checkAppUpdate" | "installAppUpdate">,
   options: { active?: () => boolean; reload?: () => void } = {},
 ) {
   const badge = createFaviconBadge();
+  const trigger = iconButton("업데이트 확인", "circle-arrow-up");
+  trigger.classList.add("app-update-trigger");
+  trigger.hidden = true;
   const root = element("section", "app-update-content");
   root.setAttribute("aria-label", "Fast Jira 업데이트");
   const title = element("h3"),
@@ -50,9 +58,14 @@ export function appUpdate(
   function render() {
     const state = controller.status;
     const running = controller.running;
-    badge(
-      Boolean(state?.release && state.release.version !== state.currentVersion),
+    const available = Boolean(
+      state?.release && state.release.version !== state.currentVersion,
     );
+    badge(available);
+    trigger.hidden = !available;
+    trigger.title = available
+      ? `새 버전 ${state?.release?.version} 업데이트`
+      : "업데이트 확인";
     check.disabled = controller.checking || running;
     install.disabled =
       controller.checking ||
@@ -112,9 +125,11 @@ export function appUpdate(
   render();
   return {
     element: root,
+    trigger,
     destroy() {
       controller.destroy();
       badge(false);
+      trigger.remove();
       document.removeEventListener("visibilitychange", resume);
       window.removeEventListener("focus", resume);
       window.removeEventListener("blur", resume);

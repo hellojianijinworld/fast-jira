@@ -54,6 +54,7 @@ function mount(feature: ReturnType<typeof appUpdate>) {
     undefined,
     feature.element,
   );
+  if (!feature.trigger.isConnected) fixture?.append(feature.trigger);
   fixture?.append(modal);
   showModal(modal, { title: "설정", content: settings.element });
   [...modal.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
@@ -151,6 +152,7 @@ await check(
         () =>
           feature.element.textContent?.includes("새 버전이 있어요") === true,
       );
+      assert(!feature.trigger.hidden, "새 버전의 업데이트 아이콘 누락");
       assert(
         favicon.getAttribute("href") !== originalFavicon,
         "새 버전 파비콘 점 표시 누락",
@@ -210,6 +212,10 @@ await check(
       await until(() => Number(reloads) === 1);
       assert(Number(reloads) === 1, "새 버전 확인 후 새로고침 누락");
       assert(
+        feature.trigger.hasAttribute("hidden"),
+        "업데이트 완료 후 아이콘 잔존",
+      );
+      assert(
         favicon.getAttribute("href") === originalFavicon,
         "업데이트 완료 후 파비콘 복원 누락",
       );
@@ -249,6 +255,10 @@ await check(
       await until(
         () =>
           feature.element.textContent?.includes("아직 공개된 릴리스") === true,
+      );
+      assert(
+        feature.trigger.hasAttribute("hidden"),
+        "릴리스가 없는데 업데이트 아이콘 표시",
       );
       assert(
         favicon.getAttribute("href") === originalFavicon,
@@ -300,4 +310,10 @@ const demo = appUpdate(
   ),
   { active: () => false, reload: () => {} },
 );
-mount(demo);
+const demoNav = element("header", "top-nav");
+demoNav.append(
+  element("h2", "", "Fast Jira · 새 버전 알림 예시"),
+  demo.trigger,
+);
+fixture.append(demoNav);
+demo.trigger.addEventListener("click", () => mount(demo));

@@ -16,6 +16,7 @@ import {
   type WorkspaceViews,
 } from "../domain/workspace-views.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
+import type { AppUpdateUi } from "../ui/app-update.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
@@ -61,7 +62,7 @@ export async function createApp(
   api: Api,
   storage: LocalStore,
   cache?: ListCache,
-  updates?: HTMLElement,
+  updates?: AppUpdateUi,
 ) {
   const nav = element("header", "top-nav"),
     tools = element("div", "nav-tools");
@@ -88,6 +89,7 @@ export async function createApp(
     help,
     settings,
   );
+  if (updates) tools.insertBefore(updates.trigger, settings);
   nav.append(element("h1", "", "Fast Jira"), tools);
   const workspace = element("main", "workspace"),
     browse = element("section", "browse");
@@ -928,7 +930,7 @@ export async function createApp(
     firstSetup = false;
     store.saveFilters(list.filters, true);
   });
-  function showSettings() {
+  function showSettings(management = false) {
     const content = settingsContent(
       preferences,
       `현재 인증된 계정: ${bootstrap.me.displayName} · Jira 사이트: ${bootstrap.site}`,
@@ -939,7 +941,8 @@ export async function createApp(
       },
       firstSetup ? () => popup.close() : undefined,
       connectionForm(api, () => location.reload()),
-      updates,
+      updates?.element,
+      management ? "관리" : undefined,
     );
     showModal(popup, {
       title: firstSetup ? "처음 설정" : "설정",
@@ -948,6 +951,8 @@ export async function createApp(
     });
   }
   settings.addEventListener("click", () => showSettings());
+  const showUpdates = () => showSettings(true);
+  updates?.trigger.addEventListener("click", showUpdates);
   help.addEventListener("click", () => {
     showModal(popup, { title: "Fast Jira 이용 안내", content: helpContent() });
   });
@@ -1145,6 +1150,7 @@ export async function createApp(
       panel.destroy();
       projectPanel.destroy();
       workspaceNavigation?.destroy();
+      updates?.trigger.removeEventListener("click", showUpdates);
       treeContext.destroy();
       tree.destroy();
       split.destroy();

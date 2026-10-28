@@ -1,6 +1,8 @@
 import { createApi } from "../src/client/api.ts";
 import { createApp } from "../src/client/app.ts";
+import type { AppUpdateStatus } from "../src/domain/app-update.ts";
 import { activeWorkspace } from "../src/domain/workspace-views.ts";
+import { appUpdate } from "../src/ui/app-update.ts";
 import { element } from "../src/ui/dom.ts";
 import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
@@ -81,7 +83,26 @@ function button(label: string, scope: ParentNode = document) {
   assert(found, `버튼 누락 ${label}`);
   return found;
 }
-let app = await createApp(root, api, storage);
+let updateStatus: AppUpdateStatus = {
+  currentVersion: "0.2.0",
+  supported: true,
+  phase: "current",
+  checkedAt: Date.now(),
+  release: null,
+  message: "최신 버전",
+  job: null,
+};
+const updates = appUpdate(
+  {
+    appUpdateStatus: async () => updateStatus,
+    checkAppUpdate: async () => updateStatus,
+    installAppUpdate: async () => {
+      throw new Error("실제 설치 금지");
+    },
+  },
+  { active: () => false, reload: () => {} },
+);
+let app = await createApp(root, api, storage, undefined, updates);
 let failures = 0;
 async function check(name: string, run: () => Promise<void>) {
   try {
@@ -179,7 +200,7 @@ await check(
       "첫 탭의 단계 보존",
     );
     app.destroy();
-    app = await createApp(root, api, storage);
+    app = await createApp(root, api, storage, undefined, updates);
     assert(
       JSON.stringify(app.list.filters.statuses) === '["2"]',
       "재시작 복원",
@@ -300,8 +321,85 @@ await check(
     await wait();
     assert(app.list.filters.projects.length === 0, "현재 탭의 빈 선택 복원");
     app.destroy();
-    app = await createApp(root, api, storage);
+    app = await createApp(root, api, storage, undefined, updates);
     assert(app.list.filters.projects.length === 0, "재시작 시 빈 선택 유실");
+  },
+);
+await check(
+  "새 버전은 상단 아이콘만 표시하고 클릭하면 관리 화면을 연다",
+  async () => {
+    assert(updates.trigger.hidden, "현재 버전인데 아이콘 표시");
+    updateStatus = {
+      ...updateStatus,
+      phase: "available",
+      release: {
+        version: "0.3.0",
+        commit: "a".repeat(40),
+        notes: "모의 변경 내용",
+        url: "https://github.com/hellojianijinworld/fast-jira/releases/tag/v0.3.0",
+      },
+    };
+    updates.element
+      .querySelector<HTMLButtonElement>('[aria-label="직접 업데이트 확인"]')
+      ?.click();
+    await wait();
+    assert(
+      !updates.trigger.hidden && updates.trigger.closest(".nav-tools"),
+      "상단 업데이트 아이콘 없음",
+    );
+    assert(
+      !root.querySelector("dialog[open]"),
+      "새 버전 감지로 모달 자동 표시",
+    );
+    updates.trigger.click();
+    let dialog = root.querySelector<HTMLDialogElement>(".settings-modal[open]");
+    assert(dialog, "관리 모달 없음");
+    assert(
+      dialog.querySelector('[role="tab"][aria-selected="true"]')
+        ?.textContent === "관리",
+      "관리 탭 바로가기 실패",
+    );
+    assert(dialog.textContent?.includes("모의 변경 내용"), "변경 내용 누락");
+    assert(
+      dialog.querySelector<HTMLButtonElement>(
+        '[aria-label="업데이트하고 다시 시작"]',
+      )?.disabled === false,
+      "수동 설치 버튼 없음",
+    );
+    dialog.close();
+    updateStatus = {
+      ...updateStatus,
+      phase: "error",
+      message: "일시적 조회 실패",
+    };
+    updates.element
+      .querySelector<HTMLButtonElement>('[aria-label="직접 업데이트 확인"]')
+      ?.click();
+    await wait();
+    assert(
+      !updates.trigger.hidden,
+      "조회 실패가 감지했던 업데이트 표시를 지움",
+    );
+    updateStatus = {
+      ...updateStatus,
+      phase: "current",
+      release: null,
+      currentVersion: "0.3.0",
+    };
+    updates.element
+      .querySelector<HTMLButtonElement>('[aria-label="직접 업데이트 확인"]')
+      ?.click();
+    await wait();
+    assert(updates.trigger.hidden, "업데이트 후 아이콘 잔존");
+    button("설정").click();
+    dialog = root.querySelector<HTMLDialogElement>(".settings-modal[open]");
+    assert(dialog, "일반 설정");
+    assert(
+      dialog.querySelector('[role="tab"][aria-selected="true"]')
+        ?.textContent === "화면 표시",
+      "일반 설정까지 관리로 고정됨",
+    );
+    dialog.close();
   },
 );
 results.dataset.failures = String(failures);

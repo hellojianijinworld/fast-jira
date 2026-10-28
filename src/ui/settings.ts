@@ -9,6 +9,9 @@ export function settingsContent(
   start?: () => void,
   connection?: HTMLElement,
   updates?: HTMLElement,
+  initialTab: "Jira 연결" | "화면 표시" | "관리" = start
+    ? "Jira 연결"
+    : "화면 표시",
 ) {
   const root = element("section", "settings-content"),
     draft = { ...current },
@@ -73,7 +76,7 @@ export function settingsContent(
   tabs.append(...buttons);
   body.append(...categories.map(({ panel }) => panel));
   root.append(tabs, body);
-  activate(start ? 0 : 1);
+  activate(categories.findIndex((category) => category.name === initialTab));
   const displayChoices = [
     [
       "테마",

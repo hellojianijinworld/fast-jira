@@ -23,7 +23,7 @@ async function start(root: HTMLElement) {
   try {
     const settings = await api.connection();
     if (settings.tokenConfigured) {
-      await createApp(root, api, storage, createListCache(), updates.element);
+      await createApp(root, api, storage, createListCache(), updates);
       return;
     }
   } catch (reason) {
