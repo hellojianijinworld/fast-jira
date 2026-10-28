@@ -77,11 +77,11 @@ export function createPeopleFilter(
     help.textContent =
       currentMode === "unassigned"
         ? related
-          ? "담당자와 작업 관계자 필드가 모두 비어 있는 작업만 찾아요."
-          : "Jira 담당자가 비어 있는 작업만 찾아요."
+          ? "담당자와 작업참여자가 모두 비어 있는 작업을 보여줘요."
+          : "담당자가 비어 있는 작업을 보여줘요."
         : related
-          ? "담당자와 Jira 사용자 필드에 지정된 사람을 함께 찾아요."
-          : "Jira 담당자 필드를 기준으로 찾아요.";
+          ? "담당자와 작업참여자에 지정된 사람을 함께 찾아요."
+          : "담당자를 기준으로 작업을 찾아요.";
     const focusLabel = document.activeElement?.getAttribute("aria-label");
     choices.replaceChildren();
     choices.hidden = currentMode !== "custom";

@@ -43,15 +43,14 @@ export function issueBreadcrumbs(
             issueTypeIcon: parent.issueTypeIcon ?? "",
           }),
         );
-      link.append(
-        element(
-          "span",
-          "breadcrumb-label",
-          `${parent.key} · ${parent.summary || parent.key}`,
-        ),
+      const label = element(
+        "span",
+        "breadcrumb-label",
+        `${parent.key} · ${parent.summary || parent.key}`,
       );
+      label.dataset.tooltipOverflow = label.textContent ?? "";
+      link.append(label);
       link.href = `?issue=${encodeURIComponent(parent.key)}`;
-      link.title = link.textContent ?? "";
       link.addEventListener("click", (event) => {
         event.preventDefault();
         select(parent.key);

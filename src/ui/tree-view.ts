@@ -295,7 +295,6 @@ export function createTreeView(
         });
         const decorated = callbacks.decorate?.(issue, card) ?? card;
         if (compactCompleted) {
-          card.title = `${issue.key} · ${issue.summary} · ${issue.status}`;
           row.append(decorated);
           item.append(row);
           if (parent) tiles.append(item);

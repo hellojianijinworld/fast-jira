@@ -23,7 +23,7 @@ export function participantAvatars(
         `${field.name}: ${field.users.map((user) => `${user.name}${user.id === currentUserId ? " (나)" : ""}`).join(", ")}`,
     )
     .join("\n");
-  root.setAttribute("aria-label", `작업참여자: ${names}`);
+  root.setAttribute("aria-label", `작업참여자: ${root.title || names}`);
   for (const user of users.slice(0, 4)) {
     const image = avatar(user);
     root.append(image);

@@ -30,7 +30,7 @@ export function connectionForm(
       element(
         "p",
         "connection-guide",
-        "사용 중인 Jira를 연결하세요. 토큰은 이 컴퓨터에만 저장돼요.",
+        "Jira를 연결하고 프로젝트와 화면을 설정해 보세요. 토큰은 이 컴퓨터에 저장돼요.",
       ),
       progress,
     );
@@ -97,8 +97,8 @@ export function connectionForm(
           "small",
           "connection-guide",
           guided
-            ? "권한 범위(scopes) 없는 토큰을 발급해 이곳에 붙여넣으세요. AI 채팅에 보내지 않아도 돼요."
-            : "권한 범위(scopes) 없는 API 토큰을 사용해요. 연결 확인에 성공하면 이 컴퓨터에 저장하고 바로 적용해요.",
+            ? "권한 범위(scopes) 없는 토큰을 발급해 여기에 붙여 넣어 주세요. AI 대화에 보낼 필요는 없어요."
+            : "권한 범위(scopes) 없는 토큰을 사용해요. 연결되면 이 컴퓨터에 저장해요.",
         ),
       );
     }

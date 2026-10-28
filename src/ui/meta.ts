@@ -16,8 +16,9 @@ export function statusPill(
   const pill = element("span", "status-pill");
   const dot = element("span", "status-dot");
   dot.style.setProperty("--status-color", statusColor(status, order));
-  pill.title = status || "없음";
-  pill.append(dot, element("span", "status-name", status || "없음"));
+  const name = element("span", "status-name", status || "없음");
+  name.dataset.tooltipOverflow = status || "없음";
+  pill.append(dot, name);
   return pill;
 }
 export function avatar(
@@ -39,8 +40,9 @@ export function personPill(
 ): HTMLSpanElement {
   const pill = element("span", "person-pill");
   if (user.name) pill.append(avatar(user));
-  pill.append(element("span", "person-name", user.name || "미지정"));
-  pill.title = user.name || "미지정";
+  const name = element("span", "person-name", user.name || "미지정");
+  name.dataset.tooltipOverflow = user.name || "미지정";
+  pill.append(name);
   return pill;
 }
 export function issueTypeIcon(
@@ -124,7 +126,6 @@ export function projectIcon(project: ProjectOption): HTMLImageElement | null {
   const icon = element("img", "project-icon");
   icon.src = `/api/type-icon?url=${encodeURIComponent(url)}`;
   icon.alt = "";
-  icon.title = project.name;
   icon.addEventListener("error", () => icon.remove(), { once: true });
   return icon;
 }

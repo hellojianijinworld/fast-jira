@@ -82,8 +82,8 @@ export function createProjectPanel(options: {
       anchor.setAttribute("aria-controls", panel.id);
       selected = [...options.selected()];
       scope.textContent = options.viewName
-        ? `‘${options.viewName()}’ 뷰에 적용`
-        : "현재 탭에 적용";
+        ? `선택한 프로젝트만 ‘${options.viewName()}’ 뷰에 보여요.`
+        : "선택한 프로젝트만 현재 뷰에 보여요.";
       error.hidden = true;
       render();
       Object.assign(

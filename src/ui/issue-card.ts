@@ -33,6 +33,7 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
   const link = element("div", "list-item");
   const title = element("a", "list-title", issue.summary);
   title.href = `?issue=${encodeURIComponent(issue.key)}`;
+  title.dataset.tooltipOverflow = issue.summary;
   if (options.context) link.classList.add("context");
   if (issue.key === options.selectedKey)
     link.setAttribute("aria-current", "true");

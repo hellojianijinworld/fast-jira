@@ -222,7 +222,7 @@ export function createFilterPanel(
     scope.textContent = key
       ? `${key}의 하위 목록에 적용`
       : callbacks.viewName
-        ? `‘${callbacks.viewName()}’ 뷰에 적용`
+        ? `선택한 조건을 ‘${callbacks.viewName()}’ 뷰에 적용해요.`
         : "현재 탭에 적용";
     renderPeek();
     hints();

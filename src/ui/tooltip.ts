@@ -34,12 +34,23 @@ export function startTooltips() {
     if (event instanceof PointerEvent && event.pointerType === "touch") return;
     if (!(event.target instanceof Element)) return;
     const next = event.target.closest<HTMLElement | SVGElement>(
-      "[title], [data-tooltip]",
+      "[title], [data-tooltip], [data-tooltip-overflow]",
     );
     if (target?.contains(event.target) && (!next || next === target)) return;
     hide();
     if (!next || next.closest(":disabled")) return;
-    const text = next.getAttribute("title") || next.dataset.tooltip;
+    const overflow = next.dataset.tooltipOverflow;
+    const measure =
+      next instanceof HTMLElement && !next.clientWidth && !next.clientHeight
+        ? (next.parentElement ?? next)
+        : next;
+    if (
+      overflow &&
+      measure.scrollWidth <= measure.clientWidth &&
+      measure.scrollHeight <= measure.clientHeight
+    )
+      return;
+    const text = next.getAttribute("title") || next.dataset.tooltip || overflow;
     if (!text) return;
     target = next;
     for (let node: Element | null = next; node; node = node.parentElement) {

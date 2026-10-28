@@ -45,7 +45,6 @@ export function filterChecklist(
     );
   for (const choice of items) {
     const label = element("label", "status-check");
-    label.title = choice.name;
     const input = element("input");
     input.type = "checkbox";
     input.checked = selected === null || selected.includes(choice.id);

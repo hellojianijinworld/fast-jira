@@ -426,7 +426,7 @@ export function createCommandPalette(config: {
       policyText.textContent =
         storageError ||
         (historyStore
-          ? "대화는 이 브라우저에 직접 삭제할 때까지 남습니다. 브라우저 데이터를 지우면 기록도 삭제됩니다. Codex 연결은 30분 미사용 또는 서버 재시작 시 만료됩니다. Claude는 매 요청마다 최근 기록을 참고합니다. 이전 대화는 최근 20개 메시지·최대 2만 자까지 전달합니다."
+          ? "대화는 이 브라우저에 저장돼요. 직접 삭제하거나 브라우저 데이터를 지우면 사라져요. Codex 연결은 30분 동안 사용하지 않거나 서버를 다시 시작하면 만료돼요. Claude는 요청할 때마다 최근 대화를 참고해요. 이전 대화는 최근 20개 메시지, 최대 2만 자까지 전달해요."
           : "현재 화면에서만 대화를 보관합니다.");
     if (storageError) policy.open = true;
     if (storageError && storageError !== reportedStorageError)

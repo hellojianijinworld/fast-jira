@@ -102,6 +102,37 @@ await check(
     dialog.remove();
   },
 );
+await check("긴 내용은 실제로 잘렸을 때만 툴팁을 보여준다", async () => {
+  const label = element("span", "", "아주 긴 작업 이름이 잘리는 상황");
+  label.dataset.tooltipOverflow = label.textContent ?? "";
+  Object.assign(label.style, {
+    display: "block",
+    width: "400px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+  });
+  host.append(label);
+  label.dispatchEvent(
+    new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }),
+  );
+  await wait();
+  assert(
+    !document.querySelector(".ui-tooltip:popover-open"),
+    "잘리지 않은 내용에 툴팁 표시됨",
+  );
+  label.style.width = "40px";
+  label.dispatchEvent(
+    new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }),
+  );
+  await wait();
+  assert(
+    document.querySelector(".ui-tooltip:popover-open")?.textContent ===
+      label.textContent,
+    "잘린 내용의 전체 텍스트 누락",
+  );
+  label.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+  label.remove();
+});
 await check("해제 후 타이머·이벤트·접근성 연결을 남기지 않는다", async () => {
   button.focus();
   stop();
