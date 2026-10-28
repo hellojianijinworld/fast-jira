@@ -298,6 +298,8 @@ test("Codex와 Claude 모두 생성 도구 결과를 초안으로만 반환한�
         if (method === "account/read") return { account: { type: "chatgpt" } };
         if (method === "model/list")
           return { data: [{ model: "test", isDefault: true }] };
+        if (method === "config/read") return { config: { mcp_servers: {} } };
+        if (method === "app/installed") return { apps: [] };
         if (method === "mcpServerStatus/list")
           return { data: [], nextCursor: null };
         if (method === "thread/start") return { thread: { id: "new" } };

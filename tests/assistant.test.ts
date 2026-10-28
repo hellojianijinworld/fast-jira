@@ -51,8 +51,13 @@ function fixture() {
             { model: "available", displayName: "검사 모델", isDefault: true },
           ],
         };
+      if (method === "config/read")
+        return {
+          config: { mcp_servers: { unrelated: { command: "native" } } },
+        };
       if (method === "mcpServerStatus/list")
         return { data: [{ name: "unrelated" }], nextCursor: null };
+      if (method === "app/installed") return { apps: [] };
       if (method === "thread/start") return { thread: { id: "thread" } };
       if (method === "turn/start") {
         turns++;
@@ -134,7 +139,7 @@ test("AI 응답과 범위를 신뢰 경계에서 검증한다", () => {
   );
   assert.deepEqual(assistantContext(context), context);
 });
-test("Codex는 사용 가능한 모델과 Jira 읽기 도구만 받고 변경안을 반환한다", async () => {
+test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환한다", async () => {
   const f = fixture();
   try {
     const pending = f.assistant.run({
@@ -152,7 +157,9 @@ test("Codex는 사용 가능한 모델과 Jira 읽기 도구만 받고 변경안
     assert.equal(start.model, "available");
     assert.equal(start.ephemeral, true);
     assert.deepEqual(start.config, {
-      mcp_servers: { unrelated: { enabled: false, command: process.execPath } },
+      "mcp_servers.unrelated.default_tools_approval_mode": "writes",
+      "apps._default.default_tools_approval_mode": "writes",
+      "apps._default.approvals_reviewer": "user",
     });
     assert.ok(
       !start.dynamicTools.some((tool) => tool.name === "jira_update_issues"),
@@ -357,5 +364,96 @@ test("서버 연결이 만료된 대화는 검증한 최근 기록을 참고해 
     assert.equal(f.writes, 0);
   } finally {
     f.assistant.dispose();
+  }
+});
+
+test("연결 도구의 승인 요청은 대화에 보류되고 사용자 응답만 네이티브에 전달한다", async () => {
+  const f = fixture(),
+    requestId = "0123456789abcdef0123456789abcdef";
+  try {
+    const result = f.assistant.run({
+      prompt: "코드를 변경해 줘",
+      context,
+      requestId,
+    });
+    await f.waitTurn();
+    f.emit(
+      "item/commandExecution/requestApproval",
+      {
+        threadId: "thread",
+        itemId: "command",
+        command: "touch target.txt",
+        cwd: "/tmp",
+        availableDecisions: ["accept", "decline"],
+      },
+      42,
+    );
+    assert.equal(f.replies.length, 0);
+    const approval = f.assistant.approvals.pending(requestId)[0];
+    assert(approval);
+    f.assistant.approvals.respond({
+      requestId,
+      id: approval.id,
+      approved: false,
+      values: {},
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(f.replies, [{ decision: "decline" }]);
+    f.complete();
+    await result;
+    assert.deepEqual(f.assistant.approvals.pending(requestId), []);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+test("승인 HTTP는 올바른 요청 토큰과 동일 출처 사용자 응답만 받는다", async () => {
+  const f = fixture(),
+    server = createHttpServer(f.service, undefined, undefined, f.assistant);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`,
+    token = "a".repeat(32),
+    run = f.assistant.approvals.open(token);
+  try {
+    const answer = run.ask({
+      title: "코드 변경",
+      description: "대상 확인",
+      details: "target.txt",
+      fields: [],
+    });
+    assert.equal(
+      (await fetch(`${origin}/api/assistant/approvals?requestId=invalid`))
+        .status,
+      400,
+    );
+    const pending = await fetch(
+      `${origin}/api/assistant/approvals?requestId=${token}`,
+    ).then((r) => r.json());
+    assert.equal(pending.length, 1);
+    const body = JSON.stringify({
+      requestId: token,
+      id: pending[0].id,
+      approved: true,
+      values: {},
+    });
+    const post = (from: string) =>
+      fetch(`${origin}/api/assistant/approve`, {
+        method: "POST",
+        headers: { Origin: from, "Content-Type": "application/json" },
+        body,
+      });
+    assert.equal((await post("https://evil.example")).status, 403);
+    assert.equal(f.assistant.approvals.pending(token).length, 1);
+    assert.equal((await post(origin)).status, 200);
+    assert.equal((await answer).approved, true);
+    assert.equal((await post(origin)).status, 409);
+  } finally {
+    run.close();
+    f.assistant.dispose();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

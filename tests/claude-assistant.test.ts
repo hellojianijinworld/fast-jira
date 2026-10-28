@@ -123,12 +123,17 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
       if (command.args[0] === "auth") return loggedIn;
       runCount++;
       assert(command.args.includes("--no-session-persistence"));
-      assert.equal(command.args[command.args.indexOf("--tools") + 1], "");
-      assert(command.args.includes("--strict-mcp-config"));
+      assert.equal(
+        command.args[command.args.indexOf("--tools") + 1],
+        "default",
+      );
+      assert(!command.args.includes("--strict-mcp-config"));
+      assert(command.args.includes("--permission-prompt-tool"));
+      assert(command.args.includes("--append-system-prompt"));
       assert(!command.args.some((arg) => arg.includes("secret-jira")));
       assert.equal(
         command.args[command.args.indexOf("--permission-mode") + 1],
-        "dontAsk",
+        "default",
       );
       const input = JSON.parse(command.input ?? "{}");
       assert.deepEqual(input.previousConversation, [
@@ -439,4 +444,62 @@ test("서비스 종료는 진행 중인 Claude 로그인 확인도 취소한다"
   const state = await pending;
   assert.equal(signal?.aborted, true);
   assert.equal(state.ready, false);
+});
+
+test("Claude 권한 콜백은 사용자가 승인할 때까지 대기하고 영구 권한을 추가하지 않는다", async () => {
+  const jira = service();
+  let resolveApproval:
+    | ((result: { approved: boolean; values: Record<string, never> }) => void)
+    | undefined;
+  let notified: () => void = () => {};
+  const ready = new Promise<void>((resolve) => {
+    notified = resolve;
+  });
+  const assistant = createClaudeAssistant(
+    () => jira,
+    "test",
+    async (command) => {
+      const config = JSON.parse(
+        command.args[command.args.indexOf("--mcp-config") + 1] ?? "{}",
+      ).mcpServers.fast_jira;
+      let completed = false;
+      const reply = rpc(config.url, config.headers, "tools/call", {
+        name: "fast_jira_confirm",
+        arguments: {
+          tool_name: "Write",
+          input: { file_path: "/tmp/target.txt", content: "changed" },
+        },
+      })
+        .then((r) => r.json())
+        .then((r) => {
+          completed = true;
+          return r;
+        });
+      await ready;
+      assert.equal(completed, false);
+      resolveApproval?.({ approved: true, values: {} });
+      const answer = await reply;
+      const value = JSON.parse(answer.result.content[0].text);
+      assert.deepEqual(value, {
+        behavior: "allow",
+        updatedInput: { file_path: "/tmp/target.txt", content: "changed" },
+        updatedPermissions: [],
+      });
+      return { is_error: false, result: "확인 완료" };
+    },
+  );
+  try {
+    await assistant.run(
+      { prompt: "파일 변경", context, model: "claude:default", history: [] },
+      undefined,
+      (request) =>
+        new Promise((resolve) => {
+          assert.match(request.details, /target.txt/);
+          resolveApproval = resolve;
+          notified();
+        }),
+    );
+  } finally {
+    assistant.dispose();
+  }
 });

@@ -54,6 +54,10 @@ const updates: string[] = [];
 let holdChange = false,
   releaseChange: (() => void) | undefined;
 let conversation = "";
+let approvalToken = "",
+  pendingApproval = false,
+  holdApproval = false;
+let releaseApproval: (() => void) | undefined;
 let holdAnswer = false,
   releaseAnswer: (() => void) | undefined,
   unread = false;
@@ -152,7 +156,35 @@ const api = createApi(async (input, init) => {
         { id: "claude", ready: true, error: "" },
       ],
     });
+  if (path.pathname === "/api/assistant/approvals")
+    return Response.json(
+      pendingApproval && path.searchParams.get("requestId") === approvalToken
+        ? [
+            {
+              id: "approval",
+              title: "Slack 메시지 보내기",
+              description:
+                "이번 요청에 한해 실행합니다. 대상과 내용을 확인하세요.",
+              details:
+                "채널: 모의 프로젝트\n메시지: 진행 상황 확인 요청\n실제로 전송하지 않는 UI 검사입니다.",
+              fields: [],
+            },
+          ]
+        : [],
+    );
+  if (path.pathname === "/api/assistant/approve") {
+    pendingApproval = false;
+    releaseApproval?.();
+    return Response.json({});
+  }
   if (path.pathname === "/api/assistant/run") {
+    if (holdApproval) {
+      approvalToken = JSON.parse(String(init?.body)).requestId;
+      pendingApproval = true;
+      await new Promise<void>((resolve) => {
+        releaseApproval = resolve;
+      });
+    }
     prompt = JSON.parse(String(init?.body)).prompt;
     conversation = JSON.parse(String(init?.body)).conversationId;
     if (holdAnswer)
@@ -867,6 +899,37 @@ await check("검색과 AI 대화의 여백도 공통 밀도를 따른다", async
     "AI 대화와 입력창 여백이 공통 밀도를 따르지 않음",
   );
 });
+await check(
+  "연결 도구 승인은 대화 안에 표시하고 거절 후에도 완료 상태를 유지한다",
+  async () => {
+    palette.open("ai");
+    holdApproval = true;
+    input().value = "모의 Slack 작업";
+    dialog().querySelector("form")?.requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    assert(
+      dialog().querySelector(".assistant-approval"),
+      "대화 안 승인 카드 누락",
+    );
+    assert(pendingApproval, "확인 전 실행 금지");
+    const deny = [
+      ...dialog().querySelectorAll<HTMLButtonElement>(
+        ".assistant-approval button",
+      ),
+    ].find((b) => b.textContent?.includes("거절"));
+    deny?.click();
+    await tick();
+    holdApproval = false;
+    assert(
+      !dialog().querySelector(".assistant-approval"),
+      "완료된 승인 카드 잔존",
+    );
+    assert(
+      !dialog().textContent?.includes("생각하고 있어요"),
+      "응답 후 생각 중 상태 잔존",
+    );
+  },
+);
 await check("destroy는 단축키와 명령창을 해제한다", async () => {
   palette.destroy();
   notice.destroy();
@@ -908,6 +971,7 @@ const show = element("button", "", "검사 창 열기");
 show.addEventListener("click", () => preview.open("ai"));
 host.append(show);
 if (new URLSearchParams(location.search).has("preview")) {
+  holdApproval = new URLSearchParams(location.search).has("approval");
   preview.open("ai");
   await tick();
   input().value = "내가 맡은 진행 중 작업을 모의 사용자에게 넘겨줘";

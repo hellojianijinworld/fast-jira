@@ -28,6 +28,7 @@ import {
   conversationContext,
 } from "../domain/conversation.ts";
 import type { Issue } from "../domain/issue.ts";
+import { createAssistantApprovalPanel } from "./assistant-approvals.ts";
 import { chatMessage } from "./chat-message.ts";
 import { createChatSidebar } from "./chat-sidebar.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
@@ -53,6 +54,8 @@ export function createCommandPalette(config: {
     | "lookup"
     | "assistantStatus"
     | "assistantRun"
+    | "assistantApprovals"
+    | "approveAssistant"
     | "bulkOptions"
     | "bulkUpdate"
     | "bulkUndo"
@@ -160,7 +163,11 @@ export function createCommandPalette(config: {
   });
   welcome.append(
     element("h3", "", "어떤 작업을 도와드릴까요?"),
-    element("p", "", "이슈를 찾거나 변경할 내용을 이야기해 주세요."),
+    element(
+      "p",
+      "",
+      "연결된 업무 자료와 코드를 찾거나 변경할 내용을 이야기해 주세요.",
+    ),
   );
   transcript.append(welcome, aiResults, status);
   transcript.setAttribute("aria-label", "대화 내용");
@@ -276,6 +283,15 @@ export function createCommandPalette(config: {
         subscribe: subscribeVoice,
         ...voiceCallbacks,
       });
+  const approvalPanel = createAssistantApprovalPanel(config.api, (waiting) => {
+    if (!alive) return;
+    if (waiting) {
+      status.textContent = "작업 내용을 확인하고 승인하거나 거절해 주세요.";
+      if (!dialog.open) config.unread?.(true);
+      else scrollConversation();
+    } else if (busy) status.textContent = "생각하고 있어요…";
+  });
+  transcript.insertBefore(approvalPanel.element, status);
   function hintText() {
     return "Enter 보내기 · Shift+Enter 줄바꿈 · 변경은 확인 후 적용";
   }
@@ -611,6 +627,10 @@ export function createCommandPalette(config: {
     scrollConversation();
     input.value = "";
     status.textContent = "생각하고 있어요…";
+    const requestId = [...crypto.getRandomValues(new Uint8Array(16))]
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+    const stopApprovals = approvalPanel.start(requestId, controller.signal);
     try {
       const reply = await config.api.assistantRun(
         prompt,
@@ -619,6 +639,7 @@ export function createCommandPalette(config: {
         selectedModel,
         controller.signal,
         history,
+        requestId,
       );
       if (!alive || controller.signal.aborted) return;
       conversationId = active.conversationId = reply.conversationId;
@@ -679,6 +700,7 @@ export function createCommandPalette(config: {
       if (request === controller) {
         request = undefined;
         busy = false;
+        stopApprovals();
         if (alive) {
           sync();
           if (dialog.open) input.focus();
@@ -844,6 +866,7 @@ export function createCommandPalette(config: {
       alive = false;
       request?.abort();
       voice.destroy();
+      approvalPanel.destroy();
       window.removeEventListener("keydown", shortcut, true);
       searchDialog.destroy();
       pickerDialog.close();

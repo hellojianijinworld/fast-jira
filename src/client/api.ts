@@ -1,3 +1,4 @@
+import type { JsonValue } from "../domain/adf.ts";
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import { type AppRelease, decodeUpdateStatus } from "../domain/app-update.ts";
 import {
@@ -5,6 +6,7 @@ import {
   assistantReply,
   assistantStatus,
 } from "../domain/assistant.ts";
+import { decodeApprovals } from "../domain/assistant-approval.ts";
 import type { BulkField } from "../domain/bulk.ts";
 import type { ConnectionSettings, Credentials } from "../domain/connection.ts";
 import { createMetadata, type IssueDraft } from "../domain/create-issue.ts";
@@ -107,6 +109,23 @@ export function createApi(fetcher: typeof fetch = fetch) {
         body: JSON.stringify({ id }),
       }),
     assistantStatus: () => request("/api/assistant/status", assistantStatus),
+    assistantApprovals: (requestId: string, signal?: AbortSignal) =>
+      request(
+        `/api/assistant/approvals?${new URLSearchParams({ requestId })}`,
+        decodeApprovals,
+        signal ? { signal } : {},
+      ),
+    approveAssistant: (
+      requestId: string,
+      id: string,
+      approved: boolean,
+      values: Record<string, JsonValue>,
+    ) =>
+      request("/api/assistant/approve", record, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, id, approved, values }),
+      }),
     assistantRun: (
       prompt: string,
       context: AssistantContext,
@@ -114,6 +133,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
       model: string,
       signal: AbortSignal,
       history: import("../domain/conversation.ts").ChatMessage[] = [],
+      requestId?: string,
     ) =>
       request("/api/assistant/run", assistantReply, {
         method: "POST",
@@ -124,6 +144,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
           conversationId,
           model,
           history,
+          ...(requestId ? { requestId } : {}),
         }),
         signal,
       }),

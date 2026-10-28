@@ -5,6 +5,7 @@ import type {
   AssistantReply,
   AssistantStatus,
 } from "../domain/assistant.ts";
+import type { ApprovalHandler } from "../domain/assistant-approval.ts";
 import type { ChatMessage } from "../domain/conversation.ts";
 import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { record } from "../domain/validation.ts";
@@ -24,7 +25,11 @@ export interface ClaudeRequest {
 }
 export interface ClaudeAssistant {
   status(): Promise<AssistantStatus>;
-  run(input: ClaudeRequest, signal?: AbortSignal): Promise<AssistantReply>;
+  run(
+    input: ClaudeRequest,
+    signal?: AbortSignal,
+    approve?: ApprovalHandler,
+  ): Promise<AssistantReply>;
   dispose(): void;
 }
 export function createClaudeAssistant(
@@ -76,7 +81,7 @@ export function createClaudeAssistant(
         active.delete(controller);
       }
     },
-    async run(input, signal) {
+    async run(input, signal, approve) {
       if (disposed) throw new Error("AI 연결이 종료됐어요.");
       const model = input.model.slice("claude:".length);
       if (
@@ -97,7 +102,26 @@ export function createClaudeAssistant(
       let bridge: Awaited<ReturnType<typeof createAssistantMcp>> | undefined;
       try {
         bridge = await createAssistantMcp(
-          tools.definitions,
+          [
+            ...tools.definitions,
+            {
+              name: "fast_jira_confirm",
+              description:
+                "Host-only permission callback. Do not call this as an ordinary task tool.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  tool_name: { type: "string" },
+                  input: { type: "object" },
+                  tool_use_id: { type: "string" },
+                  permission_suggestions: { type: "array" },
+                },
+                required: ["tool_name", "input"],
+                additionalProperties: false,
+              },
+              annotations: { readOnlyHint: true, destructiveHint: false },
+            },
+          ],
           async (name, args) => {
             if (controller.signal.aborted || disposed)
               throw new Error("AI 요청이 종료됐어요.");
@@ -105,6 +129,32 @@ export function createClaudeAssistant(
               throw new Error(
                 "Jira 연결이 바뀌었어요. 새 요청으로 시작하세요.",
               );
+            if (name === "fast_jira_confirm") {
+              const request = record(args);
+              const originalInput = record(request.input);
+              const answer = await approve?.({
+                title: `${String(request.tool_name)} 실행 확인`,
+                description:
+                  "실행 대상과 내용을 확인하세요. 승인은 이번 작업에만 적용됩니다.",
+                details: JSON.stringify(
+                  { tool: request.tool_name, input: originalInput },
+                  null,
+                  2,
+                ),
+                fields: [],
+              });
+              return answer?.approved
+                ? {
+                    behavior: "allow",
+                    updatedInput: originalInput,
+                    updatedPermissions: [],
+                  }
+                : {
+                    behavior: "deny",
+                    message: "사용자가 실행을 승인하지 않았습니다.",
+                    interrupt: false,
+                  };
+            }
             const value = await tools.call(name, args);
             if (name === "jira_prepare_issue") {
               if (creations.length >= 5)
@@ -136,28 +186,23 @@ export function createClaudeAssistant(
               "json",
               "--no-session-persistence",
               "--tools",
-              "",
-              "--strict-mcp-config",
+              "default",
               "--mcp-config",
               JSON.stringify({ mcpServers: { fast_jira: bridge.config } }),
               "--allowedTools",
-              tools.definitions
-                .map((tool) => `mcp__fast_jira__${tool.name}`)
-                .join(","),
+              [
+                ...tools.definitions.map(
+                  (tool) => `mcp__fast_jira__${tool.name}`,
+                ),
+                "mcp__fast_jira__fast_jira_confirm",
+              ].join(","),
               "--permission-mode",
-              "dontAsk",
-              "--disable-slash-commands",
-              "--setting-sources",
-              "",
-              "--settings",
-              JSON.stringify({
-                disableAllHooks: true,
-                autoMemoryEnabled: false,
-              }),
-              "--no-chrome",
+              "default",
+              "--permission-prompt-tool",
+              "mcp__fast_jira__fast_jira_confirm",
               "--max-turns",
               "20",
-              "--system-prompt",
+              "--append-system-prompt",
               instructions,
               ...(model === "default" ? [] : ["--model", model]),
             ],

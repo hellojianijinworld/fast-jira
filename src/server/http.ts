@@ -304,6 +304,17 @@ export function createHttpServer(
       }
       if (
         req.method === "GET" &&
+        url.pathname === "/api/assistant/approvals" &&
+        assistant
+      ) {
+        json(
+          res,
+          assistant.approvals.pending(url.searchParams.get("requestId")),
+        );
+        return;
+      }
+      if (
+        req.method === "GET" &&
         url.pathname === "/api/assistant/status" &&
         assistant
       ) {
@@ -434,6 +445,9 @@ export function createHttpServer(
           } finally {
             res.off("close", cancel);
           }
+        } else if (url.pathname === "/api/assistant/approve" && assistant) {
+          assistant.approvals.respond(input);
+          json(res, {});
         } else if (url.pathname === "/api/assistant/run" && assistant) {
           const controller = new AbortController();
           const cancel = () => {

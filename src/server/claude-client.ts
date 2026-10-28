@@ -93,7 +93,7 @@ export async function runClaudeCommand(
     const abort = () => stop(new Error("AI 요청을 취소했어요."));
     const timer = setTimeout(
       () => stop(new Error("Claude 응답 시간이 초과됐어요.")),
-      command.args[0] === "auth" ? 15_000 : 120_000,
+      command.args[0] === "auth" ? 15_000 : 600_000,
     );
     child.stderr.resume();
     child.on("error", () =>

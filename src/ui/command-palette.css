@@ -574,3 +574,37 @@
   background: var(--blue-soft);
   border-radius: var(--radius-2);
 }
+
+.assistant-approval {
+  display: grid;
+  gap: var(--density-space-3);
+  margin-block: var(--density-space-3);
+  padding: var(--density-space-4);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.assistant-approval h3,
+.assistant-approval p {
+  margin: 0;
+}
+.assistant-approval h3 {
+  font-size: var(--font-size-14);
+}
+.assistant-approval pre {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-12);
+}
+.assistant-approval-field {
+  display: grid;
+  gap: var(--density-space-1-5);
+}
+.assistant-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--density-space-2);
+}

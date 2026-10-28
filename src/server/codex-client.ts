@@ -9,7 +9,7 @@ export type CodexMessage = Record<string, unknown>;
 export interface CodexClient {
   request(method: string, params: unknown): Promise<unknown>;
   respond(id: string | number, result: unknown): void;
-  listen(listener: (message: CodexMessage) => void): () => void;
+  listen(listener: (message: CodexMessage) => boolean | undefined): () => void;
   close(): void;
 }
 export async function findCodex(): Promise<string> {
@@ -53,12 +53,8 @@ export async function startCodex(
     : spawn(
         options.binary ?? (await findCodex()),
         [
-          "--disable",
-          "shell_tool",
-          "--disable",
+          "--enable",
           "apps",
-          "-c",
-          'web_search="disabled"',
           ...(options.chatgpt ? ["-c", 'forced_login_method="chatgpt"'] : []),
           "app-server",
           "--stdio",
@@ -66,7 +62,7 @@ export async function startCodex(
         { cwd, env, stdio: "pipe" },
       );
   child.stderr.resume();
-  const listeners = new Set<(message: CodexMessage) => void>();
+  const listeners = new Set<(message: CodexMessage) => boolean | undefined>();
   const pending = new Map<
     number,
     {
@@ -127,7 +123,21 @@ export async function startCodex(
       else item.resolve(message.result);
       return;
     }
-    for (const listener of listeners) listener(message);
+    let handled = false;
+    for (const listener of listeners)
+      if (listener(message) === true) handled = true;
+    if (
+      message.method &&
+      (typeof message.id === "string" || typeof message.id === "number") &&
+      !handled
+    )
+      send({
+        id: message.id,
+        error: {
+          code: -32601,
+          message: "No active Fast Jira handler for this request.",
+        },
+      });
   });
   const client: CodexClient = {
     request(method, params) {
@@ -169,33 +179,9 @@ export async function startCodex(
     client.close();
     throw error;
   }
-  // 모델이 요청한 파일·셸·다른 앱 권한을 웹 UI의 Jira 권한으로 오인하지 않는다.
-  client.listen((message) => {
-    if (
-      message.id !== undefined &&
-      typeof message.method === "string" &&
-      message.method !== "item/tool/call"
-    ) {
-      if (typeof message.id === "number" || typeof message.id === "string") {
-        try {
-          send({
-            id: message.id,
-            error: {
-              code: -32601,
-              message:
-                "Fast Jira only supports its registered Jira tools; other tool and approval requests are unavailable.",
-            },
-          });
-        } catch {
-          /* 연결 종료 시 응답은 생략한다. */
-        }
-      }
-    }
-  });
   return client;
 }
-
-/** 비활성 MCP에도 유효한 transport가 필요하다. 세션 설정에만 적용한다. */
+/** 음성 전사 세션은 작업 실행 대화와 분리한다. 일반 AI 대화에는 사용하지 않는다. */
 export async function codexToolIsolation(native: CodexClient) {
   const servers: Record<string, { enabled: false; command: string }> = {};
   let cursor: string | null = null;
