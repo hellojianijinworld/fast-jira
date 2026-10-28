@@ -1808,3 +1808,10 @@ dialog::backdrop {
   margin: 0;
   color: var(--muted);
 }
+
+.help-links {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--density-space-3);
+  border-top: 1px solid var(--border);
+}

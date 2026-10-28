@@ -1,5 +1,5 @@
 import { shortcutLabel } from "../domain/commands.ts";
-import { element, uiIcon } from "./dom.ts";
+import { element, externalLink, uiIcon } from "./dom.ts";
 
 export function helpContent(): DocumentFragment {
   const content = document.createDocumentFragment();
@@ -46,6 +46,14 @@ export function helpContent(): DocumentFragment {
   ])
     list.append(element("dt", "", name), element("dd", "", keys));
   shortcuts.append(list);
-  content.append(intro, features, privacy, shortcuts);
+  const links = element("footer", "help-links");
+  const github = externalLink(
+    "https://github.com/hellojianijinworld/fast-jira",
+    "",
+    "button-link outline",
+  );
+  github.append(uiIcon("external-link"), document.createTextNode("GitHub"));
+  links.append(github);
+  content.append(intro, features, privacy, shortcuts, links);
   return content;
 }
