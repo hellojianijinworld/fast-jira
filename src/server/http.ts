@@ -450,14 +450,44 @@ export function createHttpServer(
           json(res, {});
         } else if (url.pathname === "/api/assistant/run" && assistant) {
           const controller = new AbortController();
+          const started = Date.now();
+          const trace = {
+            requestId:
+              typeof input.requestId === "string" &&
+              /^[a-f0-9]{32}$/.test(input.requestId)
+                ? input.requestId
+                : undefined,
+            pid: process.pid,
+            startedAt: new Date(started).toISOString(),
+          };
+          let outcome = "failed";
+          console.info(
+            "Fast Jira AI",
+            JSON.stringify({ ...trace, event: "started" }),
+          );
           const cancel = () => {
-            if (!res.writableEnded) controller.abort();
+            if (!res.writableEnded) {
+              outcome = "connection-closed";
+              controller.abort();
+            }
           };
           res.once("close", cancel);
           try {
-            json(res, await assistant.run(input, controller.signal));
+            const reply = await assistant.run(input, controller.signal);
+            if (!res.destroyed) {
+              json(res, reply);
+              outcome = "completed";
+            }
           } finally {
             res.off("close", cancel);
+            console.info(
+              "Fast Jira AI",
+              JSON.stringify({
+                ...trace,
+                event: outcome,
+                elapsedMs: Date.now() - started,
+              }),
+            );
           }
         } else json(res, await writeData(url.pathname, input));
         return;
@@ -495,6 +525,7 @@ export function createHttpServer(
       }
       throw new JiraError("경로를 찾지 못했습니다.", 404);
     } catch (error) {
+      if (res.destroyed) return;
       if (res.headersSent) {
         res.end();
         return;

@@ -134,8 +134,9 @@ export function createApi(fetcher: typeof fetch = fetch) {
       signal: AbortSignal,
       history: import("../domain/conversation.ts").ChatMessage[] = [],
       requestId?: string,
-    ) =>
-      request("/api/assistant/run", assistantReply, {
+    ) => {
+      const started = Date.now();
+      return request("/api/assistant/run", assistantReply, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -147,7 +148,15 @@ export function createApi(fetcher: typeof fetch = fetch) {
           ...(requestId ? { requestId } : {}),
         }),
         signal,
-      }),
+      }).catch((error) => {
+        if (error instanceof TypeError && !signal.aborted)
+          throw new ApiError(
+            `로컬 서버와 연결이 끊어졌어요 (${Math.round((Date.now() - started) / 1000)}초 대기). 변경이 저장됐을 수 있으니 Jira의 실제 내역을 확인한 뒤 다시 요청해 주세요.`,
+            0,
+          );
+        throw error;
+      });
+    },
     activity: (projects: readonly string[]) =>
       request(
         `/api/activity?${new URLSearchParams({ projects: projects.join(",") })}`,

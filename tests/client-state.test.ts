@@ -815,3 +815,60 @@ test("최근 선택한 사람은 계정·사이트별로 중복 없이 순서를
   );
   assert.deepEqual(reopened.people.recent(), []);
 });
+
+test("AI 연결 실패는 대기 시간과 저장 여부 확인을 안내하고 자동 재실행하지 않는다", async () => {
+  let calls = 0;
+  const api = createApi(async () => {
+    calls++;
+    throw new TypeError("Failed to fetch");
+  });
+  await assert.rejects(
+    api.assistantRun(
+      "변경 요청",
+      { projects: [], issue: "", keys: [] },
+      "",
+      "model",
+      new AbortController().signal,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 0);
+      assert.match(error.message, /초 대기/);
+      assert.match(error.message, /변경이 저장됐을 수/);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+  const denied = createApi(async () =>
+    Response.json({ error: "권한 없음" }, { status: 403 }),
+  );
+  await assert.rejects(
+    denied.assistantRun(
+      "요청",
+      { projects: [], issue: "", keys: [] },
+      "",
+      "model",
+      new AbortController().signal,
+    ),
+    (error: unknown) =>
+      error instanceof ApiError &&
+      error.status === 403 &&
+      error.message === "권한 없음",
+  );
+  const controller = new AbortController();
+  controller.abort();
+  const cancelled = new DOMException("취소", "AbortError");
+  const aborting = createApi(async () => {
+    throw cancelled;
+  });
+  await assert.rejects(
+    aborting.assistantRun(
+      "요청",
+      { projects: [], issue: "", keys: [] },
+      "",
+      "model",
+      controller.signal,
+    ),
+    (error: unknown) => error === cancelled,
+  );
+});

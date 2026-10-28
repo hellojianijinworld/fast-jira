@@ -296,7 +296,11 @@ test("stdio는 요청 ID로 응답을 연결하고 프로세스 종료 시 대�
     client.close();
   }
 });
-test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다", async () => {
+test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다", async (t) => {
+  const entries: string[] = [];
+  t.mock.method(console, "info", (...args: unknown[]) =>
+    entries.push(args.join(" ")),
+  );
   const f = fixture();
   const server = createHttpServer(f.service, undefined, undefined, f.assistant);
   server.listen(0, "127.0.0.1");
@@ -333,6 +337,11 @@ test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다"
     for (let i = 0; i < 30 && !f.closed; i++)
       await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(f.closed, true);
+    assert.equal(entries.length, 2);
+    assert.match(entries[0] ?? "", /"event":"started"/);
+    assert.match(entries[1] ?? "", /"event":"connection-closed"/);
+    assert.match(entries[1] ?? "", /"elapsedMs":\d+/);
+    assert(!entries.join(" ").includes("조회"), "대화 내용이 로그에 포함됨");
   } finally {
     f.assistant.dispose();
     server.closeAllConnections();
