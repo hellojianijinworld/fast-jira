@@ -16,12 +16,17 @@ const question = (id: string): AssistantApproval => ({
   ],
 });
 let pending = [question("one"), question("two")],
-  waiting = false;
+  waiting = false,
+  rejectNext = false;
 const answers: { id: string; approved: boolean; values: unknown }[] = [];
 const panel = createAssistantApprovalPanel(
   {
     assistantApprovals: async () => pending,
     approveAssistant: async (_run, id, approved, values) => {
+      if (rejectNext) {
+        rejectNext = false;
+        throw new Error("모의 전송 실패");
+      }
       answers.push({ id, approved, values });
       pending = pending.filter((item) => item.id !== id);
       return {};
@@ -80,14 +85,19 @@ await check(
   },
 );
 await check("진행을 고르면 실행 승인하고 다음 질문을 표시한다", async () => {
+  assert(
+    panel.element.querySelector<HTMLElement>(".assistant-approval-actions")
+      ?.hidden,
+    "단순 확인에 제출 버튼이 남음",
+  );
   choose("allow");
-  submit();
   await tick();
   assert(answers[0]?.approved === true, "진행");
   assert(panel.element.textContent?.includes("요청 two"), "다음 질문");
 });
 await check("다른 의견은 실행 승인 없이 모델에 전달한다", async () => {
   choose("other");
+  assert(answers.length === 1, "의견 입력 전에 자동 전송됨");
   const note = panel.element.querySelector("textarea");
   assert(note && !note.closest("label")?.hidden, "의견 입력");
   if (note) {
@@ -109,7 +119,6 @@ await check("건너뛰기와 요청 취소는 실행하지 않는다", async () 
   panel.start("b".repeat(32), abort.signal);
   await tick();
   choose("deny");
-  submit();
   await tick();
   assert(answers[2]?.approved === false, "건너뛰기");
   pending = [question("four")];
@@ -119,5 +128,60 @@ await check("건너뛰기와 요청 취소는 실행하지 않는다", async () 
   assert(!panel.element.childElementCount, "취소 정리");
   assert(answers.length === 3, "취소 자동 승인 금지");
 });
+await check(
+  "즉시 전송 실패는 다시 보내기를 표시하고 자동 재승인하지 않는다",
+  async () => {
+    pending = [question("retry")];
+    const signal = new AbortController();
+    panel.start("d".repeat(32), signal.signal);
+    await tick();
+    rejectNext = true;
+    choose("allow");
+    await tick();
+    assert(answers.length === 3, "실패한 승인을 자동 재전송함");
+    assert(
+      !panel.element.querySelector<HTMLElement>(".assistant-approval-actions")
+        ?.hidden,
+      "실패 후 재전송 경로가 없음",
+    );
+    submit();
+    await tick();
+    assert(
+      answers.length === 4 && answers[3]?.id === "retry",
+      "명시적 재전송 실패",
+    );
+    signal.abort();
+  },
+);
+await check(
+  "추가 필수 입력이 있는 확인은 내용을 입력한 후 전송한다",
+  async () => {
+    pending = [
+      {
+        ...question("required"),
+        fields: [
+          { key: "target", label: "대상", type: "text", required: true },
+        ],
+      },
+    ];
+    const signal = new AbortController();
+    panel.start("e".repeat(32), signal.signal);
+    await tick();
+    choose("allow");
+    await tick();
+    assert(answers.length === 4, "필수 값 없이 승인됨");
+    const target = panel.element.querySelector<HTMLInputElement>(
+      '[aria-label="대상"]',
+    );
+    if (!target) throw Error("대상 입력 누락");
+    target.value = "검사 대상";
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    assert(answers.length === 4, "입력 도중 전송됨");
+    submit();
+    await tick();
+    assert(answers.length === 5, "필수 입력 확인 전송 실패");
+    signal.abort();
+  },
+);
 panel.destroy();
 document.title = failures ? `실패 ${failures}개` : "검사 통과";

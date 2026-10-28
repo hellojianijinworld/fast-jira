@@ -106,7 +106,8 @@ export function createAssistantApprovalPanel(
       send.disabled = true;
       actions.append(send);
       form.append(choices, noteLabel, error, actions);
-      let submitting = false;
+      let submitting = false,
+        failed = false;
       function refresh() {
         const choice = [...radios].find(([, radio]) => radio.checked)?.[0];
         const focusNote = choice === "other" && noteLabel.hidden;
@@ -122,13 +123,23 @@ export function createAssistantApprovalPanel(
         }
         send.disabled =
           submitting || !choice || (choice === "other" && !note.value.trim());
+        actions.hidden = !failed && choice !== "other" && inputs.size === 0;
         if (focusNote)
           requestAnimationFrame(() => {
             note.focus();
             send.scrollIntoView({ block: "nearest" });
           });
       }
-      form.addEventListener("input", refresh);
+      form.addEventListener("input", (event) => {
+        refresh();
+        if (
+          event.target instanceof HTMLInputElement &&
+          event.target.type === "radio" &&
+          event.target.value !== "other" &&
+          form.checkValidity()
+        )
+          form.requestSubmit();
+      });
       refresh();
       form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -157,6 +168,8 @@ export function createAssistantApprovalPanel(
             if (radios.get("other")?.checked)
               values.feedback = note.value.trim();
             submitting = true;
+            failed = false;
+            error.textContent = "";
             send.disabled = true;
             for (const radio of radios.values()) radio.disabled = true;
             note.disabled = true;
@@ -175,6 +188,7 @@ export function createAssistantApprovalPanel(
                   ? reason.message
                   : "답변을 전달하지 못했어요.";
               submitting = false;
+              failed = true;
               for (const radio of radios.values()) radio.disabled = false;
               note.disabled = false;
               refresh();

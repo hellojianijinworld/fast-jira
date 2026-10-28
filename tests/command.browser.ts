@@ -657,9 +657,35 @@ await check(
   "질문 후 닫아도 답변을 저장하고 새 화면의 대화 기록에서 복원·삭제한다",
   async () => {
     holdAnswer = true;
-    input().value = "닫은 뒤에도 받을 답변";
+    input().value = `닫은 뒤에도 받을 답변\n${"긴 요청 내용을 확인해 주세요.\n".repeat(60)}`;
     dialog().querySelector("form")?.requestSubmit();
     await tick();
+    const transcript = dialog().querySelector<HTMLElement>(".chat-transcript");
+    const thinking = dialog().querySelector<HTMLElement>(
+      ".command-results > .chat-pending",
+    );
+    assert(
+      transcript && thinking,
+      "생각 중 상태가 대화 메시지로 표시되지 않음",
+    );
+    if (transcript && thinking) {
+      assert(
+        transcript.scrollHeight > transcript.clientHeight,
+        "긴 대화 스크롤 재현 실패",
+      );
+      assert(
+        transcript.scrollHeight -
+          transcript.scrollTop -
+          transcript.clientHeight <
+          2,
+        "생각 중 메시지까지 스크롤되지 않음",
+      );
+      assert(
+        thinking.getBoundingClientRect().bottom <=
+          transcript.getBoundingClientRect().bottom,
+        "생각 중 메시지가 입력창 아래 가려짐",
+      );
+    }
     dialog().close();
     await tick();
     holdAnswer = false;
@@ -818,6 +844,49 @@ await check(
   },
 );
 await check(
+  "Jira 마크다운·주소 링크는 이슈 번호만 표시하고 내부 상세로 이동한다",
+  async () => {
+    let opened = "";
+    const row = chatMessage(
+      "assistant",
+      "[AA-17](https://fixture.atlassian.net/browse/AA-17)을 생성했습니다.\nhttps://fixture.atlassian.net/browse/AA-18\n[참고](https://example.com/reference)\n[위험](javascript:alert(1))\n**[AA-19](https://fixture.atlassian.net/browse/AA-19)**",
+      "검사 모델",
+      {
+        site: "fixture.atlassian.net",
+        select: (key) => {
+          opened = key;
+        },
+      },
+    );
+    const links = [...row.querySelectorAll<HTMLAnchorElement>("a")];
+    assert(links.length === 4, "링크 파싱 실패 또는 위험 링크 생성");
+    assert(
+      links[0]?.textContent === "AA-17" &&
+        links[0]?.getAttribute("href") === "?issue=AA-17",
+      "마크다운 Jira 링크가 외부 주소로 표시됨",
+    );
+    assert(
+      links[1]?.textContent === "AA-18" && !links[1]?.target,
+      "Jira 주소가 이슈 번호로 축약되지 않음",
+    );
+    assert(
+      links[2]?.textContent === "참고" &&
+        links[2]?.href === "https://example.com/reference",
+      "일반 외부 링크 손상",
+    );
+    assert(
+      links[3]?.textContent === "AA-19" && links[3]?.closest("strong"),
+      "강조 안의 Jira 링크가 변환되지 않음",
+    );
+    links[0]?.click();
+    assert(opened === "AA-17", "내부 상세 콜백 누락");
+    assert(
+      !row.textContent?.includes("fixture.atlassian.net"),
+      "Jira 원문 주소가 노출됨",
+    );
+  },
+);
+await check(
   "공통 카드 sm은 정보를 유지하고 태블릿 이하의 기본 카드에도 같은 크기를 적용한다",
   async () => {
     const value = {
@@ -935,9 +1004,6 @@ await check(
       deny.checked = true;
       deny.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    dialog()
-      .querySelector<HTMLFormElement>(".assistant-approval")
-      ?.requestSubmit();
     await tick();
     holdApproval = false;
     approvalAccepted = false;
@@ -968,9 +1034,6 @@ await check(
       approve.checked = true;
       approve.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    dialog()
-      .querySelector<HTMLFormElement>(".assistant-approval")
-      ?.requestSubmit();
     await tick();
     holdApproval = false;
     assert(updates.length === before + 1, "변경한 이슈 갱신 누락");
@@ -1127,6 +1190,7 @@ const show = element("button", "", "검사 창 열기");
 show.addEventListener("click", () => preview.open("ai"));
 host.append(show);
 if (new URLSearchParams(location.search).has("preview")) {
+  holdAnswer = new URLSearchParams(location.search).has("thinking");
   holdApproval = new URLSearchParams(location.search).has("approval");
   preview.open("ai");
   await tick();

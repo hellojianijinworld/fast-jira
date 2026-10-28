@@ -1,9 +1,11 @@
+import { parseIssueKey } from "../domain/validation.ts";
 import { element, externalLink, safeHref, uiIcon } from "./dom.ts";
 /** AI 본문은 HTML을 실행하지 않는다. 대화와 복원 기록에 같은 표시를 사용한다. */
 export function chatMessage(
   role: "user" | "assistant",
   text: string,
   model = "",
+  navigation?: { site: string; select(key: string): void },
 ) {
   const row = element("article", `chat-message chat-message-${role}`),
     author = element("div", "chat-author", role === "user" ? "나" : "AI"),
@@ -11,6 +13,52 @@ export function chatMessage(
   if (role === "assistant") {
     author.prepend(uiIcon("sparkles"));
     if (model) author.append(element("small", "", model));
+  }
+  function link(url: string, label: string) {
+    if (navigation) {
+      let key = "";
+      try {
+        key = parseIssueKey(url, navigation.site);
+      } catch {
+        /* 외부 링크는 원래 주소로 연다. */
+      }
+      if (key) {
+        const anchor = element("a", "chat-issue-link", key);
+        anchor.href = `?issue=${encodeURIComponent(key)}`;
+        anchor.addEventListener("click", (event) => {
+          if (
+            event.button ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+          )
+            return;
+          event.preventDefault();
+          navigation.select(key);
+        });
+        return anchor;
+      }
+    }
+    return externalLink(url, label);
+  }
+  function inline(block: HTMLElement, value: string) {
+    for (const part of value.split(
+      /(\[[^\]\n]+\]\(https?:\/\/[^\s<>)]+\)|\*\*[^*]+\*\*|`[^`]+`|https?:\/\/[^\s<>()]+)/g,
+    )) {
+      const markdown = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s<>)]+)\)$/);
+      if (markdown?.[1] && markdown[2] && safeHref(markdown[2]))
+        block.append(link(markdown[2], markdown[1]));
+      else if (part.startsWith("**") && part.endsWith("**")) {
+        const strong = element("strong");
+        inline(strong, part.slice(2, -2));
+        block.append(strong);
+      } else if (part.startsWith("`") && part.endsWith("`"))
+        block.append(element("code", "", part.slice(1, -1)));
+      else if (/^https?:\/\//.test(part) && safeHref(part))
+        block.append(link(part, part));
+      else block.append(document.createTextNode(part));
+    }
   }
   if (role === "user") body.textContent = text;
   else {
@@ -37,17 +85,7 @@ export function chatMessage(
         body.append(block);
         continue;
       }
-      for (const part of value.split(
-        /(\*\*[^*]+\*\*|`[^`]+`|https?:\/\/[^\s<>]+)/g,
-      )) {
-        if (part.startsWith("**") && part.endsWith("**"))
-          block.append(element("strong", "", part.slice(2, -2)));
-        else if (part.startsWith("`") && part.endsWith("`"))
-          block.append(element("code", "", part.slice(1, -1)));
-        else if (/^https?:\/\//.test(part) && safeHref(part))
-          block.append(externalLink(part, part));
-        else block.append(document.createTextNode(part));
-      }
+      inline(block, value);
       body.append(block);
     }
   }

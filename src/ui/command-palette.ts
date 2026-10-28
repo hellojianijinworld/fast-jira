@@ -366,12 +366,15 @@ export function createCommandPalette(config: {
     if (!alive) return;
     awaitingApproval = waiting;
     dialog.classList.toggle("awaiting-approval", waiting);
-    status.classList.toggle("chat-thinking", busy && !waiting);
     if (waiting) {
+      hideThinking();
       status.textContent = "";
       if (!dialog.open) config.unread?.(true);
       else scrollConversation();
-    } else if (busy) status.textContent = "생각하고 있어요…";
+    } else if (busy) {
+      showThinking();
+      if (dialog.open) scrollConversation();
+    }
   });
   transcript.insertBefore(approvalPanel.element, status);
   function hintText() {
@@ -401,7 +404,6 @@ export function createCommandPalette(config: {
         : "Codex 로그인으로 음성 입력";
     form.setAttribute("aria-busy", String(busy));
     welcome.hidden = aiResults.childElementCount > 0;
-    status.classList.toggle("chat-thinking", busy && !awaitingApproval);
     provider.dataset.state = ready
       ? "ready"
       : loadingModels
@@ -621,7 +623,7 @@ export function createCommandPalette(config: {
   function renderConversation() {
     aiResults.replaceChildren(
       ...(current?.messages ?? []).map((message) =>
-        chatMessage(
+        renderMessage(
           message.role,
           message.text,
           message.model ?? current?.model ?? selectedModel,
@@ -682,6 +684,34 @@ export function createCommandPalette(config: {
       table,
     );
   }
+  function renderMessage(role: "user" | "assistant", text: string, model = "") {
+    return chatMessage(role, text, model, {
+      site: config.site,
+      select: (key) => {
+        dialog.close();
+        config.select(key);
+      },
+    });
+  }
+  let thinkingMessage: HTMLElement | undefined;
+  function hideThinking() {
+    thinkingMessage?.remove();
+    thinkingMessage = undefined;
+  }
+  function showThinking() {
+    if (thinkingMessage || !busy || awaitingApproval) return;
+    thinkingMessage = renderMessage(
+      "assistant",
+      "생각하고 있어요…",
+      selectedModel,
+    );
+    thinkingMessage.classList.add("chat-pending");
+    thinkingMessage.setAttribute("role", "status");
+    thinkingMessage
+      .querySelector(".command-answer p")
+      ?.classList.add("chat-thinking");
+    aiResults.append(thinkingMessage);
+  }
   function scrollConversation() {
     transcript.scrollTop = transcript.scrollHeight;
   }
@@ -710,13 +740,14 @@ export function createCommandPalette(config: {
       history = conversationContext(active.messages);
     active.messages.push({ role: "user", text: prompt });
     busy = true;
-    saveConversation();
     request = new AbortController();
     const controller = request;
-    aiResults.append(chatMessage("user", prompt));
-    scrollConversation();
+    aiResults.append(renderMessage("user", prompt));
     input.value = "";
-    status.textContent = "생각하고 있어요…";
+    status.textContent = "";
+    showThinking();
+    saveConversation();
+    scrollConversation();
     const requestId = [...crypto.getRandomValues(new Uint8Array(16))]
       .map((value) => value.toString(16).padStart(2, "0"))
       .join("");
@@ -754,8 +785,9 @@ export function createCommandPalette(config: {
       const follow =
         transcript.scrollHeight - transcript.scrollTop <
         transcript.clientHeight + 80;
+      hideThinking();
       aiResults.append(
-        chatMessage("assistant", answer, selectedModel),
+        renderMessage("assistant", answer, selectedModel),
         ...reply.proposals.map(proposal),
       );
       saveConversation();
@@ -772,18 +804,24 @@ export function createCommandPalette(config: {
           role: "assistant",
           text: `요청 실패: ${message}`,
         });
+        const follow =
+          transcript.scrollHeight - transcript.scrollTop <
+          transcript.clientHeight + 80;
+        hideThinking();
         aiResults.append(
-          chatMessage("assistant", `요청 실패: ${message}`, selectedModel),
+          renderMessage("assistant", `요청 실패: ${message}`, selectedModel),
         );
         status.textContent = "";
         if (!input.value) input.value = prompt;
         saveConversation();
+        if (follow) scrollConversation();
         if (!dialog.open) config.unread?.(true);
       }
     } finally {
       if (request === controller) {
         request = undefined;
         busy = false;
+        hideThinking();
         stopApprovals();
         if (alive) {
           sync();
@@ -903,13 +941,14 @@ export function createCommandPalette(config: {
   });
   cancel.addEventListener("click", () => {
     request?.abort();
+    hideThinking();
     conversationId = "";
     status.textContent = "요청을 중지했어요.";
     if (current) {
       current.conversationId = "";
       current.messages.push({ role: "assistant", text: "요청을 중지했어요." });
       aiResults.append(
-        chatMessage("assistant", "요청을 중지했어요.", selectedModel),
+        renderMessage("assistant", "요청을 중지했어요.", selectedModel),
       );
       saveConversation();
     }
