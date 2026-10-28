@@ -1501,22 +1501,23 @@ dialog::backdrop {
   }
 }
 
-/* 프로젝트와 조건을 함께 기억하는 상단 뷰 탭. 도구 모음과 가로 스크롤을 분리한다. */
+/* 뷰는 서비스명 옆에서 가로로 스크롤하고 도구 모음의 폭을 보존한다. */
 .top-nav:has(.workspace-views) {
-  flex-wrap: wrap;
-  column-gap: var(--density-space-4);
-  row-gap: 0;
+  flex-wrap: nowrap;
+  gap: var(--density-space-3);
+  min-height: 48px;
+  padding-block: var(--density-space-1-5);
 }
 .workspace-views {
   display: flex;
   align-items: center;
   gap: var(--density-space-1-5);
-  flex: 1 0 100%;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 96px;
   max-width: 100%;
-  padding-top: var(--density-space-2);
 }
 .workspace-tabs {
+  flex: 0 1 auto;
   display: flex;
   gap: var(--density-space-1-5);
   overflow-x: auto;
@@ -1529,12 +1530,13 @@ dialog::backdrop {
   text-overflow: ellipsis;
   white-space: nowrap;
   border: 0;
-  border-radius: var(--radius-control) var(--radius-control) 0 0;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
-  padding: var(--density-space-2) var(--density-space-3);
+  padding: 4px 8px;
+  height: 30px;
   font: inherit;
+  font-size: var(--font-size-13);
   cursor: pointer;
 }
 .workspace-tab:hover {
@@ -1544,11 +1546,49 @@ dialog::backdrop {
 .workspace-tab[aria-selected="true"] {
   color: var(--blue);
   background: var(--blue-soft);
-  border-bottom-color: var(--blue);
   font-weight: var(--font-weight-semibold);
 }
 .workspace-views > button {
   flex: none;
+}
+.top-nav:has(.workspace-views) > h1,
+.top-nav:has(.workspace-views) > .nav-tools {
+  flex: none;
+}
+.workspace-tab-item {
+  display: flex;
+  align-items: center;
+  flex: none;
+  border-radius: var(--radius-control);
+}
+.workspace-tab-item:has([aria-selected="true"]) {
+  background: var(--blue-soft);
+}
+.workspace-tab-item .tool-button {
+  width: 24px;
+  min-width: 24px;
+  height: 28px;
+  padding: 3px;
+}
+.workspace-views > .tool-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 4px;
+}
+.workspace-tab-menu button {
+  width: 100%;
+  justify-content: flex-start;
+}
+@media (max-width: 600px) {
+  .top-nav:has(.workspace-views) {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .top-nav:has(.workspace-views) > .nav-tools {
+    flex: 1 0 100%;
+    justify-content: flex-end;
+  }
 }
 .settings-modal.workspace-view-modal {
   width: min(760px, calc(100vw - 24px));

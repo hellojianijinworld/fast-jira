@@ -2,13 +2,13 @@ import { createViewDraft } from "../client/view-editor-controller.ts";
 import type { ViewOptions } from "../client/view-options.ts";
 import type { ProjectOption } from "../domain/catalog.ts";
 import { applyView, initialViews, resolveView } from "../domain/views.ts";
-import {
-  activeWorkspace,
-  type WorkspaceView,
-  type WorkspaceViews,
+import type {
+  WorkspaceView,
+  WorkspaceViews,
 } from "../domain/workspace-views.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
 import { filterChecklist } from "./filter-checklist.ts";
+import { popoverPosition } from "./geometry.ts";
 import { showModal } from "./modal.ts";
 import { createViewEditor } from "./view-editor.ts";
 
@@ -26,13 +26,62 @@ export function createWorkspaceNavigation(options: {
   const root = element("nav", "workspace-views"),
     tabs = element("div", "workspace-tabs"),
     add = iconButton("뷰 만들기", "plus"),
-    edit = iconButton("현재 뷰 편집", "square-pen"),
+    menu = element("div", "select-options workspace-tab-menu"),
     dialog = element("dialog", "settings-modal workspace-view-modal");
   root.setAttribute("aria-label", "작업 뷰");
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", "작업 뷰");
-  root.append(tabs, add, edit);
-  document.body.append(dialog);
+  root.append(tabs, add);
+  menu.popover = "auto";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "뷰 메뉴");
+  document.body.append(dialog, menu);
+  let menuTarget = "",
+    menuAnchor: HTMLElement | undefined;
+  const edit = actionButton("뷰 편집", "square-pen", { size: "sm" });
+  edit.setAttribute("role", "menuitem");
+  menu.append(edit);
+  function closeMenu() {
+    if (menu.matches(":popover-open")) menu.hidePopover();
+    menuAnchor?.setAttribute("aria-expanded", "false");
+  }
+  function showMenu(id: string, anchor: HTMLElement, x?: number, y?: number) {
+    closeMenu();
+    menuTarget = id;
+    menuAnchor = anchor;
+    menu.setAttribute(
+      "aria-label",
+      `${options.state().tabs.find((tab) => tab.id === id)?.name ?? ""} 뷰 메뉴`,
+    );
+    Object.assign(
+      menu.style,
+      popoverPosition(
+        x === undefined
+          ? anchor.getBoundingClientRect()
+          : { left: x, top: y ?? 0, bottom: y ?? 0, width: 0 },
+        {
+          width: 180,
+          maxHeight: 80,
+          viewportWidth: innerWidth,
+          viewportHeight: innerHeight,
+        },
+      ),
+    );
+    menu.showPopover();
+    anchor.setAttribute("aria-expanded", "true");
+    edit.focus();
+  }
+  menu.addEventListener("toggle", () => {
+    if (!menu.matches(":popover-open"))
+      menuAnchor?.setAttribute("aria-expanded", "false");
+  });
+  menu.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu();
+      menuAnchor?.focus();
+    }
+  });
   let editor: ReturnType<typeof createViewEditor> | undefined,
     revision = 0;
   function report(reason: unknown) {
@@ -42,10 +91,21 @@ export function createWorkspaceNavigation(options: {
   }
   function render() {
     const focused = tabs.contains(document.activeElement);
+    closeMenu();
     const state = options.state();
     tabs.replaceChildren(
       ...state.tabs.map((tab) => {
-        const button = element("button", "workspace-tab", tab.name);
+        const item = element("div", "workspace-tab-item"),
+          button = element("button", "workspace-tab", tab.name),
+          more = iconButton(`${tab.name} 뷰 메뉴`, "ellipsis", { size: "sm" });
+        item.setAttribute("role", "presentation");
+        more.setAttribute("aria-haspopup", "menu");
+        more.setAttribute("aria-expanded", "false");
+        more.addEventListener("click", () => showMenu(tab.id, more));
+        button.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          showMenu(tab.id, button, event.clientX, event.clientY);
+        });
         button.type = "button";
         button.id = `workspace-tab-${tab.id}`;
         button.setAttribute("role", "tab");
@@ -60,6 +120,14 @@ export function createWorkspaceNavigation(options: {
           }
         });
         button.addEventListener("keydown", (event) => {
+          if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            showMenu(tab.id, button);
+            return;
+          }
           const index = state.tabs.findIndex((item) => item.id === tab.id);
           const next =
             event.key === "ArrowRight"
@@ -84,15 +152,20 @@ export function createWorkspaceNavigation(options: {
             report(reason);
           }
         });
-        return button;
+        item.append(button, more);
+        return item;
       }),
     );
     if (focused)
       tabs.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
   }
-  function open(creating: boolean) {
-    const current = activeWorkspace(options.state()),
-      original = creating
+  function open(creating: boolean, targetId = options.state().activeId) {
+    const current = options.state().tabs.find((tab) => tab.id === targetId);
+    if (!current) {
+      report(new Error("뷰를 찾을 수 없습니다."));
+      return;
+    }
+    const original = creating
         ? {
             ...current,
             id: `workspace-${Date.now()}-${elementId("view")}`,
@@ -227,7 +300,11 @@ export function createWorkspaceNavigation(options: {
     editor = undefined;
   });
   add.addEventListener("click", () => open(true));
-  edit.addEventListener("click", () => open(false));
+  edit.addEventListener("click", () => {
+    const id = menuTarget;
+    closeMenu();
+    open(false, id);
+  });
   render();
   return {
     element: root,
@@ -235,6 +312,8 @@ export function createWorkspaceNavigation(options: {
     destroy() {
       revision++;
       editor?.destroy();
+      closeMenu();
+      menu.remove();
       dialog.remove();
       root.remove();
     },

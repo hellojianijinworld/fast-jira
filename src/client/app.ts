@@ -801,12 +801,16 @@ export async function createApp(
       if (id !== workspaces.activeId)
         applyWorkspace(selectWorkspace(workspaces, id));
     },
-    save: (tab: WorkspaceView) =>
-      applyWorkspace(saveWorkspace(workspaces, tab)),
+    save: (tab: WorkspaceView) => {
+      const next = saveWorkspace(workspaces, tab);
+      if (workspaces.tabs.some((item) => item.id === tab.id))
+        next.activeId = workspaces.activeId;
+      applyWorkspace(next);
+    },
     remove: (id) => applyWorkspace(deleteWorkspace(workspaces, id)),
     error: notice.show,
   });
-  nav.append(workspaceNavigation.element);
+  nav.insertBefore(workspaceNavigation.element, tools);
   browse.id = "workspace-list";
   browse.setAttribute("role", "tabpanel");
   render = () => {

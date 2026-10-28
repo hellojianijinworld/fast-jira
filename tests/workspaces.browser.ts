@@ -216,7 +216,8 @@ await check(
   "이름 편집은 목록을 다시 조회하지 않고 Enter로 저장한다",
   async () => {
     const before = calls.filter((url) => url.pathname === "/api/issues").length;
-    button("현재 뷰 편집").click();
+    button("내 작업 뷰 메뉴").click();
+    button("뷰 편집").click();
     await wait();
     const dialog = document.querySelector<HTMLDialogElement>(
       ".workspace-view-modal[open]",
@@ -400,6 +401,68 @@ await check(
       "일반 설정까지 관리로 고정됨",
     );
     dialog.close();
+  },
+);
+await check(
+  "비활성 뷰의 우클릭 편집은 현재 탭과 목록을 바꾸지 않는다",
+  async () => {
+    const tab = [...root.querySelectorAll<HTMLElement>("[role=tab]")].find(
+      (item) => item.textContent === "디자인 작업",
+    );
+    assert(tab, "편집 대상");
+    const before = calls.filter((url) => url.pathname === "/api/issues").length;
+    tab.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 100,
+        clientY: 40,
+      }),
+    );
+    button("뷰 편집").click();
+    await wait();
+    const dialog = document.querySelector<HTMLDialogElement>(
+      ".workspace-view-modal[open]",
+    );
+    assert(dialog, "편집 모달");
+    const input = dialog.querySelector<HTMLInputElement>(
+      '[aria-label="뷰 이름"]',
+    );
+    assert(input?.value === "디자인 작업", "우클릭한 뷰 편집");
+    input.value = "디자인 작업 (편집)";
+    dialog.querySelector("form")?.requestSubmit();
+    await wait();
+    assert(
+      root.querySelector("[role=tab][aria-selected=true]")?.textContent ===
+        "진행 확인",
+      "활성 뷰 유지",
+    );
+    assert(
+      root.querySelector('[aria-label="디자인 작업 (편집) 뷰 메뉴"]'),
+      "탭별 메뉴 이름 갱신",
+    );
+    assert(
+      calls.filter((url) => url.pathname === "/api/issues").length === before,
+      "편집으로 목록 재조회",
+    );
+  },
+);
+await check(
+  "PC에서는 뷰와 상단 도구가 같은 줄에 있고 헤더 높이가 작다",
+  async () => {
+    if (innerWidth < 700) return;
+    const nav = root.querySelector<HTMLElement>(".top-nav"),
+      views = root.querySelector<HTMLElement>(".workspace-views"),
+      tools = root.querySelector<HTMLElement>(".nav-tools");
+    assert(nav && views && tools, "상단 구조");
+    assert(nav.getBoundingClientRect().height <= 64, "헤더 높이");
+    assert(
+      Math.abs(
+        views.getBoundingClientRect().top - tools.getBoundingClientRect().top,
+      ) < 12,
+      "상단 한 줄 정렬",
+    );
+    assert(document.documentElement.scrollWidth <= innerWidth, "가로 넘침");
   },
 );
 results.dataset.failures = String(failures);
