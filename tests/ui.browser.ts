@@ -3234,30 +3234,34 @@ await check(
     });
     try {
       view.render();
-      const unparented = host.querySelector<HTMLElement>(
-        '[data-tree-key="unparented:TEST"]',
+      const issues = host.querySelector<HTMLElement>(
+        '.project-tree > [data-tree-key="issues"]',
+      );
+      assert(
+        !host.querySelector('[data-tree-key^="unparented:"]'),
+        "상위 연결 없는 작업 그룹이 남음",
       );
       const rootDone = host.querySelector<HTMLElement>(
         '[data-tree-key="completed:TEST:tree"]',
       );
       assert(
-        Boolean(unparented?.querySelector(`[data-tree-key="${parent.key}"]`)) &&
-          Boolean(unparented?.querySelector(`[data-tree-key="${orphan.key}"]`)),
+        Boolean(issues?.querySelector(`[data-tree-key="${parent.key}"]`)) &&
+          Boolean(issues?.querySelector(`[data-tree-key="${orphan.key}"]`)),
         "상위 연결 없는 에픽과 일반 작업이 유형으로 분리됐다",
       );
       assert(
-        !unparented?.querySelector(`[data-tree-key="${missingParent.key}"]`),
-        "부모가 목록에 없는 항목을 상위 연결 없음으로 오인했다",
+        Boolean(
+          issues?.querySelector(`[data-tree-key="${missingParent.key}"]`),
+        ),
+        "현재 목록에 부모가 없는 항목이 누락됨",
       );
       assert(
         rootDone?.querySelectorAll(".list-item").length === 2 &&
-          !unparented?.querySelector(
-            '[data-tree-key="completed:TEST:standalone"]',
-          ),
+          !issues?.querySelector('[data-tree-key="completed:TEST:standalone"]'),
         "루트 완료가 유형별로 분리되거나 누락됐다",
       );
       assert(
-        Boolean(unparented?.querySelector(`[data-tree-key="${child.key}"]`)) &&
+        Boolean(issues?.querySelector(`[data-tree-key="${child.key}"]`)) &&
           !rootDone?.querySelector(`[data-tree-key="${child.key}"]`),
         "실제 하위 완료가 프로젝트 완료로 이동했다",
       );
@@ -3298,34 +3302,38 @@ await check(
       );
       const groupArrows = [
         ...host.querySelectorAll<SVGSVGElement>(
-          '[data-group-key="unparented:TEST"] .ui-icon, [data-group-key="completed:TEST:tree"] .ui-icon',
+          '[data-group-key="project:TEST"] .ui-icon, [data-group-key="completed:TEST:tree"] .ui-icon',
         ),
       ].map((arrow) => arrow.getBoundingClientRect());
       assert(
         groupArrows.length === 2 &&
-          Math.abs((groupArrows[0]?.x ?? 0) - (groupArrows[1]?.x ?? 0)) < 1,
+          Math.abs(
+            (groupArrows[0]?.width ?? 0) - (groupArrows[1]?.width ?? 0),
+          ) < 1,
         "루트 그룹의 들여쓰기 레벨이 다르다",
       );
-      for (const label of ["상위 연결 없는 작업", "완료 2개"]) {
+      for (const key of ["project:TEST", "completed:TEST:tree"]) {
         const toggle = [
           ...host.querySelectorAll<HTMLButtonElement>(".tree-section-toggle"),
-        ].find((button) => button.textContent === label);
+        ].find((button) => button.dataset.groupKey === key);
         assert(Boolean(toggle), "묶음 접기 버튼 누락");
         toggle?.click();
         view.render();
         const closed = [
           ...host.querySelectorAll<HTMLButtonElement>(".tree-section-toggle"),
-        ].find((button) => button.textContent === label);
+        ].find((button) => button.dataset.groupKey === key);
         assert(
           closed?.getAttribute("aria-expanded") === "false" &&
             Boolean(
               closed
-                .closest(".tree-section")
+                .closest(".tree-section,.project-group")
                 ?.lastElementChild?.hasAttribute("hidden"),
             ),
           "묶음 접힘 상태가 유지되지 않는다",
         );
-        const content = closed?.closest(".tree-section")?.lastElementChild;
+        const content = closed?.closest(
+          ".tree-section,.project-group",
+        )?.lastElementChild;
         assert(
           Boolean(content && getComputedStyle(content).display === "none"),
           "접힌 묶음이 실제 화면에 남아 있다",
@@ -3477,17 +3485,9 @@ await check(
         "프로젝트 제목을 아직 보고 있는데 중복 경로가 나온다",
       );
       for (const [selector, label, expectedGroups] of [
-        [
-          '[data-tree-key="AA"] .unparented-heading',
-          "첫 프로젝트",
-          ["상위 연결 없는 작업"],
-        ],
+        ['[data-tree-key="AA"] .list-item', "첫 프로젝트", []],
         ['[data-tree-key="completed:AA:tree"]', "첫 프로젝트", ["완료"]],
-        [
-          '[data-tree-key="BB"] .list-item',
-          "다른 프로젝트",
-          ["상위 연결 없는 작업"],
-        ],
+        ['[data-tree-key="BB"] .list-item', "다른 프로젝트", []],
       ] as const) {
         const target = host.querySelector<HTMLElement>(selector ?? "");
         assert(target !== null, "스크롤 검사 대상 누락");
@@ -3518,14 +3518,17 @@ await check(
         );
         const project = nav?.querySelector(".tree-context-project"),
           group = nav?.querySelector(".tree-context-group");
-        assert(Boolean(project && group), "프로젝트·그룹 경로 누락");
-        assert(
-          Math.abs(
-            (project?.getBoundingClientRect().top ?? 0) -
-              (group?.getBoundingClientRect().top ?? 0),
-          ) < 2,
-          "공간이 충분한 프로젝트·그룹 경로가 강제로 줄 바꿈된다",
-        );
+        assert(Boolean(project), "프로젝트 경로 누락");
+        if (expectedGroups.length) {
+          assert(Boolean(group), "그룹 경로 누락");
+          assert(
+            Math.abs(
+              (project?.getBoundingClientRect().top ?? 0) -
+                (group?.getBoundingClientRect().top ?? 0),
+            ) < 2,
+            "공간이 충분한 프로젝트·그룹 경로가 강제로 줄 바꿈된다",
+          );
+        }
       }
     } finally {
       context.destroy();

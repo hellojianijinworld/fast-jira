@@ -772,12 +772,10 @@ test("목록 묶음 접힘은 계정별로 저장하고 티켓 펼침과 분리�
   };
   const store = createAccountStore(storage, "example", "me");
   assert.deepEqual([...store.collapsedGroups()], []);
-  store.saveCollapsedGroups(
-    new Set(["unparented:TEST", "completed:TEST-1:tree"]),
-  );
+  store.saveCollapsedGroups(new Set(["project:TEST", "completed:TEST-1:tree"]));
   assert.deepEqual(
     [...createAccountStore(storage, "example", "me").collapsedGroups()],
-    ["unparented:TEST", "completed:TEST-1:tree"],
+    ["project:TEST", "completed:TEST-1:tree"],
   );
   assert.deepEqual(
     [...createAccountStore(storage, "example", "other").collapsedGroups()],

@@ -111,15 +111,7 @@ export function createTreeView(
       position = next;
     }
   }
-  function section(
-    key: string,
-    label: string,
-    headingClass: string,
-    content: HTMLElement,
-  ) {
-    const wrapper = element("section", "tree-section");
-    wrapper.dataset.treeKey = key;
-    const heading = element("div", headingClass);
+  function groupToggle(key: string, label: string, content: HTMLElement) {
     const toggle = element("button", "tree-section-toggle");
     toggle.type = "button";
     toggle.dataset.groupKey = key;
@@ -142,6 +134,18 @@ export function createTreeView(
         .find((button) => button.dataset.groupKey === key)
         ?.focus();
     });
+    return toggle;
+  }
+  function section(
+    key: string,
+    label: string,
+    headingClass: string,
+    content: HTMLElement,
+  ) {
+    const wrapper = element("section", "tree-section");
+    wrapper.dataset.treeKey = key;
+    const heading = element("div", headingClass);
+    const toggle = groupToggle(key, label, content);
     heading.append(toggle);
     wrapper.append(heading, content);
     return wrapper;
@@ -194,7 +198,7 @@ export function createTreeView(
       project: string,
       depth: number,
       reset: number,
-      rootSection: "linked" | "unparented" | "completed" = "linked",
+      rootSection: "issues" | "completed" = "issues",
       path = new Set<string>(),
     ): HTMLUListElement {
       const group = element("ul", "tree-list");
@@ -216,11 +220,9 @@ export function createTreeView(
           (parent ||
             (issue.project === project &&
               rootSection ===
-                (issue.parent
-                  ? "linked"
-                  : issue.statusCategory === "done"
-                    ? "completed"
-                    : "unparented"))),
+                (!issue.parent && issue.statusCategory === "done"
+                  ? "completed"
+                  : "issues"))),
       )) {
         if (path.has(issue.key)) continue;
         const nextPath = new Set(path);
@@ -316,7 +318,7 @@ export function createTreeView(
               "",
               depth + 1,
               state.childReset,
-              "linked",
+              "issues",
               nextPath,
             );
             nested.classList.add("tree-children");
@@ -387,21 +389,8 @@ export function createTreeView(
       const group = element("li", "project-group");
       group.dataset.treeKey = key;
       const head = element("div", "project-heading");
-      const icon = project ? projectIcon(project) : null;
-      if (icon) head.append(icon);
-      head.append(document.createTextNode(project?.name ?? key));
       const projectTree = element("div", "project-tree");
       projectTree.append(branch("", key, 0, 0));
-      const standalone = branch("", key, 0, 0, "unparented");
-      if (standalone.children.length)
-        projectTree.append(
-          section(
-            `unparented:${key}`,
-            "상위 연결 없는 작업",
-            "unparented-heading",
-            standalone,
-          ),
-        );
       const done = branch("", key, 0, 0, "completed");
       if (done.children.length)
         projectTree.append(
@@ -418,7 +407,16 @@ export function createTreeView(
         String(projectTree.querySelectorAll(".list-item:not(.context)").length),
       );
       count.title = "현재 표시된 이슈 수";
-      head.append(count);
+      const toggle = groupToggle(
+        `project:${key}`,
+        project?.name ?? key,
+        projectTree,
+      );
+      toggle.classList.add("project-toggle");
+      const icon = project ? projectIcon(project) : null;
+      if (icon) toggle.insertBefore(icon, toggle.lastElementChild);
+      toggle.append(count);
+      head.append(toggle);
       if (callbacks.onCreate) {
         const create = actionButton("생성", "plus", {
           size: "sm",

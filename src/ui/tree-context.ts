@@ -89,12 +89,7 @@ export function createTreeContext(
           rect.bottom > edge
         );
       })
-      .map((section) => ({
-        key: section.dataset.treeKey ?? "",
-        label:
-          section.querySelector(":scope > * > .tree-section-toggle")
-            ?.textContent ?? "",
-      }));
+      .map((section) => section.dataset.treeKey ?? "");
     const nextPathKey = JSON.stringify([activeProject, path, groups]);
     if (force || pathKey !== nextPathKey) {
       pathKey = nextPathKey;
@@ -105,12 +100,9 @@ export function createTreeContext(
           return issue ? [issue] : [];
         });
       const trail: (Issue | string)[] = [
-        ...groups
-          .filter((group) => group.key.startsWith("unparented:"))
-          .map((group) => group.label),
         ...known,
         ...groups
-          .filter((group) => group.key.startsWith("completed:"))
+          .filter((key) => key.startsWith("completed:"))
           .map(() => "완료"),
       ];
       const current = known.at(-1);

@@ -295,7 +295,7 @@ export function createAccountStore(
               (key): key is string =>
                 typeof key === "string" &&
                 key.length <= 200 &&
-                /^(?:unparented|completed):[A-Z][A-Z0-9_]*(?:-\d+)?(?::(?:tree|standalone))?$/.test(
+                /^(?:project|completed):[A-Z][A-Z0-9_]*(?:-\d+)?(?::(?:tree|standalone))?$/.test(
                   key,
                 ),
             )

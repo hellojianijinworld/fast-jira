@@ -183,6 +183,40 @@ await check(
   },
 );
 await check(
+  "프로젝트 전체를 추가 조회 없이 접고 재시작 뒤에도 유지한다",
+  async () => {
+    assert(
+      !root.querySelector('[data-tree-key^="unparented:"]'),
+      "상위 연결 없는 작업 그룹이 남음",
+    );
+    const count = calls.filter((url) => url.pathname === "/api/issues").length;
+    button("제품 개발 접기").click();
+    assert(
+      root.querySelector<HTMLElement>(".project-tree")?.hidden,
+      "프로젝트가 접히지 않음",
+    );
+    assert(
+      !root.querySelector(".project-create")?.closest(".project-toggle"),
+      "생성이 접기 버튼 안에 있음",
+    );
+    assert(
+      calls.filter((url) => url.pathname === "/api/issues").length === count,
+      "접기로 목록을 재조회함",
+    );
+    app.destroy();
+    app = await createApp(root, api, storage, undefined, updates);
+    assert(
+      root.querySelector<HTMLElement>(".project-tree")?.hidden,
+      "프로젝트 접힘 상태가 복원되지 않음",
+    );
+    button("제품 개발 펼치기").click();
+    assert(
+      root.querySelector<HTMLElement>(".project-tree")?.hidden === false,
+      "프로젝트가 다시 펼쳐지지 않음",
+    );
+  },
+);
+await check(
   "탭 생성에서 프로젝트와 필터를 함께 저장하고 전환한다",
   async () => {
     button("뷰 만들기").click();
