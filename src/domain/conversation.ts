@@ -7,6 +7,7 @@ export interface ChatMessage {
 export interface Conversation {
   id: string;
   conversationId: string;
+  threadId?: string;
   model: string;
   updated: number;
   messages: ChatMessage[];
@@ -27,6 +28,7 @@ export function decodeConversations(value: unknown): Conversation[] {
       !isRecord(item) ||
       typeof item.id !== "string" ||
       typeof item.conversationId !== "string" ||
+      (item.threadId !== undefined && typeof item.threadId !== "string") ||
       typeof item.model !== "string" ||
       typeof item.updated !== "number" ||
       !Number.isFinite(item.updated) ||
@@ -37,6 +39,7 @@ export function decodeConversations(value: unknown): Conversation[] {
     return {
       id: item.id,
       conversationId: item.conversationId,
+      ...(item.threadId ? { threadId: item.threadId } : {}),
       model: item.model,
       updated: item.updated,
       messages: item.messages,
@@ -56,4 +59,15 @@ export function conversationContext(
     remaining -= text.length;
   }
   return result;
+}
+
+/** 표시용 기록 ID·Claude ID를 Codex 원본 링크로 오인하지 않는다. */
+export function conversationLink(
+  item: Conversation | undefined,
+): string | null {
+  return item?.threadId &&
+    !item.model.startsWith("claude:") &&
+    /^[a-zA-Z0-9_-]{1,100}$/.test(item.threadId)
+    ? `codex://threads/${item.threadId}`
+    : null;
 }

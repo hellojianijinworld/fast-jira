@@ -231,7 +231,7 @@ export function createAssistantService(
         const started = record(
           await native.request("thread/start", {
             model,
-            ephemeral: true,
+            ephemeral: false,
             sandbox: "read-only",
             approvalPolicy: "on-request",
             approvalsReviewer: "user",
@@ -292,6 +292,7 @@ export function createAssistantService(
           } else {
             const reply = {
               conversationId,
+              threadId,
               answer: answer || deltas,
               proposals,
               reconnected,

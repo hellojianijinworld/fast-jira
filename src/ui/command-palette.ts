@@ -27,11 +27,13 @@ import {
 import {
   type Conversation,
   conversationContext,
+  conversationLink,
 } from "../domain/conversation.ts";
 import type { Issue } from "../domain/issue.ts";
 import { createAssistantApprovalPanel } from "./assistant-approvals.ts";
 import { chatMessage } from "./chat-message.ts";
 import { createChatSidebar } from "./chat-sidebar.ts";
+import { copyText } from "./clipboard.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
 import type { CardOptions } from "./issue-card.ts";
@@ -108,7 +110,14 @@ export function createCommandPalette(config: {
     transcript = element("div", "chat-transcript"),
     helpToggle = iconButton("AI 대화 도움말", "circle-help", { size: "sm" }),
     helpPanel = element("div", "select-options ai-chat-help"),
+    settingsToggle = iconButton("AI 대화 설정", "settings", { size: "sm" }),
+    settingsPanel = element(
+      "div",
+      "select-options ai-chat-help ai-chat-settings",
+    ),
     heading = element("div", "command-heading"),
+    headActions = element("div", "command-heading"),
+    copyConversation = iconButton("대화 링크 복사", "copy", { size: "sm" }),
     sendGroup = element("div", "chat-send-group"),
     sendModeSelect = element("select"),
     welcome = element("div", "chat-welcome"),
@@ -206,8 +215,13 @@ export function createCommandPalette(config: {
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   send.type = "submit";
-  heading.append(title, helpToggle);
-  head.append(heading, close);
+  heading.append(title, helpToggle, settingsToggle);
+  headActions.append(copyConversation, close);
+  head.append(heading, headActions);
+  copyConversation.addEventListener("click", () => {
+    const url = conversationLink(current);
+    if (url) void copyText(url, notify, "Codex 대화 링크를 복사했어요.");
+  });
   sendModeSelect.setAttribute("aria-label", "메시지 보내기 방식");
   const sendShortcut = /Mac|iPhone|iPad/.test(navigator.platform)
     ? "⌘Enter"
@@ -217,9 +231,16 @@ export function createCommandPalette(config: {
     new Option(`Enter로 줄바꿈 · ${sendShortcut}로 보내기`, "shortcut"),
   );
   sendModeSelect.value = sendMode;
-  sendGroup.append(send, sendModeSelect);
+  sendGroup.append(send);
+  const sendModeLabel = element(
+    "label",
+    "assistant-approval-field",
+    "메시지 보내기",
+  );
+  sendModeLabel.append(sendModeSelect);
+  settingsPanel.append(element("h3", "", "AI 대화 설정"), sendModeLabel);
   const sendModeMenu = enhanceSelect(sendModeSelect, { size: "sm" });
-  sendModeMenu.trigger.classList.add("chat-send-options");
+
   controls.append(provider, model, microphone, cancel, sendGroup);
   form.append(input, controls);
   policy.replaceChildren(
@@ -241,7 +262,53 @@ export function createCommandPalette(config: {
     policy,
     capabilities,
   );
-  dialog.append(head, panel, helpPanel);
+  settingsPanel.popover = "auto";
+  settingsPanel.tabIndex = -1;
+  settingsPanel.setAttribute("role", "dialog");
+  settingsPanel.setAttribute("aria-label", "AI 대화 설정");
+  settingsPanel.id = elementId("ai-settings");
+  settingsToggle.setAttribute("aria-haspopup", "dialog");
+  settingsToggle.setAttribute("aria-controls", settingsPanel.id);
+  settingsToggle.setAttribute("aria-expanded", "false");
+  dialog.append(head, panel, helpPanel, settingsPanel);
+  function closeSettings() {
+    sendModeMenu.close();
+    if (settingsPanel.matches(":popover-open")) settingsPanel.hidePopover();
+  }
+  settingsToggle.addEventListener("click", () => {
+    if (settingsPanel.matches(":popover-open")) {
+      closeSettings();
+      return;
+    }
+    closeHelp();
+    Object.assign(
+      settingsPanel.style,
+      popoverPosition(settingsToggle.getBoundingClientRect(), {
+        width: 360,
+        maxHeight: 260,
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+      }),
+    );
+    settingsPanel.showPopover();
+    sendModeMenu.trigger.focus();
+  });
+  settingsPanel.addEventListener("toggle", () =>
+    settingsToggle.setAttribute(
+      "aria-expanded",
+      String(settingsPanel.matches(":popover-open")),
+    ),
+  );
+  settingsPanel.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      !sendModeMenu.panel.matches(":popover-open")
+    ) {
+      event.preventDefault();
+      closeSettings();
+      settingsToggle.focus();
+    }
+  });
   function closeHelp() {
     if (helpPanel.matches(":popover-open")) helpPanel.hidePopover();
   }
@@ -250,6 +317,7 @@ export function createCommandPalette(config: {
       closeHelp();
       return;
     }
+    closeSettings();
     Object.assign(
       helpPanel.style,
       popoverPosition(helpToggle.getBoundingClientRect(), {
@@ -283,6 +351,7 @@ export function createCommandPalette(config: {
       notify(errorText(error));
     }
     sync();
+    closeSettings();
     input.focus();
   });
   config.host.append(dialog, pickerDialog);
@@ -426,7 +495,7 @@ export function createCommandPalette(config: {
       policyText.textContent =
         storageError ||
         (historyStore
-          ? "대화는 이 브라우저에 저장돼요. 직접 삭제하거나 브라우저 데이터를 지우면 사라져요. Codex 연결은 30분 동안 사용하지 않거나 서버를 다시 시작하면 만료돼요. Claude는 요청할 때마다 최근 대화를 참고해요. 이전 대화는 최근 20개 메시지, 최대 2만 자까지 전달해요."
+          ? "대화는 이 브라우저에 저장돼요. 여기서 삭제해도 Codex에 보관된 원본은 남아요. 원본은 Codex에서 따로 삭제해 주세요. 대화 링크는 같은 컴퓨터의 Codex에서 열 수 있어요. Codex 연결은 30분 동안 사용하지 않거나 서버를 다시 시작하면 만료돼요. Claude는 요청할 때마다 최근 대화를 참고해요. 이전 대화는 최근 20개 메시지, 최대 2만 자까지 전달해요."
           : "현재 화면에서만 대화를 보관합니다.");
     if (storageError) policy.open = true;
     if (storageError && storageError !== reportedStorageError)
@@ -434,6 +503,13 @@ export function createCommandPalette(config: {
     reportedStorageError = storageError;
     helpToggle.classList.toggle("error", Boolean(storageError));
     policy.classList.toggle("error", Boolean(storageError));
+    const link = conversationLink(current);
+    copyConversation.disabled = !link;
+    copyConversation.title = link
+      ? "Codex 원본 대화 링크 복사"
+      : selectedModel.startsWith("claude:")
+        ? "이 Claude 연결에는 복사할 대화 링크가 없어요."
+        : "업데이트 후 새 Codex 연결에서 답변을 받으면 복사할 수 있어요.";
     hint.textContent = hintText();
     sendModeMenu.trigger.title = hintText();
   }
@@ -792,6 +868,8 @@ export function createCommandPalette(config: {
           );
       if (!alive || controller.signal.aborted) return;
       conversationId = active.conversationId = reply.conversationId;
+      if (reply.threadId) active.threadId = reply.threadId;
+      else delete active.threadId;
       const answer = reply.answer || "변경안을 확인해 주세요.";
       active.messages.push({
         role: "assistant",
@@ -952,6 +1030,7 @@ export function createCommandPalette(config: {
     if (current) {
       current.model = selectedModel;
       current.conversationId = conversationId = "";
+      delete current.threadId;
       saveConversation();
     }
     sync();
@@ -979,7 +1058,7 @@ export function createCommandPalette(config: {
     if (dialog.open) return;
     restoreNotice(dialog);
     closeHelp();
-    sendModeMenu.close();
+    closeSettings();
     voice.stop();
   });
   for (const modal of [dialog, pickerDialog])
@@ -1012,6 +1091,7 @@ export function createCommandPalette(config: {
       request?.abort();
       voice.destroy();
       closeHelp();
+      closeSettings();
       sendModeMenu.destroy();
       approvalPanel.destroy();
       window.removeEventListener("keydown", shortcut, true);

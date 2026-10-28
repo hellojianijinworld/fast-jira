@@ -9,6 +9,7 @@ import {
 } from "../src/domain/commands.ts";
 import {
   conversationContext,
+  conversationLink,
   decodeConversations,
 } from "../src/domain/conversation.ts";
 
@@ -151,4 +152,20 @@ test("대화별 모델과 새 대화 기본 모델은 계정별로 각각 복원
   assert.equal(restored.defaultModel(), "second");
   assert.equal(restored.read()[0]?.model, "first");
   assert.equal(createConversationStore(storage, "site:b").defaultModel(), "");
+});
+
+test("원본 Codex 링크만 만들고 저장한 뒤에도 복원한다", () => {
+  const threadId = "01a1804c-6b69-7621-aa0f-83a2a66d2959";
+  const linked = { ...chat, threadId };
+  assert.equal(
+    conversationLink(decodeConversations([linked])[0]),
+    `codex://threads/${threadId}`,
+  );
+  assert.equal(conversationLink({ ...linked, model: "claude:sonnet" }), null);
+  assert.equal(conversationLink(chat), null);
+  assert.equal(conversationLink(undefined), null);
+  assert.equal(
+    conversationLink({ ...linked, threadId: "foo?redirect=evil" }),
+    null,
+  );
 });

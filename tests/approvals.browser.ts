@@ -79,6 +79,12 @@ await check(
     );
     assert(answers.length === 0 && waiting, "자동 승인 금지");
     assert(
+      panel.element.querySelector(".assistant-approval-details")
+        ?.textContent === question("one").details &&
+        !panel.element.querySelector("details"),
+      "변경 내용이 접혀 있거나 누락됨",
+    );
+    assert(
       panel.element.querySelectorAll("input[type=radio]").length === 3,
       "객관식 선택지",
     );

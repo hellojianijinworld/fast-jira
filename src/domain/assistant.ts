@@ -23,6 +23,7 @@ import { decodeIssue, wireArray } from "./wire.ts";
 export interface AssistantReply {
   issues?: Issue[];
   conversationId: string;
+  threadId?: string;
   answer: string;
   proposals: ChangeProposal[];
   creations?: IssueDraft[];
@@ -79,6 +80,9 @@ export function assistantReply(value: unknown): AssistantReply {
     throw new Error("AI 답변이 올바르지 않습니다.");
   return {
     conversationId: requiredString(data.conversationId, "대화"),
+    ...(data.threadId === undefined
+      ? {}
+      : { threadId: requiredString(data.threadId, "원본 대화") }),
     ...(data.issues === undefined
       ? {}
       : { issues: wireArray(data.issues, decodeIssue) }),

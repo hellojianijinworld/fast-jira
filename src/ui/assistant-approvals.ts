@@ -28,14 +28,10 @@ export function createAssistantApprovalPanel(
         element("h3", "", request.title),
         element("p", "", request.description),
       );
-      if (request.details) {
-        const details = element("details");
-        details.append(
-          element("summary", "", "내용 보기"),
-          element("pre", "", request.details),
+      if (request.details)
+        form.append(
+          element("pre", "assistant-approval-details", request.details),
         );
-        form.append(details);
-      }
       if (request.url && safeHref(request.url))
         form.append(externalLink(request.url, "연결 서비스에서 확인 ↗"));
       const inputs = new Map<

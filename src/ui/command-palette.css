@@ -17,8 +17,9 @@
   flex-direction: column;
 }
 .command-modal.is-chat {
-  width: min(1100px, calc(100vw - 32px));
-  height: min(780px, calc(100dvh - var(--command-top) - 16px));
+  --command-top: min(5dvh, 44px);
+  width: min(1200px, calc(100vw - 24px));
+  height: min(840px, calc(100dvh - var(--command-top) - 16px));
 }
 .command-modal::backdrop {
   background: var(--backdrop-command);
@@ -583,8 +584,7 @@
   font-size: var(--font-size-14);
 }
 .assistant-approval pre {
-  max-height: 240px;
-  overflow: auto;
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--font-size-12);
@@ -640,16 +640,6 @@
   min-width: 0;
 }
 
-.chat-send-options.select-trigger {
-  width: 28px;
-  min-width: 28px;
-  max-width: 28px;
-  padding-inline: 4px;
-  justify-content: center;
-}
-.chat-send-options .select-value {
-  display: none;
-}
 .ai-chat-help:popover-open {
   display: grid;
 }
@@ -669,4 +659,8 @@
 }
 .ai-chat-help .chat-capabilities {
   overflow-x: auto;
+}
+
+.ai-chat-settings .select-trigger {
+  width: 100%;
 }

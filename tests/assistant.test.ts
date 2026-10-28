@@ -156,7 +156,7 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
       ephemeral: boolean;
     };
     assert.equal(start.model, "available");
-    assert.equal(start.ephemeral, true);
+    assert.equal(start.ephemeral, false);
     assert.deepEqual(start.config, {
       "mcp_servers.unrelated.default_tools_approval_mode": "writes",
       "apps._default.default_tools_approval_mode": "writes",
@@ -191,6 +191,7 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
       { keys: ["AA-1"], field: "assignee", value: "person" },
     ]);
     assert.equal(result.answer, "변경안을 확인하세요.");
+    assert.equal(result.threadId, "thread");
     assert.ok(f.reads > 0);
     assert.equal(f.writes, 0);
     assert.equal(JSON.stringify(f.replies).includes("fake-secret"), false);

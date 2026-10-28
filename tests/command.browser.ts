@@ -202,6 +202,7 @@ const api = createApi(async (input, init) => {
       return Response.json({ error: "모의 연결 실패" }, { status: 503 });
     return Response.json({
       conversationId: "test",
+      threadId: "01a1804c-6b69-7621-aa0f-83a2a66d2959",
       answer: "대상 이슈를 확인했습니다. 아래 변경안을 확인하세요.",
       ...(holdApproval
         ? {
@@ -736,6 +737,38 @@ await check(
   },
 );
 await check(
+  "복원한 대화에서도 Codex 원본 링크를 복사하고 새 대화에는 링크를 만들지 않는다",
+  async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    let copied = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          copied = text;
+        },
+      },
+    });
+    try {
+      button("대화 링크 복사").click();
+      await tick();
+      assert(
+        copied === "codex://threads/01a1804c-6b69-7621-aa0f-83a2a66d2959",
+        "원본 대화 링크 누락",
+      );
+      button("대화 시작").click();
+      assert(button("대화 링크 복사").disabled, "새 대화에 잘못된 링크가 있음");
+      dialog()
+        .querySelector<HTMLButtonElement>(".chat-conversation-open")
+        ?.click();
+      assert(!button("대화 링크 복사").disabled, "기록 복원 후 복사 비활성");
+    } finally {
+      if (descriptor) Object.defineProperty(navigator, "clipboard", descriptor);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  },
+);
+await check(
   "모델 선택은 대화별로 남고 기록 열기가 새 대화 기본값을 바꾸지 않는다",
   async () => {
     const select = dialog().querySelector<HTMLSelectElement>("select");
@@ -1083,15 +1116,23 @@ await check(
   },
 );
 await check(
-  "AI 보내기 메뉴의 Enter 줄바꿈은 전송하지 않고 Ctrl 또는 Cmd Enter로만 보낸다",
+  "제목 옆 AI 설정에서 보내기 방식을 바꾸고 다시 열어도 유지한다",
   async () => {
-    const trigger =
-      dialog().querySelector<HTMLButtonElement>(".chat-send-options");
+    const settings = button("AI 대화 설정");
+    assert(
+      settings.parentElement === button("AI 대화 도움말").parentElement,
+      "설정 위치",
+    );
+    settings.click();
+    await tick();
+    const trigger = dialog().querySelector<HTMLButtonElement>(
+      ".ai-chat-settings .select-trigger",
+    );
     assert(trigger, "보내기 설정 버튼");
     trigger?.click();
     await tick();
     const popup = dialog().querySelector<HTMLElement>(
-      ".select-options:popover-open",
+      ".ai-chat-settings .select-options:popover-open",
     );
     if (trigger && popup) {
       const anchor = trigger.getBoundingClientRect(),
@@ -1106,7 +1147,7 @@ await check(
     }
     const option = [
       ...dialog().querySelectorAll<HTMLButtonElement>(
-        ".select-options:popover-open button",
+        ".ai-chat-settings .select-options:popover-open button",
       ),
     ].find((button) => button.textContent?.startsWith("Enter로 줄바꿈"));
     assert(option, "Enter 줄바꿈 선택지");
