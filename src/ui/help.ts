@@ -1,8 +1,8 @@
 import { shortcutLabel } from "../domain/commands.ts";
 import { element, externalLink, uiIcon } from "./dom.ts";
 
-export function helpContent(): DocumentFragment {
-  const content = document.createDocumentFragment();
+export function helpContent(): HTMLElement {
+  const content = element("div", "help-content");
   const intro = element(
     "p",
     "help-intro",
