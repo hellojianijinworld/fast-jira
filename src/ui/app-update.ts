@@ -106,9 +106,9 @@ export function appUpdate(
     releaseLink.hidden = !state?.release;
     if (state?.release) releaseLink.href = state.release.url;
     warning.hidden = !state?.release || running || !state.supported;
-    support.textContent = state?.supported
-      ? "플러그인 변경 사항이 보이지 않으면 Codex나 Claude에서 새 대화를 시작해 주세요."
-      : "소스 실행에서는 설치할 수 없어요. 설치된 서비스 또는 Managing 가이드를 이용해 주세요.";
+    support.hidden = state?.supported ?? true;
+    support.textContent =
+      "소스 실행에서는 설치할 수 없어요. 설치된 서비스 또는 Managing 가이드를 이용해 주세요.";
   }
   const controller = createAppUpdateController({
     api,
