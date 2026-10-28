@@ -79,6 +79,7 @@ const panel = createFilterPanel(
     filters: () => filters,
     catalog: () => catalog,
     views,
+    viewName: () => "내 작업",
     onApply: (next, nextCatalog, commit) => {
       commit?.();
       filters = next;
@@ -108,405 +109,138 @@ async function check(name: string, action: () => Promise<void>) {
 }
 async function edit(key = "TEST-1") {
   panel.open(anchor, key);
-  await wait();
-  const select = panel.element.querySelector<HTMLSelectElement>(
-    ".view-picker select",
+  const follow = panel.element.querySelector<HTMLInputElement>(
+    '[aria-label="현재 탭 필터 따라가기"]',
   );
-  assert(select, "뷰 선택기 없음");
-  if (select.value !== "inline") {
-    select.value = "inline";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  } else
-    panel.element
-      .querySelector<HTMLButtonElement>(
-        '.view-settings > button[aria-expanded="false"]',
-      )
-      ?.click();
-  for (
-    let step = 0;
-    step < 50 && !panel.element.querySelector('[aria-label="단계: 완료"]');
-    step++
-  )
-    await wait();
+  if (key && follow?.checked) follow.click();
+  await wait();
   assert(
     panel.element.querySelector('[aria-label="단계: 완료"]'),
-    "동적 조건 편집기 없음",
+    "조건 편집기 없음",
   );
 }
 await check(
-  "부모는 필드별 상속 대신 하나의 뷰 선택을 제공하고 선택지 조회를 미룬다",
+  "현재 탭의 필터는 뷰 선택·등록·관리 없이 바로 조건을 편집한다",
   async () => {
-    panel.open(anchor, target.key);
+    panel.open(anchor);
     await wait();
+    assert(panel.element.getAttribute("aria-label") === "필터", "필터 제목");
     assert(
-      panel.element.querySelector('[aria-label="사용할 뷰"]'),
-      "뷰 선택기 없음",
+      panel.element.querySelector(".view-panel-scope")?.textContent ===
+        "‘내 작업’ 뷰에 적용",
+      "탭 범위 안내",
+    );
+    assert(panel.element.querySelector(".view-editor"), "조건 편집기");
+    assert(
+      !panel.element.querySelector(
+        '[aria-label="사용할 뷰"], [aria-label="뷰 이름"], .view-picker',
+      ),
+      "중복 뷰 UI 잔존",
     );
     assert(
-      !panel.element.querySelector('[aria-label="담당자 글로벌 필터 적용"]'),
-      "필드별 상속 UI가 남음",
+      !panel.element.textContent?.includes("뷰 관리") &&
+        !panel.element.textContent?.includes("내 뷰로 저장"),
+      "관리·등록 액션 잔존",
     );
-    assert(metadataCalls === 0, "뷰 선택만으로 metadata 재조회");
+    assert(
+      !panel.element.querySelector('[aria-label^="프로젝트:"]'),
+      "프로젝트 편집 중복",
+    );
+    assert(userCalls === 0, "멤버를 미리 조회함");
     panel.close();
   },
 );
 await check(
-  "전체·하위 필터를 다시 열면 현재 적용 범위를 표시한다",
+  "필터 초안은 적용 전까지 저장되지 않고 취소하면 보존한다",
   async () => {
-    const before = metadataCalls + userCalls;
-    for (const key of ["", target.key, ""]) {
-      panel.open(anchor, key);
-      await wait();
-      assert(
-        panel.element.querySelector("h2")?.textContent === "필터 및 뷰",
-        "필터 제목이 적용 대상에 따라 달라짐",
-      );
-      assert(
-        panel.element.querySelector(".view-panel-scope")?.textContent ===
-          (key ? `${key}의 하위 목록에 적용` : "전체 목록에 적용"),
-        "이전에 연 필터의 적용 범위가 남음",
-      );
-      panel.close();
-    }
-    assert(
-      metadataCalls + userCalls === before,
-      "범위 표시 때문에 추가 조회 발생",
-    );
-  },
-);
-await check(
-  "직접 설정은 다시 열어도 조건을 바로 편집하고 취소하면 보존한다",
-  async () => {
-    const key = "TEST-INLINE";
-    const branch = { kind: "branch" as const, key };
-    views.apply(branch, { ...filters, statuses: ["1", "2"] });
-    for (const openKey of ["", key]) {
-      panel.open(anchor, openKey);
-      await wait();
-      assert(
-        panel.element.querySelector(".view-editor"),
-        "직접 설정인데 조건 편집을 다시 눌러야 함",
-      );
-      assert(userCalls === 0, "직접 설정을 열 때 전체 사용자를 불러옴");
-      const original = JSON.stringify(
-        views.resolve(openKey ? branch : { kind: "global" }),
-      );
-      input("단계: 시작", panel.element).click();
-      button("취소", panel.element).click();
-      assert(
-        JSON.stringify(views.resolve(openKey ? branch : { kind: "global" })) ===
-          original,
-        "편집 취소가 적용된 조건을 바꿈",
-      );
-    }
-  },
-);
-await check(
-  "뷰 선택 항목의 아이콘·이름·설명은 같은 왼쪽 기준으로 정렬한다",
-  async () => {
-    panel.open(anchor, target.key);
-    button("사용할 뷰", panel.element).click();
-    const choices = panel.element.querySelector<HTMLElement>(
-      ".select-options:popover-open",
-    );
-    assert(choices, "선택 메뉴 없음");
-    for (const option of choices.querySelectorAll<HTMLElement>(
-      ".select-option",
-    )) {
-      const copy = option.querySelector<HTMLElement>(".select-option-copy");
-      assert(copy, "선택 설명 없음");
-      assert(
-        getComputedStyle(option).justifyContent === "flex-start",
-        "선택 항목이 중앙 정렬됨",
-      );
-      assert(
-        copy.getBoundingClientRect().left -
-          option.getBoundingClientRect().left <
-          16,
-        "이름·설명이 항목 왼쪽에서 떨어짐",
-      );
-    }
-    button("사용할 뷰", panel.element).click();
-    panel.close();
-  },
-);
-await check(
-  "뷰 선택 이름과 안내는 전체 상속과 하위 목록 설정의 범위를 설명한다",
-  async () => {
-    panel.open(anchor, target.key);
-    const select = panel.element.querySelector<HTMLSelectElement>(
-      '[aria-label="사용할 뷰"]',
-    );
-    assert(select, "뷰 선택기 없음");
-    assert(
-      select.querySelector('option[value="default"]')?.textContent ===
-        "전체 뷰 따라가기",
-      "상속 옵션의 적용 범위가 불명확함",
-    );
-    assert(
-      select.querySelector('option[value="inline"]')?.textContent ===
-        "이 하위 목록만 설정",
-      "하위 설정의 적용 범위가 불명확함",
-    );
-    const help = panel.element.querySelector(".view-selection-help");
-    assert(help, "선택 안내 없음");
-    assert(
-      help?.textContent?.includes("상단"),
-      "전체 뷰를 어디서 설정하는지 안내 없음",
-    );
-    select.value = "inline";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-    await wait();
-    assert(
-      help.textContent?.includes(target.key),
-      "해당 하위 목록 안내가 선택 후 갱신되지 않음",
-    );
-    assert(views.binding(target).kind === "default", "선택 초안이 즉시 적용됨");
-    select.value = "default";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-    assert(help.textContent?.includes("상단"), "상속 안내가 복원되지 않음");
-    panel.close();
-  },
-);
-
-await check(
-  "저장한 뷰는 내 뷰 배지를 표시하고 직접 설정만 조건을 편집한다",
-  async () => {
-    const custom = views.create({ ...filters, statuses: [] }, "내 검사 뷰");
-    try {
-      panel.open(anchor, target.key);
-      const select = panel.element.querySelector<HTMLSelectElement>(
-        ".view-picker select",
-      );
-      const edit = panel.element.querySelector<HTMLButtonElement>(
-        ".view-settings > button",
-      );
-      assert(select && edit, "뷰 편집 요소 없음");
-      assert(edit.hidden, "전체 뷰를 따르는 상태에서 조건 편집 노출");
-      button("사용할 뷰", panel.element).click();
-      const savedOption = [
-        ...panel.element.querySelectorAll<HTMLElement>(".select-option"),
-      ].find((option) => option.textContent?.includes("내 검사 뷰"));
-      assert(
-        savedOption?.querySelector(".view-custom-badge")?.textContent ===
-          "내가 만든 뷰",
-        "저장한 뷰의 사용자 생성 표시 없음",
-      );
-      button("사용할 뷰", panel.element).click();
-      const before = metadataCalls;
-      select.value = `saved:${custom}`;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      await wait();
-      assert(
-        edit.hidden && metadataCalls === before,
-        "저장한 뷰 선택이 편집기를 조회하거나 노출함",
-      );
-      select.value = "inline";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      await wait();
-      assert(
-        !edit.hidden && panel.element.querySelector(".view-editor"),
-        "직접 설정 편집기가 열리지 않음",
-      );
-      select.value = "default";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      assert(
-        edit.hidden && !panel.element.querySelector(".view-editor"),
-        "상속 전환 후 편집기가 남음",
-      );
-    } finally {
-      panel.close();
-      views.delete(custom);
-    }
-  },
-);
-
-await check(
-  "그 자리에서 초안을 편집하고 이름을 붙여 등록·적용한다",
-  async () => {
-    await edit();
+    const before = JSON.stringify(views.state);
+    await edit("");
     input("단계: 완료", panel.element).click();
-    assert(
-      views.binding(target).kind === "default",
-      "초안이 목록 조건에 즉시 적용됨",
-    );
-    button("내 뷰로 저장", panel.element).click();
-    const name = panel.element.querySelector<HTMLInputElement>(
-      '[aria-label="뷰 이름"]',
-    );
-    assert(name, "인라인 이름 입력 없음");
-    name.value = "QA 확인";
-    button("저장하고 적용", panel.element).click();
-    await wait();
-    assert(
-      views.state.saved.length === 1 && views.binding(target).kind === "saved",
-      "공용 등록과 연결 실패",
-    );
-    assert(
-      views.resolve(target).statuses?.join(",") === "1,2",
-      "편집 조건이 등록되지 않음",
-    );
+    assert(JSON.stringify(views.state) === before, "초안이 저장됨");
+    button("취소", panel.element).click();
+    assert(JSON.stringify(views.state) === before, "취소가 조건을 바꿈");
   },
 );
 await check(
-  "새 인라인이 같은 등록 조건이면 안내하고 적용 시 기존 ID를 참조한다",
+  "적용은 현재 탭 조건만 저장하고 하위 목록의 개별 조건을 유지한다",
   async () => {
-    await edit("TEST-2");
+    views.apply(target, { ...filters, statuses: ["1"] });
+    await edit("");
     input("단계: 완료", panel.element).click();
-    assert(
-      panel.element.textContent?.includes("QA 확인") &&
-        panel.element.querySelector(".view-match"),
-      "동일 뷰 안내 없음",
-    );
     button("적용", panel.element).click();
-    await wait();
     assert(
-      views.binding({ kind: "branch", key: "TEST-2" }).kind === "saved",
-      "같은 조건이 inline으로 남음",
+      views.resolve({ kind: "global" }).statuses?.join() === "1,2",
+      "탭 필터 저장",
     );
-    assert(views.state.saved.length === 1, "동일 뷰가 중복 등록됨");
+    assert(
+      views.resolve(target).statuses?.join() === "1",
+      "하위 개별 조건 유실",
+    );
+    assert(filters.projects.join() === "TEST", "프로젝트 범위 변경");
   },
 );
 await check(
-  "공용 조건을 위치에서 편집하고 취소해도 두 묶음의 조건은 유지된다",
+  "하위 목록은 탭 필터를 상속하거나 개별 조건만 설정한다",
   async () => {
+    views.select(target, { kind: "default" });
+    panel.open(anchor, target.key);
+    await wait();
+    assert(
+      input("현재 탭 필터 따라가기", panel.element).checked,
+      "상속 선택 누락",
+    );
+    assert(
+      !panel.element.querySelector(".view-editor"),
+      "상속 상태에서 편집기 조회",
+    );
+    assert(
+      panel.element.querySelector("h2")?.textContent === "하위 목록 필터",
+      "적용 범위 제목",
+    );
+    input("현재 탭 필터 따라가기", panel.element).click();
+    await wait();
+    input("단계: 완료", panel.element).click();
+    button("적용", panel.element).click();
+    assert(views.binding(target).kind !== "default", "개별 필터 저장");
+    assert(
+      views.resolve({ kind: "global" }).statuses?.join() === "1,2",
+      "탭 필터가 바뀜",
+    );
+    panel.open(anchor, target.key);
+    input("현재 탭 필터 따라가기", panel.element).click();
+    button("적용", panel.element).click();
+    assert(views.binding(target).kind === "default", "상속 복원 실패");
+  },
+);
+await check(
+  "기존 저장 뷰의 조건도 선택 단계 없이 편집하고 취소하면 유지한다",
+  async () => {
+    views.register(target, { ...filters, statuses: ["2"] }, "이전 저장 조건");
+    const before = JSON.stringify(views.state);
     await edit();
+    assert(
+      !input("단계: 시작", panel.element).checked &&
+        input("단계: 확인", panel.element).checked,
+      "이전 조건 복원",
+    );
     input("단계: 시작", panel.element).click();
     button("취소", panel.element).click();
-    assert(
-      views.resolve(target).statuses?.join(",") === "1,2",
-      "취소가 원래 조건을 변경",
-    );
-    assert(
-      views.resolve({ kind: "branch", key: "TEST-2" }).statuses?.join(",") ===
-        "1,2",
-      "다른 묶음까지 변경",
-    );
+    assert(JSON.stringify(views.state) === before, "취소가 저장 조건을 바꿈");
   },
 );
-await check(
-  "관리 화면도 같은 편집기를 사용하고 공용 수정만 두 연결에 전파한다",
-  async () => {
-    panel.open(anchor, target.key);
-    await wait();
-    button("뷰 관리", panel.element).click();
-    await wait();
-    const manager = document.querySelector<HTMLDialogElement>(".view-manager");
-    assert(manager?.open, "관리 모달 없음");
-    button("QA 확인 편집", manager).click();
-    for (
-      let step = 0;
-      step < 50 && !manager.querySelector('[aria-label="단계: 확인"]');
-      step++
-    )
-      await wait();
-    assert(manager.textContent?.includes("2곳"), "공용 수정 영향 안내 없음");
-    input("단계: 확인", manager).click();
-    button("저장", manager).click();
-    await wait();
-    assert(
-      views.resolve(target).statuses?.join(",") === "1",
-      "공용 수정 미적용",
-    );
-    assert(
-      views.resolve({ kind: "branch", key: "TEST-2" }).statuses?.join(",") ===
-        "1",
-      "두 번째 연결 미적용",
-    );
-    button("QA 확인 삭제", manager).click();
-    await wait();
-    button("삭제", manager).click();
-    await wait();
-    assert(views.state.saved.length === 0, "뷰 삭제 실패");
-    assert(
-      views.binding(target).kind === "inline" &&
-        views.resolve(target).statuses?.join(",") === "1",
-      "삭제 후 적용 조건 유실",
-    );
-    button("닫기", manager).click();
-    await wait();
-    const restoredPicker = panel.element.querySelector<HTMLSelectElement>(
-      ".view-picker select",
-    );
-    assert(
-      restoredPicker?.value === "inline",
-      "관리에서 삭제한 뷰의 이전 참조가 팝오버에 남음",
-    );
-    button("적용", panel.element).click();
-    assert(
-      views.resolve(target).statuses?.join(",") === "1",
-      "관리에서 돌아와 적용할 때 조건이 유실됨",
-    );
-    panel.close();
-  },
-);
-await check(
-  "다시 편집해도 선택지 요청을 중복하지 않고 푸터가 팝오버 안에 있다",
-  async () => {
-    const before = metadataCalls,
-      beforeUsers = userCalls;
+await check("선택지는 재사용하고 푸터는 팝오버 안에 유지한다", async () => {
+  const before = metadataCalls + userCalls;
+  for (let n = 0; n < 3; n++) {
     await edit();
-    assert(
-      metadataCalls === before && userCalls === beforeUsers,
-      "같은 프로젝트 metadata 중복 요청",
-    );
-    const footer = panel.element.querySelector<HTMLElement>(".filter-footer");
-    assert(
-      footer &&
-        footer.getBoundingClientRect().right <=
-          panel.element.getBoundingClientRect().right + 1,
-      "푸터가 영역 밖으로 나감",
-    );
-    assert(footer, "푸터 없음");
-    const save = button("내 뷰로 저장", panel.element);
-    assert(footer.contains(save), "저장 버튼이 스크롤 본문에 남음");
-    assert(
-      Math.abs(
-        save.getBoundingClientRect().left -
-          footer.getBoundingClientRect().left -
-          Number.parseFloat(getComputedStyle(footer).paddingLeft),
-      ) < 1,
-      "저장 버튼이 푸터 왼쪽에 정렬되지 않음",
-    );
-    const top = footer.getBoundingClientRect().top;
-    const body = panel.element.querySelector<HTMLElement>(".view-panel-body");
-    assert(body, "스크롤 본문 없음");
-    body.scrollTop = body.scrollHeight;
-    await wait();
-    assert(
-      footer.getBoundingClientRect().top === top,
-      "본문 스크롤이 푸터를 밀어냄",
-    );
-    for (const action of footer.querySelectorAll("button")) {
-      const rect = action.getBoundingClientRect();
-      assert(
-        rect.left >= footer.getBoundingClientRect().left &&
-          rect.right <= footer.getBoundingClientRect().right,
-        "푸터 버튼이 가로 경계를 넘음",
-      );
-    }
     panel.close();
-  },
-);
-await check(
-  "관리 모달은 큰 창에서 넓게 쓰고 작은 창의 가로 경계를 넘지 않는다",
-  async () => {
-    panel.open(anchor, target.key);
-    button("뷰 관리", panel.element).click();
-    await wait();
-    const manager = document.querySelector<HTMLDialogElement>(".view-manager");
-    assert(manager?.open, "관리 모달 없음");
-    const rect = manager.getBoundingClientRect();
-    assert(
-      rect.width >= Math.min(800, innerWidth - 24),
-      "기존 설정 모달의 좁은 폭을 물려받음",
-    );
-    assert(rect.left >= 0 && rect.right <= innerWidth, "관리 모달 가로 넘침");
-    button("닫기", manager).click();
-    await wait();
-    panel.close();
-  },
-);
+  }
+  assert(metadataCalls + userCalls === before, "반복 열기로 추가 조회");
+  assert(
+    panel.element.querySelector(".filter-footer")?.parentElement ===
+      panel.element,
+    "푸터 분리",
+  );
+});
 await check(
   "사람 선택은 기준과 대상만 표시하고 직접 선택할 때 멤버를 펼친다",
   async () => {
@@ -617,8 +351,8 @@ await check(
       );
       assert(
         panel.element
-          .querySelector(".view-current-summary")
-          ?.textContent?.includes("담당자 미지정"),
+          .querySelector(".people-filter > .view-help")
+          ?.textContent?.includes("담당자가 비어"),
         "미지정 조건 요약 없음",
       );
       restoredBasis.value = "related";
@@ -638,73 +372,6 @@ await check(
   },
 );
 
-await check(
-  "관리에서 새 뷰와 복제 등록은 현재 적용 조건을 바꾸지 않는다",
-  async () => {
-    const before = views.resolve(target, false);
-    panel.open(anchor, target.key);
-    button("뷰 관리", panel.element).click();
-    const manager = document.querySelector<HTMLDialogElement>(".view-manager");
-    assert(manager?.open, "관리 모달 없음");
-    button("새 뷰", manager).click();
-    await wait();
-    input("뷰 이름", manager).value = "새 등록";
-    button("등록", manager).click();
-    await wait();
-    button("새 등록 복제하여 편집", manager).click();
-    await wait();
-    input("단계: 완료", manager).click();
-    button("등록", manager).click();
-    await wait();
-    assert(views.state.saved.length === 2, "복제가 원래 뷰를 덮어씀");
-    assert(
-      JSON.stringify(views.resolve(target, false)) === JSON.stringify(before),
-      "관리 등록이 부모 조건을 변경함",
-    );
-    const clone = views.state.saved.find(
-      (view) => view.name === "새 등록 복사",
-    );
-    assert(clone, "복제 뷰 없음");
-    views.select(
-      { kind: "branch", key: "TEST-2" },
-      { kind: "saved", viewId: clone.id },
-    );
-    button("닫기", manager).click();
-    await wait();
-    button("뷰 관리", panel.element).click();
-    assert(manager.textContent?.includes("TEST-2"), "뷰 사용 위치 누락");
-    assert(manager.scrollWidth <= manager.clientWidth, "관리 목록 가로 넘침");
-    button("닫기", manager).click();
-    panel.close();
-  },
-);
-await check(
-  "긴 뷰 이름은 선택 메뉴와 관리 목록의 가로 경계를 넘지 않는다",
-  async () => {
-    const name = "LongViewName".repeat(6);
-    views.create({ ...filters, assignees: [] }, name);
-    panel.open(anchor, target.key);
-    button("사용할 뷰", panel.element).click();
-    const choices = document.querySelector<HTMLElement>(
-      ".view-picker .select-options:popover-open",
-    );
-    assert(choices, "뷰 선택 메뉴 없음");
-    assert(
-      choices.scrollWidth <= choices.clientWidth,
-      "긴 이름이 선택 메뉴 밖으로 나감",
-    );
-    button("사용할 뷰", panel.element).click();
-    button("뷰 관리", panel.element).click();
-    const manager = document.querySelector<HTMLDialogElement>(".view-manager");
-    assert(manager?.open, "관리 목록 없음");
-    assert(
-      manager.scrollWidth <= manager.clientWidth,
-      "긴 이름이 관리 목록 밖으로 나감",
-    );
-    button("닫기", manager).click();
-    panel.close();
-  },
-);
 await check(
   "대규모 멤버의 전체 선택은 계정 배열 없이 전체 조건으로 저장한다",
   async () => {
@@ -741,6 +408,91 @@ await check(
       assert(mode?.value === "all", "대상 선택기와 조건 불일치");
     } finally {
       people.destroy();
+    }
+  },
+);
+await check(
+  "선택지 실패는 적용을 막고 다시 불러오면 편집할 수 있다",
+  async () => {
+    let attempts = 0;
+    const retryPanel = createFilterPanel(
+      {
+        statuses: async () => {
+          if (++attempts === 1) throw new Error("선택지 조회 실패");
+          return statuses;
+        },
+        users: async () => [],
+        types: async () => [],
+      },
+      { accountId: "account-me", displayName: "검사 계정" },
+      {
+        filters: () => filters,
+        catalog: () => ({ ...catalog, statuses: [] }),
+        views,
+        onApply: (_filters, _catalog, commit) => commit(),
+      },
+    );
+    try {
+      retryPanel.open(anchor);
+      await wait();
+      assert(
+        button("적용", retryPanel.element).disabled,
+        "조회 실패 후 적용 허용",
+      );
+      assert(
+        retryPanel.element.querySelector('[role="alert"]')?.textContent ===
+          "선택지 조회 실패",
+        "오류 안내 누락",
+      );
+      button("다시 불러오기", retryPanel.element).click();
+      await wait();
+      assert(
+        !button("적용", retryPanel.element).disabled &&
+          retryPanel.element.querySelector(".view-editor"),
+        "재시도 후 편집 실패",
+      );
+      assert(attempts === 2, "재시도 조회 누락");
+    } finally {
+      retryPanel.destroy();
+    }
+  },
+);
+await check(
+  "닫은 필터의 늦은 응답은 편집기를 다시 만들거나 카탈로그를 바꾸지 않는다",
+  async () => {
+    let resolve: ((value: typeof statuses) => void) | undefined;
+    let updated = false;
+    const latePanel = createFilterPanel(
+      {
+        statuses: () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+        users: async () => [],
+        types: async () => [],
+      },
+      { accountId: "account-me", displayName: "검사 계정" },
+      {
+        filters: () => filters,
+        catalog: () => ({ ...catalog, statuses: [] }),
+        views,
+        onApply: () => {},
+        onCatalog: () => {
+          updated = true;
+        },
+      },
+    );
+    try {
+      latePanel.open(anchor);
+      latePanel.close();
+      resolve?.(statuses);
+      await wait();
+      assert(
+        !updated && !latePanel.element.querySelector(".view-editor"),
+        "닫은 필터에 응답 반영",
+      );
+    } finally {
+      latePanel.destroy();
     }
   },
 );

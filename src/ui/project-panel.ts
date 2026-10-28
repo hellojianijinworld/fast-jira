@@ -8,6 +8,7 @@ import { projectIcon } from "./meta.ts";
 export function createProjectPanel(options: {
   projects: () => readonly ProjectOption[];
   selected: () => readonly string[];
+  viewName?: () => string;
   apply: (projects: string[]) => void;
 }) {
   const panel = element("div", "filter-panel view-panel project-panel");
@@ -21,7 +22,10 @@ export function createProjectPanel(options: {
     footer = element("div", "filter-footer"),
     cancel = actionButton("취소", "x"),
     apply = actionButton("적용", "check", "");
-  head.append(element("h2", "", "프로젝트 선택"), dismiss);
+  const heading = element("div", "view-panel-heading"),
+    scope = element("p", "view-help view-panel-scope");
+  heading.append(element("h2", "", "프로젝트 선택"), scope);
+  head.append(heading, dismiss);
   error.setAttribute("role", "alert");
   error.hidden = true;
   footer.append(cancel, apply);
@@ -97,6 +101,9 @@ export function createProjectPanel(options: {
       anchor = nextAnchor;
       anchor.setAttribute("aria-controls", panel.id);
       selected = [...options.selected()];
+      scope.textContent = options.viewName
+        ? `‘${options.viewName()}’ 뷰에 적용`
+        : "현재 탭에 적용";
       error.hidden = true;
       render();
       Object.assign(

@@ -1,6 +1,6 @@
 import type { ViewBinding, ViewTarget } from "./views.ts";
 
-export const FOLLOW_GLOBAL_VIEW = "전체 뷰 따라가기";
+export const FOLLOW_GLOBAL_VIEW = "현재 탭 필터 따라가기";
 
 export interface ViewInfo {
   kind: ViewBinding["kind"];
@@ -20,7 +20,7 @@ export function viewPresentation(
     return {
       label: FOLLOW_GLOBAL_VIEW,
       icon: "list-filter",
-      help: "상단 ‘필터 및 뷰’의 조건을 따라가요. 전체 조건을 바꾸면 함께 바뀝니다.",
+      help: "현재 탭의 필터를 따라가요. 탭의 조건을 바꾸면 함께 바뀝니다.",
     };
   if (binding.kind === "saved")
     return {
@@ -28,8 +28,8 @@ export function viewPresentation(
       icon: "user",
       help:
         target.kind === "branch"
-          ? "저장한 조건을 사용해요. 이 목록만 바꾸려면 ‘이 하위 목록만 설정’을 선택하세요."
-          : "저장한 조건을 사용해요. 수정은 ‘뷰 관리’에서 하거나 ‘필터 직접 설정’을 선택하세요.",
+          ? "이 하위 목록에 저장된 조건을 사용해요. 필터에서 바로 편집할 수 있어요."
+          : "현재 탭에 저장된 조건을 사용해요. 필터에서 바로 편집할 수 있어요.",
     };
   return target.kind === "branch"
     ? {
@@ -40,6 +40,6 @@ export function viewPresentation(
     : {
         label: "필터 직접 설정",
         icon: "list-filter",
-        help: "전체 목록에서 사용할 필터와 정렬을 직접 정해요.",
+        help: "현재 탭에서 사용할 필터와 정렬을 정해요.",
       };
 }

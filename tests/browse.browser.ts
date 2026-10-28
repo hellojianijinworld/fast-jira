@@ -583,7 +583,7 @@ checks.push([
 checks.push([
   "필터 체크는 초안만 바꾸고 적용 버튼이 목록을 한 번 조회한다",
   async () => {
-    button("필터 및 뷰").click();
+    button("필터").click();
     await tick();
     const panel = document.querySelector<HTMLElement>(".filter-panel");
     assert(panel, "팝오버 없음");
@@ -641,8 +641,8 @@ checks.push([
     await tick();
     const panel = document.querySelector<HTMLElement>(".filter-panel");
     assert(
-      panel?.querySelector('[aria-label="사용할 뷰"]'),
-      "보기 선택기 누락",
+      panel?.querySelector('[aria-label="현재 탭 필터 따라가기"]'),
+      "탭 필터 상속 선택 누락",
     );
     await tick();
     const mode = panel?.querySelector<HTMLSelectElement>(
@@ -2281,7 +2281,7 @@ checks.push([
       JSON.stringify(app.list.filters) === JSON.stringify(beforeFilters),
       "프로젝트 적용이 다른 조건을 바꿈",
     );
-    button("필터 및 뷰").click();
+    button("필터").click();
     assert(
       !document.querySelector('.view-settings input[aria-label^="프로젝트:"]'),
       "뷰 안에 프로젝트 선택 잔존",
@@ -2312,12 +2312,11 @@ checks.push([
     const panel = document.querySelector<HTMLElement>(
       ".filter-panel:not(.project-panel)",
     );
-    const select = panel?.querySelector<HTMLSelectElement>(
-      ".view-picker select",
+    const follow = panel?.querySelector<HTMLInputElement>(
+      '[aria-label="현재 탭 필터 따라가기"]',
     );
-    assert(select && panel, "상세 뷰 선택 없음");
-    select.value = "inline";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    assert(follow && panel, "하위 목록 필터 상속 선택 없음");
+    follow.click();
     await tick();
     button("적용").click();
     await tick();
@@ -3258,7 +3257,7 @@ checks.push([
     } finally {
       button("닫기").click();
     }
-    button("필터 및 뷰").click();
+    button("필터").click();
     await tick();
     try {
       spacing(".view-panel-head", "padding-top", small ? 8 : 16);

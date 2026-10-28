@@ -1061,7 +1061,7 @@ a {
   background: var(--blue-soft);
 }
 
-/* 뷰 선택은 짧게, 조건 편집은 같은 팝오버 안에서 넓게 펼친다. */
+/* 현재 탭의 필터는 하나의 팝오버에서 편집한다. */
 .view-panel {
   padding: 0;
   overflow: hidden;
@@ -1091,16 +1091,6 @@ a {
   margin: 0;
   font-size: var(--font-size-15);
 }
-.view-head-actions,
-.view-manager-toolbar,
-.saved-view-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--density-space-2);
-}
-.view-head-actions {
-  flex: none;
-}
 .view-panel-body {
   min-height: 0;
   overflow-y: auto;
@@ -1122,86 +1112,11 @@ a {
 .project-panel .filter-section {
   margin-bottom: 0;
 }
-.view-picker {
-  margin-top: 4px;
-}
-.view-picker .select-menu {
-  width: 100%;
-}
-.view-selection-help {
-  margin: var(--density-space-2) 0 0;
-}
-.view-picker .select-options .select-option-copy {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.view-option-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--density-space-3);
-  min-width: 0;
-}
-.view-custom-badge {
-  flex: none;
-  padding: 2px var(--density-space-1-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-4);
-  background: var(--soft);
-  color: var(--muted);
-  font-size: var(--font-size-10);
-  font-weight: var(--font-weight-normal);
-  line-height: var(--line-height-label);
-}
-.view-picker .select-value {
-  flex: 1;
-}
-.view-option-title {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.view-picker .select-value .view-option-title {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.view-option-name {
-  display: inline-flex;
-  flex: 1;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-}
-.view-picker .select-options .view-option-name {
-  font-weight: var(--font-weight-medium);
-}
-.view-option-icon {
-  width: 15px;
-  height: 15px;
-  flex: none;
-}
-.view-help,
-.view-match,
-.view-usage {
+.view-help {
   color: var(--muted);
   font-size: var(--font-size-12);
   line-height: 1.6;
   overflow-wrap: anywhere;
-}
-.view-current-summary {
-  margin: var(--density-space-2-5) 0 var(--density-space-3);
-}
-.view-editor-host {
-  margin-top: var(--density-space-4-5);
-  border-top: 1px solid var(--border);
-  padding-top: var(--density-space-4);
-}
-.view-match {
-  color: var(--blue);
-  padding: 9px var(--density-space-3);
-  background: var(--blue-soft);
-  border-radius: var(--radius-6);
-  margin: var(--density-space-3) 0;
 }
 .view-name-field {
   display: flex;
@@ -1235,120 +1150,9 @@ a {
   padding: var(--density-space-2) var(--density-space-5);
   font-size: var(--font-size-12);
 }
-.view-panel button,
-.view-manager button {
+.view-panel button {
   font-size: var(--font-size-12);
 }
-.view-head-actions button {
-  min-height: 30px;
-  padding: 4px var(--density-space-2);
-}
-.view-head-actions .tool-button {
-  width: 30px;
-  padding: 0;
-}
-.settings-modal.view-manager {
-  width: min(880px, calc(100vw - 24px));
-  height: min(720px, 86dvh);
-}
-.view-manager-content {
-  flex: 1;
-  padding-top: var(--density-space-4);
-}
-.view-manager-toolbar {
-  justify-content: space-between;
-  margin-bottom: var(--density-space-4);
-}
-.view-manager-toolbar p {
-  margin: 0;
-}
-.view-manager-toolbar button {
-  flex: none;
-}
-.saved-view-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: start;
-  gap: var(--density-space-3);
-  padding: var(--density-space-4) 0;
-  border-bottom: 1px solid var(--border);
-}
-.saved-view-copy {
-  flex: 1 1 260px;
-  min-width: 0;
-}
-.saved-view-copy h3 {
-  margin: 0 0 5px;
-  font-size: var(--font-size-14);
-  font-weight: var(--font-weight-semibold);
-  overflow-wrap: anywhere;
-}
-.saved-view-copy p {
-  margin: 0 0 4px;
-}
-.saved-view-actions {
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.saved-view-actions button {
-  padding: 4px var(--density-space-2);
-  min-height: 30px;
-}
-.view-manager-footer {
-  position: sticky;
-  bottom: -1px;
-  background: var(--surface);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--density-space-2);
-  border-top: 1px solid var(--border);
-  padding: var(--density-space-3) 0;
-}
-.view-delete-confirm {
-  flex-basis: 100%;
-  background: var(--soft);
-  padding: var(--density-space-3);
-  border-radius: var(--radius-8);
-  text-align: right;
-}
-.view-delete-confirm p {
-  margin-top: 0;
-  text-align: left;
-}
-.view-delete-confirm button + button {
-  margin-left: 8px;
-}
-.view-empty {
-  padding: var(--density-space-8) var(--density-space-3);
-  text-align: center;
-  color: var(--muted);
-  font-size: var(--font-size-13);
-  line-height: var(--line-height-prose);
-}
-.view-feedback {
-  font-size: var(--font-size-12);
-  color: var(--blue);
-}
-@media (max-width: 600px) {
-  .saved-view-actions {
-    width: 100%;
-  }
-  .view-manager-toolbar {
-    align-items: start;
-  }
-}
-
-.view-usage-details {
-  margin-top: var(--density-space-1-5);
-  color: var(--muted);
-  font-size: var(--font-size-12);
-}
-.view-usage-details ul {
-  margin: var(--density-space-1-5) 0 0;
-  padding-left: 18px;
-}
-
 .global-project-filter {
   padding-bottom: var(--density-space-4);
   border-bottom: 1px solid var(--border);
@@ -1356,9 +1160,6 @@ a {
 }
 .global-project-filter > p {
   margin: 0 0 var(--density-space-3);
-}
-.view-section-label {
-  margin: 0 0 var(--density-space-2-5);
 }
 .people-filter-controls {
   display: flex;

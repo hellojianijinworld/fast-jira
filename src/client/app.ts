@@ -68,7 +68,7 @@ export async function createApp(
   const searchToggle = iconButton("검색", "search"),
     aiToggle = iconButton("AI 대화", "sparkles"),
     projects = iconButton("프로젝트 선택", "folder"),
-    filters = iconButton("필터 및 뷰", "list-filter"),
+    filters = iconButton("필터", "list-filter"),
     help = iconButton("도움말", "circle-help"),
     settings = iconButton("설정", "settings"),
     selection = iconButton("이슈 선택 모드", "check");
@@ -703,6 +703,7 @@ export async function createApp(
     filters: () => list.filters,
     catalog: () => catalog,
     catalogProjects: () => catalogProjects,
+    viewName: () => activeWorkspace(workspaces).name,
     views,
     onCatalog: (next, projects) => {
       if (
@@ -734,6 +735,7 @@ export async function createApp(
   const projectPanel = createProjectPanel({
     projects: () => catalog.projects,
     selected: () => list.filters.projects,
+    viewName: () => activeWorkspace(workspaces).name,
     apply: (projects) => {
       if (bulk.busy)
         throw new Error("일괄 변경이 끝난 뒤 프로젝트를 변경하세요.");

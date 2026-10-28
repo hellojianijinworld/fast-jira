@@ -1,41 +1,11 @@
 import type { ViewDraft } from "../client/view-editor-controller.ts";
 import type { ViewOptions } from "../client/view-options.ts";
-import { personFilter } from "../domain/people.ts";
-import { sortLabel } from "../domain/sort.ts";
 import type { ViewDefinition } from "../domain/views.ts";
 import { element } from "./dom.ts";
 import { filterChecklist } from "./filter-checklist.ts";
 import { statusPill } from "./meta.ts";
 import { createPeopleFilter } from "./people-filter.ts";
 import { createSortEditor } from "./sort-editor.ts";
-
-export function viewSummary(definition: ViewDefinition): string {
-  const person = personFilter(definition);
-  const label = person.basis === "related" ? "작업 관계자" : "담당자";
-  const people =
-    person.mode === "all"
-      ? "전체 작업"
-      : person.mode === "unassigned"
-        ? person.basis === "related"
-          ? "작업 관계자 모두 미지정"
-          : "담당자 미지정 작업"
-        : person.mode === "me"
-          ? person.basis === "related"
-            ? "내가 작업 관계자인 태스크"
-            : "내가 담당한 태스크"
-          : definition.assignees?.length
-            ? `${label} ${definition.assignees.length}명 선택`
-            : `${label} 선택 없음`;
-  const stages =
-    definition.statuses === null
-      ? definition.excludeDone
-        ? "완료 제외"
-        : "전체 단계"
-      : definition.statuses.length
-        ? `단계 ${definition.statuses.length}개 선택`
-        : "단계 선택 없음";
-  return `${people} · ${stages} · ${sortLabel(definition.sort)}`;
-}
 
 /** 초안과 선택지만 받아 렌더링한다. 조회·저장·적용은 소유하지 않는다. */
 export function createViewEditor(

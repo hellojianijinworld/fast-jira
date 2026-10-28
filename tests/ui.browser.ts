@@ -1788,7 +1788,7 @@ await check("공통 완료 카드는 아이콘 분기 없이 기존 배지를 �
   }
 });
 await check(
-  "필터 및 뷰는 프로젝트 선택 없이 직접 설정을 바로 편집한다",
+  "현재 탭 필터는 프로젝트·뷰 관리 없이 조건을 바로 편집한다",
   async () => {
     let requests = 0;
     const panel = createFilterPanel(
@@ -1839,8 +1839,8 @@ await check(
         "프로젝트가 뷰 편집기에 남음",
       );
       assert(
-        panel.element.getAttribute("aria-label") === "필터 및 뷰",
-        "뷰 명칭 미반영",
+        panel.element.getAttribute("aria-label") === "필터",
+        "필터 명칭 미반영",
       );
       await wait();
       assert(Number(requests) === 1, "직접 설정의 메타정보 조회 누락");

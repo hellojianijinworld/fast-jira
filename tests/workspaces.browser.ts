@@ -219,5 +219,90 @@ await check(
     );
   },
 );
+await check(
+  "상단 필터는 현재 탭만 편집하고 다른 탭은 바꾸지 않는다",
+  async () => {
+    const count = calls.filter((url) => url.pathname === "/api/issues").length;
+    button("필터").click();
+    await wait();
+    const panel = document.querySelector<HTMLElement>(
+      ".filter-panel:not(.project-panel):popover-open",
+    );
+    assert(panel, "현재 탭 필터");
+    assert(
+      panel.querySelector(".view-panel-scope")?.textContent ===
+        "‘진행 확인’ 뷰에 적용",
+      "필터 적용 탭 안내",
+    );
+    assert(
+      !panel.querySelector('[aria-label="사용할 뷰"], [aria-label="뷰 이름"]'),
+      "중복 뷰 UI",
+    );
+    const stage = panel.querySelector<HTMLInputElement>(
+      '[aria-label="단계: 대기"]',
+    );
+    assert(stage, "단계 편집");
+    stage.click();
+    assert(
+      calls.filter((url) => url.pathname === "/api/issues").length === count,
+      "초안에서 재조회",
+    );
+    button("적용", panel).click();
+    await wait();
+    assert(
+      JSON.stringify(app.list.filters.statuses) === '["1","2"]',
+      "현재 탭 저장",
+    );
+    button("디자인 작업").click();
+    await wait();
+    assert(app.list.filters.statuses === null, "다른 탭 조건 변경");
+    button("진행 확인").click();
+    await wait();
+    assert(
+      JSON.stringify(app.list.filters.statuses) === '["1","2"]',
+      "첫 탭 조건 복원",
+    );
+  },
+);
+await check(
+  "프로젝트 선택은 현재 탭에만 저장하고 빈 선택도 재시작 후 유지한다",
+  async () => {
+    button("프로젝트 선택").click();
+    let panel = document.querySelector<HTMLElement>(
+      ".project-panel:popover-open",
+    );
+    assert(panel, "프로젝트 선택");
+    assert(
+      panel.querySelector(".view-panel-scope")?.textContent ===
+        "‘진행 확인’ 뷰에 적용",
+      "프로젝트 적용 탭 안내",
+    );
+    button("선택 해제", panel).click();
+    button("취소", panel).click();
+    assert(
+      app.list.filters.projects.join() === "TEST",
+      "취소가 프로젝트를 바꿈",
+    );
+    button("프로젝트 선택").click();
+    panel = document.querySelector<HTMLElement>(".project-panel:popover-open");
+    assert(panel, "프로젝트 다시 열기");
+    button("선택 해제", panel).click();
+    button("적용", panel).click();
+    await wait();
+    assert(app.list.filters.projects.length === 0, "현재 탭 선택 해제 저장");
+    button("디자인 작업").click();
+    await wait();
+    assert(
+      app.list.filters.projects.join() === "DESIGN",
+      "다른 탭 프로젝트 변경",
+    );
+    button("진행 확인").click();
+    await wait();
+    assert(app.list.filters.projects.length === 0, "현재 탭의 빈 선택 복원");
+    app.destroy();
+    app = await createApp(root, api, storage);
+    assert(app.list.filters.projects.length === 0, "재시작 시 빈 선택 유실");
+  },
+);
 results.dataset.failures = String(failures);
 results.dataset.complete = "true";
