@@ -101,7 +101,7 @@ export function createCommandPalette(config: {
     controls = element("div", "command-controls"),
     model = element("select", "command-model"),
     microphone = iconButton("음성 입력", "mic"),
-    send = actionButton("요청 보내기", "arrow-up", "primary"),
+    send = actionButton("보내기", "arrow-up", "primary"),
     cancel = actionButton("요청 중지", "square"),
     chatLayout = element("div", "chat-layout"),
     chatMain = element("div", "chat-main"),
@@ -197,6 +197,7 @@ export function createCommandPalette(config: {
   pickerHead.append(pickerTitle, pickerClose);
   pickerDialog.append(pickerHead, picker);
   pickerClose.addEventListener("click", () => pickerDialog.close());
+  send.setAttribute("aria-label", "요청 보내기");
   model.setAttribute("aria-label", "대화 모델");
   model.title = "이 대화의 모델 · 선택한 모델을 새 대화 기본값으로 저장합니다";
   model.append(element("option", "", "연결 확인 중…"));
@@ -396,6 +397,12 @@ export function createCommandPalette(config: {
     cancel.hidden = !busy;
     const isClaude = selectedModel.startsWith("claude:");
     provider.textContent = isClaude ? "Claude" : "Codex";
+    model.title = [
+      model.selectedOptions[0]?.textContent,
+      "선택한 모델을 새 대화 기본값으로 저장합니다",
+    ]
+      .filter(Boolean)
+      .join("\n");
     microphone.disabled = busy || applying || isClaude;
     microphone.title = recording
       ? "음성 입력 중지"
@@ -440,15 +447,29 @@ export function createCommandPalette(config: {
       if (!alive) return;
       ready = state.ready && state.models.length > 0;
       providerStates = state.providers ?? [];
-      model.replaceChildren(
-        ...state.models.map((item) => {
-          const option = element("option", "", item.name);
-          option.value = item.id;
-          option.defaultSelected = option.selected = item.isDefault;
-          option.dataset.label = item.name;
-          return option;
-        }),
+      const options = state.models.map((item) => {
+        const label = item.name.replace(/^(?:Codex|Claude)\s*·\s*/, "");
+        const option = element("option", "", label);
+        option.value = item.id;
+        option.defaultSelected = option.selected = item.isDefault;
+        option.dataset.label = label;
+        return option;
+      });
+      const codex = options.filter(
+        (option) => !option.value.startsWith("claude:"),
       );
+      const claude = options.filter((option) =>
+        option.value.startsWith("claude:"),
+      );
+      if (codex.length && claude.length) {
+        const codexGroup = element("optgroup"),
+          claudeGroup = element("optgroup");
+        codexGroup.label = "Codex";
+        claudeGroup.label = "Claude";
+        codexGroup.append(...codex);
+        claudeGroup.append(...claude);
+        model.replaceChildren(codexGroup, claudeGroup);
+      } else model.replaceChildren(...options);
       if (!selectedModel) selectedModel = defaultModel;
       if (
         selectedModel &&

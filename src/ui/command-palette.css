@@ -544,6 +544,9 @@
     min-height: 58px;
   }
 
+  .chat-main .command-controls {
+    gap: 4px;
+  }
   .command-model {
     max-width: 145px;
   }

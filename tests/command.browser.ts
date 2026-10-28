@@ -143,8 +143,8 @@ const api = createApi(async (input, init) => {
     return Response.json({
       ready: true,
       models: [
-        { id: "test", name: "검사 모델", isDefault: true },
-        { id: "other", name: "다른 모델", isDefault: false },
+        { id: "test", name: "Codex · 검사 모델", isDefault: true },
+        { id: "other", name: "Codex · 다른 모델", isDefault: false },
         {
           id: "claude:sonnet",
           name: "Claude · sonnet (CLI 별칭)",
@@ -777,6 +777,18 @@ await check(
   async () => {
     const select = dialog().querySelector<HTMLSelectElement>("select");
     if (!select) throw new Error("모델 없음");
+    assert(
+      [...select.querySelectorAll("optgroup")]
+        .map((group) => group.label)
+        .join(",") === "Codex,Claude",
+      "제공자별 선택지 구분 누락",
+    );
+    assert(
+      [...select.options].every(
+        (option) => !/^(Codex|Claude) · /.test(option.textContent ?? ""),
+      ),
+      "모델 이름에 제공자 중복",
+    );
     select.value = "claude:sonnet";
     select.dispatchEvent(new Event("change"));
     assert(
