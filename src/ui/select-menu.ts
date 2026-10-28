@@ -171,6 +171,16 @@ export function enhanceSelect(
       }),
     );
     if (!isOpen()) panel.showPopover();
+    // 짧은 메뉴가 최대 높이만큼 앵커에서 떨어지지 않도록 실제 높이로 맞춘다.
+    Object.assign(
+      panel.style,
+      popoverPosition(rect, {
+        width: Math.max(rect.width, 240),
+        maxHeight: Math.min(320, panel.getBoundingClientRect().height),
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+      }),
+    );
     if (focus)
       (
         (config.focusSearch !== false ? searchInput : undefined) ??

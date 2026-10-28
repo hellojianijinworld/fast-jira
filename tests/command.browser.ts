@@ -980,6 +980,112 @@ await check(
     );
   },
 );
+await check(
+  "AI 도움말은 제목 옆에서 열고 하단 안내를 남기지 않는다",
+  async () => {
+    palette.open("ai");
+    const help = dialog().querySelector<HTMLButtonElement>(
+      '.command-heading [aria-label="AI 대화 도움말"]',
+    );
+    assert(help, "제목 옆 도움말");
+    input().value = "아직 보내지 않은 입력";
+    help?.click();
+    await tick();
+    const panel = dialog().querySelector<HTMLElement>(".ai-chat-help");
+    assert(panel?.matches(":popover-open"), "도움말 열기");
+    assert(
+      panel?.textContent?.includes("보관 안내") &&
+        panel?.textContent?.includes("연결 및 지원 상태"),
+      "도움말 내용",
+    );
+    assert(
+      !dialog().querySelector(".chat-main .command-hint,.chat-footer"),
+      "하단 도움말 잔존",
+    );
+    help?.click();
+    assert(!panel?.matches(":popover-open"), "도움말 닫기");
+    assert(input().value === "아직 보내지 않은 입력", "입력 보존");
+  },
+);
+await check(
+  "AI 보내기 메뉴의 Enter 줄바꿈은 전송하지 않고 Ctrl 또는 Cmd Enter로만 보낸다",
+  async () => {
+    const trigger =
+      dialog().querySelector<HTMLButtonElement>(".chat-send-options");
+    assert(trigger, "보내기 설정 버튼");
+    trigger?.click();
+    await tick();
+    const popup = dialog().querySelector<HTMLElement>(
+      ".select-options:popover-open",
+    );
+    if (trigger && popup) {
+      const anchor = trigger.getBoundingClientRect(),
+        bounds = popup.getBoundingClientRect();
+      assert(
+        Math.min(
+          Math.abs(bounds.bottom - anchor.top),
+          Math.abs(bounds.top - anchor.bottom),
+        ) <= 12,
+        "보내기 메뉴가 버튼에서 떨어져 있다",
+      );
+    }
+    const option = [
+      ...dialog().querySelectorAll<HTMLButtonElement>(
+        ".select-options:popover-open button",
+      ),
+    ].find((button) => button.textContent?.startsWith("Enter로 줄바꿈"));
+    assert(option, "Enter 줄바꿈 선택지");
+    option?.click();
+    const select = dialog().querySelector<HTMLSelectElement>(
+      'select[aria-label="메시지 보내기 방식"]',
+    );
+    assert(select?.value === "shortcut", "모드 변경");
+    input().value = "보내기 방식 검사";
+    const before = prompt;
+    const enter = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    });
+    input().dispatchEvent(enter);
+    await tick();
+    assert(!enter.defaultPrevented && prompt === before, "Enter가 전송했다");
+    const sendKey = new KeyboardEvent("keydown", {
+      key: "Enter",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    input().dispatchEvent(sendKey);
+    await tick();
+    assert(
+      sendKey.defaultPrevented && prompt === "보내기 방식 검사",
+      "Ctrl Enter 전송",
+    );
+    palette.destroy();
+    palette = makePalette();
+    palette.open("ai");
+    await tick();
+    const restored = dialog().querySelector<HTMLSelectElement>(
+      'select[aria-label="메시지 보내기 방식"]',
+    );
+    assert(restored?.value === "shortcut", "모드 복원");
+    if (restored) {
+      restored.value = "enter";
+      restored.dispatchEvent(new Event("change"));
+    }
+    input().value = "기본 Enter 검사";
+    input().dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await tick();
+    assert(prompt === "기본 Enter 검사", "기본 모드 전송");
+  },
+);
 await check("destroy는 단축키와 명령창을 해제한다", async () => {
   palette.destroy();
   notice.destroy();

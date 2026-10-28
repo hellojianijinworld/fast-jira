@@ -17,6 +17,7 @@ import type {
   AssistantProviderStatus,
 } from "../domain/assistant.ts";
 import type { BulkResult } from "../domain/bulk.ts";
+import { type ChatSendMode, sendsChatMessage } from "../domain/chat-input.ts";
 import {
   type CommandId,
   commandForShortcut,
@@ -32,8 +33,10 @@ import { createAssistantApprovalPanel } from "./assistant-approvals.ts";
 import { chatMessage } from "./chat-message.ts";
 import { createChatSidebar } from "./chat-sidebar.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
+import { popoverPosition } from "./geometry.ts";
 import type { CardOptions } from "./issue-card.ts";
 import { createSearchDialog } from "./search-dialog.ts";
+import { enhanceSelect } from "./select-menu.ts";
 
 type Mode = "search" | "ai";
 const fields = {
@@ -103,7 +106,11 @@ export function createCommandPalette(config: {
     chatLayout = element("div", "chat-layout"),
     chatMain = element("div", "chat-main"),
     transcript = element("div", "chat-transcript"),
-    footer = element("div", "chat-footer"),
+    helpToggle = iconButton("AI 대화 도움말", "circle-help", { size: "sm" }),
+    helpPanel = element("div", "select-options ai-chat-help"),
+    heading = element("div", "command-heading"),
+    sendGroup = element("div", "chat-send-group"),
+    sendModeSelect = element("select"),
     welcome = element("div", "chat-welcome"),
     provider = element("span", "chat-provider", "Codex"),
     capabilities = element("details", "chat-capabilities"),
@@ -129,6 +136,8 @@ export function createCommandPalette(config: {
     }
   }
   let defaultModel = historyStore?.defaultModel() ?? "";
+  let sendMode: ChatSendMode = historyStore?.sendMode() ?? "enter";
+  let reportedStorageError = "";
   const sidebar = createChatSidebar({
     create: () => {
       if (!busy && !applying && !recording) newConversation();
@@ -173,7 +182,7 @@ export function createCommandPalette(config: {
   transcript.setAttribute("aria-label", "대화 내용");
   aiResults.setAttribute("role", "log");
   aiResults.setAttribute("aria-live", "polite");
-  chatMain.append(transcript, form, footer);
+  chatMain.append(transcript, form);
   chatLayout.append(sidebar.root, chatMain);
   capabilities.append(element("summary", "", "연결 및 지원 상태"));
   commandQuery.placeholder = "명령 검색…";
@@ -196,16 +205,85 @@ export function createCommandPalette(config: {
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   send.type = "submit";
-  head.append(title, close);
-  controls.append(provider, model, microphone, cancel, send);
+  heading.append(title, helpToggle);
+  head.append(heading, close);
+  sendModeSelect.setAttribute("aria-label", "메시지 보내기 방식");
+  const sendShortcut = /Mac|iPhone|iPad/.test(navigator.platform)
+    ? "⌘Enter"
+    : "Ctrl+Enter";
+  sendModeSelect.append(
+    new Option("Enter로 보내기", "enter"),
+    new Option(`Enter로 줄바꿈 · ${sendShortcut}로 보내기`, "shortcut"),
+  );
+  sendModeSelect.value = sendMode;
+  sendGroup.append(send, sendModeSelect);
+  const sendModeMenu = enhanceSelect(sendModeSelect, { size: "sm" });
+  sendModeMenu.trigger.classList.add("chat-send-options");
+  controls.append(provider, model, microphone, cancel, sendGroup);
   form.append(input, controls);
   policy.replaceChildren(
     element("summary", "", "이 브라우저에 보관 · 보관 안내"),
     element("p"),
   );
   panel.append(chatLayout);
-  footer.append(hint, policy, capabilities);
-  dialog.append(head, panel);
+  helpPanel.popover = "auto";
+  helpPanel.tabIndex = -1;
+  helpPanel.setAttribute("role", "dialog");
+  helpPanel.setAttribute("aria-label", "AI 대화 도움말");
+  helpPanel.id = elementId("ai-help");
+  helpToggle.setAttribute("aria-haspopup", "dialog");
+  helpToggle.setAttribute("aria-controls", helpPanel.id);
+  helpToggle.setAttribute("aria-expanded", "false");
+  helpPanel.append(
+    element("h3", "", "AI 대화 도움말"),
+    hint,
+    policy,
+    capabilities,
+  );
+  dialog.append(head, panel, helpPanel);
+  function closeHelp() {
+    if (helpPanel.matches(":popover-open")) helpPanel.hidePopover();
+  }
+  helpToggle.addEventListener("click", () => {
+    if (helpPanel.matches(":popover-open")) {
+      closeHelp();
+      return;
+    }
+    Object.assign(
+      helpPanel.style,
+      popoverPosition(helpToggle.getBoundingClientRect(), {
+        width: 420,
+        maxHeight: 460,
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+      }),
+    );
+    helpPanel.showPopover();
+    helpPanel.focus();
+  });
+  helpPanel.addEventListener("toggle", () =>
+    helpToggle.setAttribute(
+      "aria-expanded",
+      String(helpPanel.matches(":popover-open")),
+    ),
+  );
+  helpPanel.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeHelp();
+      helpToggle.focus();
+    }
+  });
+  sendModeSelect.addEventListener("change", () => {
+    sendMode = sendModeSelect.value === "shortcut" ? "shortcut" : "enter";
+    try {
+      historyStore?.setSendMode(sendMode);
+    } catch (error) {
+      notify(errorText(error));
+    }
+    sync();
+    input.focus();
+  });
   config.host.append(dialog, pickerDialog);
   let alive = true,
     busy = false,
@@ -273,7 +351,7 @@ export function createCommandPalette(config: {
       microphone.title = active ? "음성 입력 중지" : "음성 입력";
       input.readOnly = active;
       sync();
-      hint.textContent = message || hintText();
+      if (message) notify(message);
     },
   };
   const voice = config.voice
@@ -297,12 +375,15 @@ export function createCommandPalette(config: {
   });
   transcript.insertBefore(approvalPanel.element, status);
   function hintText() {
-    return "Enter 보내기 · Shift+Enter 줄바꿈 · 변경은 확인 후 적용";
+    return sendMode === "enter"
+      ? "Enter 보내기 · Shift+Enter 줄바꿈 · 변경은 확인 후 적용"
+      : `Enter 줄바꿈 · ${sendShortcut} 보내기 · 변경은 확인 후 적용`;
   }
   function sync() {
     input.rows = 3;
     input.placeholder = "예: 내 진행 중 이슈를 찾아 담당자를 변경해 줘";
     model.disabled = busy || loadingModels || applying || recording;
+    sendModeSelect.disabled = busy || applying || recording;
     send.disabled =
       applying ||
       busy ||
@@ -339,8 +420,13 @@ export function createCommandPalette(config: {
           ? "대화는 이 브라우저에 직접 삭제할 때까지 남습니다. 브라우저 데이터를 지우면 기록도 삭제됩니다. Codex 연결은 30분 미사용 또는 서버 재시작 시 만료됩니다. Claude는 매 요청마다 최근 기록을 참고합니다. 이전 대화는 최근 20개 메시지·최대 2만 자까지 전달합니다."
           : "현재 화면에서만 대화를 보관합니다.");
     if (storageError) policy.open = true;
+    if (storageError && storageError !== reportedStorageError)
+      notify(storageError);
+    reportedStorageError = storageError;
+    helpToggle.classList.toggle("error", Boolean(storageError));
     policy.classList.toggle("error", Boolean(storageError));
     hint.textContent = hintText();
+    sendModeMenu.trigger.title = hintText();
   }
   async function loadModels() {
     if (ready || loadingModels) return;
@@ -785,8 +871,7 @@ export function createCommandPalette(config: {
     renderConversation();
   }
   input.addEventListener("keydown", (event) => {
-    if (event.isComposing) return;
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (sendsChatMessage(sendMode, event)) {
       event.preventDefault();
       form.requestSubmit();
     }
@@ -833,6 +918,8 @@ export function createCommandPalette(config: {
   dialog.addEventListener("close", () => {
     if (dialog.open) return;
     restoreNotice(dialog);
+    closeHelp();
+    sendModeMenu.close();
     voice.stop();
   });
   for (const modal of [dialog, pickerDialog])
@@ -864,6 +951,8 @@ export function createCommandPalette(config: {
       alive = false;
       request?.abort();
       voice.destroy();
+      closeHelp();
+      sendModeMenu.destroy();
       approvalPanel.destroy();
       window.removeEventListener("keydown", shortcut, true);
       searchDialog.destroy();

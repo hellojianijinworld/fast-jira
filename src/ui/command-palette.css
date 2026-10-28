@@ -34,6 +34,12 @@
   gap: var(--density-space-3);
   flex: none;
 }
+.command-heading .tool-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 4px;
+}
 .command-head h2 {
   margin: 0;
   font-size: var(--font-size-15);
@@ -430,25 +436,10 @@
 .chat-provider[data-state="ready"]::before {
   background: var(--blue);
 }
-.chat-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 4px var(--density-space-3-5);
-  padding: 0 var(--density-space-4-5) var(--density-space-2-5);
-  color: var(--muted);
-  font-size: var(--font-size-10);
-  flex: none;
-}
-.chat-footer .command-hint {
-  width: 100%;
-  margin: 0 0 2px;
-  font-size: var(--font-size-10);
-}
 .command-policy,
 .chat-capabilities {
   max-width: 100%;
-  font-size: var(--font-size-10);
+  font-size: var(--font-size-12);
   line-height: 1.6;
 }
 .command-policy summary,
@@ -552,10 +543,7 @@
   .chat-main textarea {
     min-height: 58px;
   }
-  .chat-footer {
-    padding: 0 10px 8px;
-    gap: 4px 10px;
-  }
+
   .command-model {
     max-width: 145px;
   }
@@ -639,4 +627,43 @@
 .awaiting-approval .command-form textarea {
   height: 38px;
   min-height: 38px;
+}
+
+.command-heading,
+.chat-send-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chat-send-options.select-trigger {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding-inline: 4px;
+  justify-content: center;
+}
+.chat-send-options .select-value {
+  display: none;
+}
+.ai-chat-help:popover-open {
+  display: grid;
+}
+.ai-chat-help {
+  padding: var(--density-space-3);
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  font-size: var(--font-size-12);
+  overflow-wrap: anywhere;
+}
+.ai-chat-help h3,
+.ai-chat-help .command-hint {
+  margin: 0;
+}
+.ai-chat-help h3 {
+  font-size: var(--font-size-14);
+}
+.ai-chat-help .chat-capabilities {
+  overflow-x: auto;
 }

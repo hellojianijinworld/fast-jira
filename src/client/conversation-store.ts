@@ -1,3 +1,4 @@
+import type { ChatSendMode } from "../domain/chat-input.ts";
 import {
   type Conversation,
   decodeConversations,
@@ -8,7 +9,24 @@ export function createConversationStore(storage: LocalStore, scope: string) {
   const key = `fastJira:conversations:${scope}`;
   let readable = true;
   const modelKey = `fastJira:assistant-model:${scope}`;
+  const sendModeKey = `fastJira:assistant-send-mode:${scope}`;
   const store = {
+    sendMode(): ChatSendMode {
+      try {
+        return storage.getItem(sendModeKey) === "shortcut"
+          ? "shortcut"
+          : "enter";
+      } catch {
+        return "enter";
+      }
+    },
+    setSendMode(mode: ChatSendMode) {
+      try {
+        storage.setItem(sendModeKey, mode);
+      } catch {
+        throw new Error("보내기 설정을 브라우저에 저장하지 못했어요.");
+      }
+    },
     defaultModel(): string {
       try {
         return storage.getItem(modelKey) ?? "";
