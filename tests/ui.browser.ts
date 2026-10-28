@@ -80,15 +80,23 @@ await check(
     fixture.append(content.element);
     try {
       const groups = content.element.querySelectorAll(".setting-group");
-      assert(groups.length === 4, "화면 표시 그룹 수 불일치");
+      assert(groups.length === 3, "화면 표시 그룹 수 불일치");
       const radios = [
         ...content.element.querySelectorAll<HTMLInputElement>(
           'input[type="radio"]',
         ),
       ];
-      assert(radios.length === 9, "선택 카드 누락");
+      assert(radios.length === 7, "선택 카드 누락");
       assert(
-        content.element.querySelectorAll("input:checked").length === 4,
+        content.element.querySelectorAll(".setting-theme-icon").length === 3,
+        "테마 아이콘 누락",
+      );
+      assert(
+        content.element.querySelectorAll(".setting-group").length === 3,
+        "완료 작업 설정이 분리됨",
+      );
+      assert(
+        content.element.querySelectorAll("input:checked").length === 3,
         "그룹별 선택 누락",
       );
       for (const input of radios.filter(
@@ -113,17 +121,15 @@ await check(
       assert(saved.theme === "system", "시스템 테마 즉시 적용 누락");
       select("테마 · 다크");
       select("제목 표시 · 한 줄로");
-      select("완료된 하위 작업 · 목록");
-      select("완료된 상위 작업 · 목록");
+      select("완료된 작업 · 목록");
       assert(
         String(saved.theme) === "dark" &&
           saved.compactView &&
-          !saved.compactDone &&
-          !saved.compactDoneParents,
+          !saved.compactDone,
         "선택 즉시 적용 또는 다른 그룹 보존 실패",
       );
       assert(
-        content.element.querySelectorAll("input:checked").length === 4,
+        content.element.querySelectorAll("input:checked").length === 3,
         "그룹 간 라디오 선택 충돌",
       );
       assert(

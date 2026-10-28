@@ -135,14 +135,12 @@ test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다",
     theme: "light",
     compactView: false,
     compactDone: true,
-    compactDoneParents: true,
   });
   assert.doesNotThrow(() =>
     writePreferences(blocked, {
       theme: "dark",
       compactView: true,
       compactDone: false,
-      compactDoneParents: false,
     }),
   );
   const store = createAccountStore(blocked, "example", "me");
@@ -614,14 +612,12 @@ test("일괄 변경은 목록·하위 커서를 유지하고 한 번만 알린�
 test("완료 간단히 보기는 기본 켜짐이고 끈 선택을 로컬에 기억한다", () => {
   const local = storage();
   assert.equal(readPreferences(local).compactDone, true);
-  assert.equal(readPreferences(local).compactDoneParents, true);
+  local.setItem("fastJira:compactDoneParents", "false");
+  assert.equal(readPreferences(local).compactDone, false);
+  writePreferences(local, { ...readPreferences(local), compactDone: true });
+  assert.equal(readPreferences(local).compactDone, true);
   writePreferences(local, { ...readPreferences(local), compactDone: false });
   assert.equal(readPreferences(local).compactDone, false);
-  writePreferences(local, {
-    ...readPreferences(local),
-    compactDoneParents: false,
-  });
-  assert.equal(readPreferences(local).compactDoneParents, false);
 });
 
 test("읽던 위치는 계정·조회별로 분리하고 손상 좌표를 무시하며 상단 복귀를 저장한다", () => {

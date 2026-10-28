@@ -685,7 +685,7 @@ export async function createApp(
     catalog: () => catalog,
     decorate: bulk.decorate,
     compactDone: () => preferences.compactDone,
-    compactDoneParents: () => preferences.compactDoneParents,
+    compactDoneParents: () => preferences.compactDone,
     selectedKey: () => selectedKey,
     onSelect: (key) => {
       void select(key);

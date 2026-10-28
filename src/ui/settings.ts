@@ -1,5 +1,5 @@
 import type { Preferences } from "../client/preferences.ts";
-import { actionButton, element, elementId } from "./dom.ts";
+import { actionButton, element, elementId, uiIcon } from "./dom.ts";
 
 /** 설정 변경은 즉시 적용한다. 첫 연결에서만 시작 버튼을 표시한다. */
 export function settingsContent(
@@ -63,16 +63,18 @@ export function settingsContent(
     });
     body.scrollTop = 0;
   }
-  const accountState = element("p", "settings-account", account);
+  if (connection) categories[0].panel.append(connection);
+  const accountState = element("section", "settings-account");
   accountState.append(
+    element("h3", "", "현재 연결"),
+    element("p", "", account),
     element(
       "small",
       "setting-help",
-      "Jira에서 확인한 연결 상태예요. 아래 입력값은 연결 확인·저장에 성공한 뒤 반영돼요.",
+      "마지막으로 확인한 연결이에요. 새 정보는 연결 확인 후 반영돼요.",
     ),
   );
   categories[0].panel.append(accountState);
-  if (connection) categories[0].panel.append(connection);
   tabs.append(...buttons);
   body.append(...categories.map(({ panel }) => panel));
   root.append(tabs, body);
@@ -102,25 +104,14 @@ export function settingsContent(
       },
     ],
     [
-      "완료된 하위 작업",
+      "완료된 작업",
       draft.compactDone ? 1 : 0,
       [
-        ["목록", "일반 카드로 작업 정보를 보여줘요."],
-        ["타일", "작은 타일로 모아 스크롤을 줄여요."],
+        ["목록", "작업을 목록으로 보고 하위 작업을 펼쳐봐요."],
+        ["타일", "완료된 작업을 모아 보고 하위 작업은 상세에서 확인해요."],
       ],
       (index: number) => {
         draft.compactDone = index === 1;
-      },
-    ],
-    [
-      "완료된 상위 작업",
-      draft.compactDoneParents ? 1 : 0,
-      [
-        ["목록", "목록에서 하위 작업을 펼쳐봐요."],
-        ["타일", "타일로 모으고, 하위 작업은 상세에서 봐요."],
-      ],
-      (index: number) => {
-        draft.compactDoneParents = index === 1;
       },
     ],
   ] as const;
@@ -148,7 +139,14 @@ export function settingsContent(
         save({ ...draft });
       });
       const copy = element("span", "setting-option-copy");
-      copy.append(element("span", "setting-option-title", label));
+      const optionTitle = element("span", "setting-option-title");
+      if (groupIndex === 0) {
+        const icon = uiIcon(["sun", "moon", "monitor"][index] ?? "sun");
+        icon.classList.add("setting-theme-icon");
+        optionTitle.append(icon);
+      }
+      optionTitle.append(document.createTextNode(label));
+      copy.append(optionTitle);
       if (description) copy.append(description);
       card.append(radio, copy);
       if (groupIndex > 0) {

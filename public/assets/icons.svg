@@ -25,6 +25,7 @@
   <path d="M20 12h2" />
   <path d="m6.34 17.66-1.41 1.41" />
   <path d="m19.07 4.93-1.41 1.41" /></symbol>
+<symbol id="monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
 <symbol id="code-xml" viewBox="0 0 24 24"><path d="m18 16 4-4-4-4" />
   <path d="m6 8-4 4 4 4" />
   <path d="m14.5 4-5 16" /></symbol>

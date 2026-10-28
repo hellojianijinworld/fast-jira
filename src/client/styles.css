@@ -1110,8 +1110,18 @@ dialog::backdrop {
   color: var(--muted);
 }
 .settings-panel .settings-account {
-  margin-top: 0;
+  margin-top: var(--density-space-4);
+  padding-top: var(--density-space-4);
+  border-top: 1px solid var(--border);
   line-height: 1.6;
+}
+.settings-account h3,
+.settings-account p {
+  margin: 0;
+}
+.settings-account h3 {
+  color: var(--text);
+  font-size: var(--font-size-13);
 }
 .settings-panel .connection-form {
   margin-top: var(--density-space-4);
@@ -1489,6 +1499,9 @@ dialog::backdrop {
   min-width: 0;
 }
 .setting-option-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
 }
@@ -1737,4 +1750,61 @@ dialog::backdrop {
 }
 .workspace-icon-panel [hidden] {
   display: none;
+}
+
+.setting-theme-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+.help-intro {
+  margin: 0 0 18px;
+  color: var(--secondary-text);
+  font-size: var(--font-size-13);
+}
+.help-features {
+  display: grid;
+  gap: 12px;
+}
+.help-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--font-size-13);
+}
+.help-feature-icon {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  color: var(--blue);
+}
+.help-feature strong {
+  color: var(--text);
+}
+.help-feature p {
+  margin: 3px 0 0;
+  color: var(--muted);
+}
+.help-privacy {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-8);
+  background: var(--surface-alt);
+}
+.help-privacy h3 {
+  margin-top: 0;
+}
+.help-privacy .help-tips {
+  margin-bottom: 0;
+}
+.help-shortcuts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 20px;
+  margin: 0;
+  font-size: var(--font-size-13);
+}
+.help-shortcuts dd {
+  margin: 0;
+  color: var(--muted);
 }

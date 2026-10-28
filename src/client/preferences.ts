@@ -26,7 +26,6 @@ export interface Preferences {
   theme: "light" | "dark" | "system";
   compactView: boolean;
   compactDone: boolean;
-  compactDoneParents: boolean;
 }
 export function readPreferences(storage: LocalStore): Preferences {
   try {
@@ -34,16 +33,15 @@ export function readPreferences(storage: LocalStore): Preferences {
     return {
       theme: theme === "dark" || theme === "system" ? theme : "light",
       compactView: storage.getItem("fastJira:compactView") === "true",
-      compactDone: storage.getItem("fastJira:compactDone") !== "false",
-      compactDoneParents:
-        storage.getItem("fastJira:compactDoneParents") !== "false",
+      compactDone:
+        (storage.getItem("fastJira:compactDone") ??
+          storage.getItem("fastJira:compactDoneParents")) !== "false",
     };
   } catch {
     return {
       theme: "light",
       compactView: false,
       compactDone: true,
-      compactDoneParents: true,
     };
   }
 }
@@ -55,10 +53,6 @@ export function writePreferences(
     storage.setItem("fastJira:theme", preferences.theme);
     storage.setItem("fastJira:compactView", String(preferences.compactView));
     storage.setItem("fastJira:compactDone", String(preferences.compactDone));
-    storage.setItem(
-      "fastJira:compactDoneParents",
-      String(preferences.compactDoneParents),
-    );
   } catch {
     /* 저장을 거부해도 현재 화면 설정은 적용한다. */
   }
