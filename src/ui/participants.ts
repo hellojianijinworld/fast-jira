@@ -64,7 +64,7 @@ export function participantsField(
     const users = participantUsers(fields, config.me?.id);
     summary.replaceChildren(
       users.length
-        ? participantAvatars(users, config.me?.id)
+        ? participantAvatars(fields, config.me?.id)
         : document.createTextNode("미지정"),
     );
   }

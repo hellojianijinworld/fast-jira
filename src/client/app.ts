@@ -842,6 +842,9 @@ export async function createApp(
     );
     if (detailFavorite && detailView)
       updateFavoriteButton(detailFavorite, cardFavorites.has(detailView.issue));
+    detailView?.refreshStatusOrder(
+      catalog.statuses.map((status) => status.name),
+    );
     detailView?.refreshChildren();
     dashboardView();
     dashboard.hidden = bulk.active || Boolean(selectedKey);
@@ -1078,7 +1081,7 @@ export async function createApp(
     try {
       const [statuses, types] = await Promise.all([
         api.statuses(projects),
-        api.types(projects),
+        api.types(projects).catch(() => []),
       ]);
       if (destroyed || revision !== metadataRevision) return;
       catalogProjects = [...projects];

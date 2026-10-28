@@ -5,7 +5,8 @@ import { element, safeHref, uiIcon } from "./dom.ts";
 
 export function statusColor(status: string, order: readonly string[]): string {
   const index = order.indexOf(status);
-  const position = Math.max(0, index) / Math.max(1, order.length - 1);
+  if (index < 0) return "var(--muted)";
+  const position = index / Math.max(1, order.length - 1);
   return `hsl(${44 + 183 * position} ${73 - 19 * position}% ${46 + 10 * position}%)`;
 }
 export function statusPill(

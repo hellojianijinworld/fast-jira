@@ -12,7 +12,7 @@ import type { ProjectOption } from "../domain/catalog.ts";
 import type { CreateMetadata, IssueDraft } from "../domain/create-issue.ts";
 import type { Issue, IssueType, UserOption } from "../domain/issue.ts";
 import type { ParticipantRecents } from "../domain/participants.ts";
-import { uniqueParticipants } from "../domain/participants.ts";
+import { participantUsers } from "../domain/participants.ts";
 import { creationField } from "./create-field.ts";
 import {
   actionButton,
@@ -211,14 +211,21 @@ export function createIssueDialog(config: {
       participantGroup.append(participantSummary, participantFields);
       function renderPeople() {
         if (disposed) return;
-        const users = uniqueParticipants(
-          fields
-            .filter((control) => control.id !== "reporter")
-            .flatMap((control) => control.people()),
-        );
+        const participantFields = fields
+          .filter((control) => control.id !== "reporter")
+          .map((control) => {
+            const field = meta?.fields.find((field) => field.id === control.id);
+            return {
+              id: control.id,
+              name: field?.name ?? control.id,
+              multiple: field?.type === "array",
+              users: control.people(),
+            };
+          });
+        const users = participantUsers(participantFields, config.me.id);
         peoplePreview.replaceChildren(
           users.length
-            ? participantAvatars(users, config.me.id)
+            ? participantAvatars(participantFields, config.me.id)
             : document.createTextNode("미지정"),
         );
       }

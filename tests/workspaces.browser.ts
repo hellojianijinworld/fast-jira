@@ -1,6 +1,7 @@
 import { createApi } from "../src/client/api.ts";
 import { createApp } from "../src/client/app.ts";
 import type { AppUpdateStatus } from "../src/domain/app-update.ts";
+import { emptyIssue } from "../src/domain/wire.ts";
 import { activeWorkspace } from "../src/domain/workspace-views.ts";
 import { appUpdate } from "../src/ui/app-update.ts";
 import { element } from "../src/ui/dom.ts";
@@ -53,7 +54,17 @@ const api = createApi(async (input, init) => {
         return new Promise<Response>((resolve) => {
           releaseOld = resolve;
         });
-      return Response.json({ issues: [], ancestors: [], nextPageToken: null });
+      return Response.json({
+        issues: [
+          {
+            ...emptyIssue("TEST-1", "색상 검사"),
+            status: "작업 중",
+            statusId: "2",
+          },
+        ],
+        ancestors: [],
+        nextPageToken: null,
+      });
     case "/api/statuses":
       return Response.json([
         {
@@ -70,6 +81,7 @@ const api = createApi(async (input, init) => {
         },
       ]);
     case "/api/issue-types":
+      return Response.json({ error: "유형 조회 실패" }, { status: 503 });
     case "/api/assignees":
       return Response.json([]);
     case "/api/activity":
@@ -123,6 +135,16 @@ async function check(name: string, run: () => Promise<void>) {
     );
   }
 }
+await check(
+  "유형 조회 실패가 성공한 단계 설정과 카드 색상을 버리지 않는다",
+  async () => {
+    const dot = root.querySelector<HTMLElement>(".browse .status-dot");
+    assert(
+      dot?.style.getPropertyValue("--status-color") === "hsl(227 54% 56%)",
+      "유형 조회 실패로 단계 색상이 기본값에 머묾",
+    );
+  },
+);
 await check(
   "탭 생성에서 프로젝트와 필터를 함께 저장하고 전환한다",
   async () => {

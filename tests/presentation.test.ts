@@ -41,11 +41,16 @@ test("동적 상태 개수와 순서가 바뀌어도 같은 색상 경로를 균
     const order = Array.from({ length: count }, (_, index) => `상태 ${index}`);
     const colors = order.map((name) => statusColor(name, order));
     assert.equal(new Set(colors).size, count);
-    assert.equal(colors[0], statusColor(order[0] ?? "", ["시작"]));
+    assert.equal(colors[0], statusColor("시작", ["시작"]));
     if (count > 1)
       assert.equal(colors.at(-1), statusColor("완료", ["시작", "완료"]));
   }
-  assert.equal(statusColor("새 단계", []), statusColor("시작", ["시작"]));
+  assert.equal(statusColor("새 단계", []), "var(--muted)");
+  assert.equal(statusColor("새 단계", ["시작", "완료"]), "var(--muted)");
+  assert.notEqual(
+    statusColor("진행", ["대기", "진행", "완료"]),
+    statusColor("대기", ["대기", "진행", "완료"]),
+  );
 });
 
 test("분할 너비는 작은 창과 초광폭에서도 유효한 최소·최대 범위를 유지한다", () => {

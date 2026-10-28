@@ -1416,6 +1416,7 @@ a {
 }
 
 .ui-tooltip {
+  white-space: pre-line;
   position: fixed;
   inset: auto;
   margin: 0;

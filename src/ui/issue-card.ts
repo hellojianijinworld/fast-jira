@@ -80,7 +80,9 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
     options.currentUserId,
   );
   if (participants.length)
-    meta.append(participantAvatars(participants, options.currentUserId));
+    meta.append(
+      participantAvatars(issueParticipantFields(issue), options.currentUserId),
+    );
   if (issue.status) meta.append(statusPill(issue.status, options.statusOrder));
   const main = element("span", "list-main");
   main.append(identity, title);

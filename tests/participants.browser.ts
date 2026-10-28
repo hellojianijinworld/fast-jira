@@ -9,6 +9,7 @@ import { element } from "../src/ui/dom.ts";
 import { issueCard } from "../src/ui/issue-card.ts";
 import { issueDetail } from "../src/ui/issue-detail.ts";
 import { participantsField } from "../src/ui/participants.ts";
+import { startTooltips, TOOLTIP_DELAY_MS } from "../src/ui/tooltip.ts";
 
 const host = document.querySelector("#fixture"),
   results = document.querySelector("#results");
@@ -171,7 +172,12 @@ function assert(value: unknown, message: string): asserts value {
 }
 function summaryNames() {
   return [...(host?.querySelectorAll(".participant-summary .avatar") ?? [])]
-    .map((node) => node.getAttribute("title"))
+    .map(
+      (node) =>
+        ({ A: "Alice", B: "Bob", C: "Charlie" })[
+          node.textContent as "A" | "B" | "C"
+        ],
+    )
     .join(",");
 }
 async function closeDialog() {
@@ -206,6 +212,49 @@ await check(
     const summary = host.querySelector(".participant-summary");
     assert(summary, "요약 없음");
     assert(summaryNames() === "Alice,Bob", "이름이 중복되거나 역할이 노출됨");
+  },
+);
+await check("참여자 툴팁은 실제 필드별 지정값을 한 그룹에 표시한다", () => {
+  const group = host.querySelector<HTMLElement>(".participant-avatars");
+  assert(
+    group?.title ===
+      "담당자: Alice (나)\n개발: Alice (나)\n협업: Alice (나), Bob",
+    "필드별 지정값이 누락되거나 합쳐짐",
+  );
+  assert(!group.querySelector("[title]"), "개별 아바타 툴팁이 남음");
+});
+await check(
+  "어느 아바타를 가리켜도 필드별 내용이 하나의 여러 줄 툴팁으로 열린다",
+  async () => {
+    const stop = startTooltips();
+    try {
+      const group = host.querySelector<HTMLElement>(".participant-avatars");
+      const avatar = group?.querySelector(".avatar");
+      assert(group && avatar, "참여자 없음");
+      const text = group.title;
+      avatar.dispatchEvent(
+        new PointerEvent("pointerover", {
+          bubbles: true,
+          pointerType: "mouse",
+        }),
+      );
+      await new Promise((resolve) =>
+        setTimeout(resolve, TOOLTIP_DELAY_MS + 30),
+      );
+      const tip = document.querySelector<HTMLElement>(
+        ".ui-tooltip:popover-open",
+      );
+      assert(
+        tip?.textContent === text,
+        "개별 이름이 표시되거나 필드별 내용 누락",
+      );
+      assert(
+        getComputedStyle(tip).whiteSpace === "pre-line",
+        "필드별 줄바꿈 누락",
+      );
+    } finally {
+      stop();
+    }
   },
 );
 await check(
@@ -447,7 +496,7 @@ const detail = issueDetail(
     dateEditing: true,
     imageEnabled: false,
   },
-  ["진행 중"],
+  [],
   () => {},
   (text) => notices.push(text),
   api,
@@ -467,6 +516,28 @@ const detail = issueDetail(
 );
 host.append(detail.element);
 await check(
+  "단계 설정이 늦게 도착해도 열린 상세와 선택 메뉴가 최신 색상으로 갱신된다",
+  () => {
+    const dot = detail.element.querySelector<HTMLElement>(
+      ".detail-fields .status-dot",
+    );
+    assert(
+      dot?.style.getPropertyValue("--status-color") === "var(--muted)",
+      "미조회 상태가 첫 단계 색상으로 표시됨",
+    );
+    detail.refreshStatusOrder(["대기", "진행 중", "완료"]);
+    const updated = detail.element.querySelector<HTMLElement>(
+      ".detail-fields .status-dot",
+    );
+    assert(
+      updated?.style
+        .getPropertyValue("--status-color")
+        .startsWith("hsl(135.5 "),
+      "늦게 받은 단계 설정이 상세에 반영되지 않음",
+    );
+  },
+);
+await check(
   "상세와 카드는 같은 크기·테두리의 겹친 아바타를 쓰고 내 계정을 맨 앞에 둔다",
   () => {
     const card = issueCard(issue, {
@@ -478,7 +549,7 @@ await check(
     const stack = card.querySelector(".participant-avatars");
     assert(stack, "카드 참여자 누락");
     const avatars = [...stack.querySelectorAll<HTMLElement>(".avatar")];
-    assert(avatars[0]?.title === "Alice", "본인 우선 순서 누락");
+    assert(avatars[0]?.textContent === "A", "본인 우선 순서 누락");
     assert(avatars.length === 2, "담당자 중복 표시");
     const [self, other] = avatars.map((avatar) => ({
       width: avatar.getBoundingClientRect().width,

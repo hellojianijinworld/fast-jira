@@ -407,7 +407,9 @@ export function issueDetail(
       ...(url ? { site: new URL(url).hostname } : {}),
       currentUserId: me.accountId,
       copied,
-      statusOrder: order,
+      get statusOrder() {
+        return order;
+      },
       onSelect: select,
     },
     childOptions,
@@ -417,6 +419,15 @@ export function issueDetail(
   return {
     element: root,
     canRefresh: refresh.canRefresh,
+    refreshStatusOrder(next: readonly string[]) {
+      if (
+        next.length === order.length &&
+        next.every((name, i) => name === order[i])
+      )
+        return;
+      order = next;
+      for (const menu of menus) menu.sync();
+    },
     refreshChildren: () => children?.refresh(),
     get issue() {
       return editor.issue;
