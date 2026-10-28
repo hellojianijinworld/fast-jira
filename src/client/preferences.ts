@@ -23,15 +23,16 @@ import {
 
 export type LocalStore = Pick<Storage, "getItem" | "setItem">;
 export interface Preferences {
-  theme: "light" | "dark";
+  theme: "light" | "dark" | "system";
   compactView: boolean;
   compactDone: boolean;
   compactDoneParents: boolean;
 }
 export function readPreferences(storage: LocalStore): Preferences {
   try {
+    const theme = storage.getItem("fastJira:theme");
     return {
-      theme: storage.getItem("fastJira:theme") === "dark" ? "dark" : "light",
+      theme: theme === "dark" || theme === "system" ? theme : "light",
       compactView: storage.getItem("fastJira:compactView") === "true",
       compactDone: storage.getItem("fastJira:compactDone") !== "false",
       compactDoneParents:

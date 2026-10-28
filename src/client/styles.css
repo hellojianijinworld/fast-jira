@@ -1453,6 +1453,9 @@ dialog::backdrop {
   gap: var(--density-space-2);
   margin-top: var(--density-space-2);
 }
+.setting-theme-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 .setting-option {
   display: flex;
   align-items: flex-start;
@@ -1489,9 +1492,54 @@ dialog::backdrop {
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-medium);
 }
+
+.setting-preview {
+  display: grid;
+  flex: none;
+  width: 58px;
+  height: 40px;
+  gap: 3px;
+  align-content: center;
+  margin-left: auto;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+}
+.setting-preview i {
+  display: block;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.setting-preview-title i {
+  height: 3px;
+}
+.setting-preview-title i:nth-child(2) {
+  width: 72%;
+}
+.setting-preview-title i:nth-child(3) {
+  width: 32%;
+  background: var(--blue);
+}
+.setting-preview-title[data-variant="compact"] i:nth-child(2) {
+  display: none;
+}
+.setting-preview-done[data-variant="list"] i {
+  height: 7px;
+}
+.setting-preview-done[data-variant="compact"] {
+  grid-template-columns: repeat(3, 1fr);
+}
+.setting-preview-done[data-variant="compact"] i {
+  height: 16px;
+}
 @media (max-width: 400px) {
-  .setting-options {
+  .setting-options:not(.setting-theme-options) {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .setting-theme-options .setting-option {
+    justify-content: center;
+    padding-inline: 4px;
   }
 }
 

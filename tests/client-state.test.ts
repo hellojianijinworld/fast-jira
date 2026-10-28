@@ -109,6 +109,19 @@ test("계정별 설정은 이전 소유자만 이식하고 손상된 값은 각 
     ["이전 카드"],
   );
 });
+test("시스템 테마는 저장하고 복원하며 기존 테마도 유지한다", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  for (const theme of ["light", "dark", "system"] as const) {
+    writePreferences(storage, { ...readPreferences(storage), theme });
+    assert.equal(readPreferences(storage).theme, theme);
+  }
+});
 test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다", () => {
   const blocked = {
     getItem: () => {

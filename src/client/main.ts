@@ -4,6 +4,7 @@ import { actionButton, element } from "../ui/dom.ts";
 import { startTooltips } from "../ui/tooltip.ts";
 import { createApi } from "./api.ts";
 import { createApp } from "./app.ts";
+import { applyColorTheme, updateSystemTheme } from "./color-theme.ts";
 import { createListCache } from "./list-cache.ts";
 import { type LocalStore, readPreferences } from "./preferences.ts";
 import "./styles.css";
@@ -15,7 +16,11 @@ const storage: LocalStore = {
   getItem: (key) => localStorage.getItem(key),
   setItem: (key, value) => localStorage.setItem(key, value),
 };
-document.documentElement.dataset.theme = readPreferences(storage).theme;
+const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+applyColorTheme(readPreferences(storage).theme, systemTheme.matches);
+systemTheme.addEventListener("change", (event) =>
+  updateSystemTheme(event.matches),
+);
 const updates = appUpdate(createApi());
 async function start(root: HTMLElement) {
   const api = createApi();

@@ -80,13 +80,14 @@ export function settingsContent(
   const displayChoices = [
     [
       "테마",
-      draft.theme === "dark" ? 1 : 0,
+      draft.theme === "dark" ? 1 : draft.theme === "system" ? 2 : 0,
       [
-        ["라이트", "밝은 배경으로 화면을 표시해요."],
-        ["다크", "어두운 배경으로 눈부심을 줄여요."],
+        ["화이트", ""],
+        ["다크", ""],
+        ["시스템", ""],
       ],
       (index: number) => {
-        draft.theme = index === 1 ? "dark" : "light";
+        draft.theme = index === 2 ? "system" : index === 1 ? "dark" : "light";
       },
     ],
     [
@@ -127,6 +128,7 @@ export function settingsContent(
     const group = element("fieldset", "setting-group");
     group.append(element("legend", "setting-group-title", title));
     const cards = element("div", "setting-options");
+    if (groupIndex === 0) cards.classList.add("setting-theme-options");
     choices.forEach(([label, help], index) => {
       const card = element("label", "setting-option");
       const radio = element("input");
@@ -135,17 +137,30 @@ export function settingsContent(
       radio.value = String(index);
       radio.checked = selected === index;
       radio.setAttribute("aria-label", `${title} · ${label}`);
-      const description = element("small", "setting-help", help);
-      description.id = `${id}-choice-${groupIndex}-${index}-help`;
-      radio.setAttribute("aria-describedby", description.id);
+      const description = help ? element("small", "setting-help", help) : null;
+      if (description) {
+        description.id = `${id}-choice-${groupIndex}-${index}-help`;
+        radio.setAttribute("aria-describedby", description.id);
+      }
       radio.addEventListener("change", () => {
         if (!radio.checked) return;
         select(index);
         save({ ...draft });
       });
       const copy = element("span", "setting-option-copy");
-      copy.append(element("span", "setting-option-title", label), description);
+      copy.append(element("span", "setting-option-title", label));
+      if (description) copy.append(description);
       card.append(radio, copy);
+      if (groupIndex > 0) {
+        const preview = element(
+          "span",
+          `setting-preview ${groupIndex === 1 ? "setting-preview-title" : "setting-preview-done"}`,
+        );
+        preview.dataset.variant = index === 0 ? "list" : "compact";
+        preview.setAttribute("aria-hidden", "true");
+        preview.append(element("i"), element("i"), element("i"));
+        card.append(preview);
+      }
       cards.append(card);
     });
     group.append(cards);

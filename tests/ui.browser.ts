@@ -16,6 +16,10 @@ import {
 } from "../src/ui/viewport-anchor.ts";
 import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
+import {
+  applyColorTheme,
+  updateSystemTheme,
+} from "../src/client/color-theme.ts";
 import { readPreferences } from "../src/client/preferences.ts";
 import type { AdfDocument, AdfNode } from "../src/domain/adf.ts";
 import type { Comment, HistoryPage } from "../src/domain/content.ts";
@@ -82,12 +86,14 @@ await check(
           'input[type="radio"]',
         ),
       ];
-      assert(radios.length === 8, "선택 카드 누락");
+      assert(radios.length === 9, "선택 카드 누락");
       assert(
         content.element.querySelectorAll("input:checked").length === 4,
         "그룹별 선택 누락",
       );
-      for (const input of radios) {
+      for (const input of radios.filter(
+        (item) => !item.getAttribute("aria-label")?.startsWith("테마 ·"),
+      )) {
         const help = document.getElementById(
           input.getAttribute("aria-describedby") ?? "",
         );
@@ -103,12 +109,14 @@ await check(
         assert(radio !== undefined, "설정 선택지 누락");
         radio.click();
       };
+      select("테마 · 시스템");
+      assert(saved.theme === "system", "시스템 테마 즉시 적용 누락");
       select("테마 · 다크");
       select("제목 표시 · 한 줄로");
       select("완료된 하위 작업 · 목록");
       select("완료된 상위 작업 · 목록");
       assert(
-        saved.theme === "dark" &&
+        String(saved.theme) === "dark" &&
           saved.compactView &&
           !saved.compactDone &&
           !saved.compactDoneParents,
@@ -125,6 +133,20 @@ await check(
     } finally {
       content.element.remove();
     }
+  },
+);
+
+await check(
+  "시스템 테마는 환경 변경을 따르고 직접 선택한 테마는 유지한다",
+  () => {
+    const root = document.createElement("div");
+    applyColorTheme("system", true, root);
+    assert(root.dataset.theme === "dark", "시스템 다크 적용 실패");
+    updateSystemTheme(false, root);
+    assert(String(root.dataset.theme) === "light", "시스템 변경 미반영");
+    applyColorTheme("dark", false, root);
+    updateSystemTheme(false, root);
+    assert(String(root.dataset.theme) === "dark", "직접 선택한 테마가 변경됨");
   },
 );
 

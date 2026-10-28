@@ -758,7 +758,7 @@ checks.push([
     const checks = root.querySelectorAll<HTMLInputElement>(
       ".settings-modal input[type=radio]",
     );
-    assert(checks.length === 8, "화면 표시 선택 카드 누락");
+    assert(checks.length === 9, "화면 표시 선택 카드 누락");
     for (const label of ["테마 · 다크", "제목 표시 · 한 줄로"]) {
       const check = root.querySelector<HTMLInputElement>(
         `input[aria-label="${label}"]`,

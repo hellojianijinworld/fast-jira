@@ -43,6 +43,7 @@ import {
 import { createWorkspaceNavigation } from "../ui/workspace-views.ts";
 import { createActivityController } from "./activity-controller.ts";
 import { type Api, ApiError } from "./api.ts";
+import { applyColorTheme } from "./color-theme.ts";
 import type { ListCache } from "./list-cache.ts";
 import { createListController } from "./list-controller.ts";
 import { createLiveUpdates } from "./live-updates.ts";
@@ -329,7 +330,7 @@ export async function createApp(
   }
 
   function applyPreferences() {
-    document.documentElement.dataset.theme = preferences.theme;
+    applyColorTheme(preferences.theme);
     document.documentElement.dataset.compact = String(preferences.compactView);
     document.documentElement.dataset.compactDone = String(
       preferences.compactDone,
