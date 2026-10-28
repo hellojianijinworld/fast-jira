@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { decodeAdfDocument } from "../domain/adf.ts";
 import { adfMarkdown } from "../domain/adf-markdown.ts";
 import type { ApprovalHandler } from "../domain/assistant-approval.ts";
+import type { AssistantExecution } from "../domain/assistant-execution.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import type { ToolService } from "./mcp-server.ts";
 
@@ -154,7 +155,51 @@ export async function callApprovedJiraTool(
   });
   if (JSON.stringify(previews).length > 100000)
     throw new Error("확인할 변경 내용이 너무 길어요. 요청을 나눠 주세요.");
-  const results = [];
+  const results: Record<string, unknown>[] = [];
+  const execution: AssistantExecution[] = [];
+  function recordResult(result: Record<string, unknown>) {
+    results.push(result);
+    const index = Number(result.index),
+      action = actions[index];
+    if (!action) return;
+    const input = action.arguments as Record<string, unknown>;
+    const summary = isRecord(input.fields) ? input.fields.summary : undefined;
+    const output = isRecord(result.result) ? result.result : {};
+    const failures = Array.isArray(output.failures)
+      ? output.failures.filter(isRecord)
+      : [];
+    const keys =
+      result.status === "applied" || result.status === "partiallyApplied"
+        ? changedJiraKeys(action.tool, action.arguments, result.result)
+        : [input.key, ...(Array.isArray(input.keys) ? input.keys : [])].filter(
+            (key): key is string =>
+              typeof key === "string" && /^[A-Z][A-Z0-9_]*-\d+$/.test(key),
+          );
+    const error =
+      typeof result.error === "string"
+        ? result.error
+        : failures
+            .map(
+              (item) =>
+                `${String(item.key ?? "이슈")}: ${String(item.error ?? "실행 실패")}`,
+            )
+            .join("; ");
+    const entry: AssistantExecution = {
+      tool: action.tool,
+      label: `${labels[action.tool] ?? action.tool}${typeof summary === "string" ? ` · ${summary}` : ""}`,
+      status: result.status as AssistantExecution["status"],
+      keys,
+      ...(typeof input.requestId === "string"
+        ? { requestId: input.requestId }
+        : {}),
+      ...(result.reason
+        ? { reason: result.reason as AssistantExecution["reason"] & string }
+        : {}),
+      ...(error ? { error } : {}),
+    };
+    execution.push(entry);
+    tools.onResult?.(entry);
+  }
   const changedKeys = new Set<string>();
   let feedback = "";
   for (const [index, action] of actions.entries()) {
@@ -162,11 +207,12 @@ export async function callApprovedJiraTool(
     const receipt =
       typeof input.requestId === "string" ? { requestId: input.requestId } : {};
     if (feedback) {
-      results.push({
+      recordResult({
         index,
         tool: action.tool,
         ...receipt,
         status: "notApproved",
+        reason: "paused",
       });
       continue;
     }
@@ -187,11 +233,16 @@ export async function callApprovedJiraTool(
         ? answer.values.feedback.trim()
         : "";
     if (!answer.approved || feedback) {
-      results.push({
+      recordResult({
         index,
         tool: action.tool,
         ...receipt,
         status: "notApproved",
+        ...(feedback
+          ? { reason: "feedback" }
+          : answer.reason
+            ? { reason: answer.reason }
+            : {}),
       });
       continue;
     }
@@ -203,7 +254,7 @@ export async function callApprovedJiraTool(
         isRecord(result) &&
         Array.isArray(result.failures) &&
         result.failures.length > 0;
-      results.push({
+      recordResult({
         index,
         tool: action.tool,
         ...receipt,
@@ -217,7 +268,7 @@ export async function callApprovedJiraTool(
         result,
       });
     } catch (error) {
-      results.push({
+      recordResult({
         index,
         tool: action.tool,
         ...receipt,
@@ -228,9 +279,22 @@ export async function callApprovedJiraTool(
   }
   return {
     results,
+    execution,
     changedKeys: [...changedKeys],
     feedback,
     notice:
-      "승인하지 않은 작업은 실행하지 않았습니다. 의견에 따른 변경은 새 승인 요청이 필요합니다. 실패한 생성은 중복 생성 방지를 위해 반환된 요청 ID를 유지해 확인하세요.",
+      "이 요청의 승인 대기는 끝났습니다. results의 applied·partiallyApplied·notApproved·failed를 구분해 보고하세요. 승인되지 않은 작업은 실행하지 않았습니다. 새 사용자 요청이나 의견으로 작업을 수정하면 해당 작업만 도구로 다시 제출해 새 UI 승인을 받으세요. 생성 재시도는 반환된 requestId로 확인하세요.",
   };
+}
+
+/** 본문·필드 값·자격 증명 없이 연결이 끊긴 작업도 요청별로 추적한다. */
+export function traceExecution(
+  requestId: string | undefined,
+  result: AssistantExecution,
+) {
+  const { tool, status, keys, reason } = result;
+  console.info(
+    "Fast Jira AI execution",
+    JSON.stringify({ requestId, tool, status, keys, reason }),
+  );
 }

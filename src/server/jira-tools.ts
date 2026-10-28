@@ -168,7 +168,7 @@ export function createJiraTools(
       ? [
           definition(
             "jira_create_issue",
-            "새 이슈 또는 하위 이슈를 생성합니다. catalog와 creation_options로 실제 유형·필수 필드·상위를 확인하고 사용자 승인 후 실행합니다. requestId는 재시도 시 같은 값을 사용해 중복 생성을 방지합니다.",
+            "새 이슈 또는 하위 이슈를 생성합니다. catalog와 creation_options로 실제 유형·필수 필드·상위를 확인한 뒤 이 도구를 호출하세요. 호출하면 호스트가 승인 UI를 열고 답변을 기다린 후 승인된 경우만 생성합니다. 호출 전에 별도의 말로 승인을 다시 묻지 마세요. 반환된 applied·notApproved·failed 결과로 완료 여부를 보고하세요. requestId는 재시도 시 같은 값을 사용해 중복 생성을 방지합니다.",
             {
               project: stringSchema,
               type: stringSchema,
@@ -181,7 +181,7 @@ export function createJiraTools(
           ),
           definition(
             "jira_apply_changes",
-            "생성·수정 작업들을 한 번에 승인 요청합니다. 각 작업은 tool과 arguments로 구성합니다. 사용자는 일부만 선택하고 기타 의견을 남길 수 있습니다. 승인되지 않은 작업을 자동 재요청하지 마세요. 의견으로 바뀐 내용은 다시 승인받아야 합니다.",
+            "생성·수정을 요청받으면 이 도구를 호출하세요. 호출하면 호스트가 UI로 승인을 받고 실행한 뒤 최종 결과를 반환합니다. 승인 요청을 보냈다는 말만 하고 종료하지 말고 실제 도구 호출과 반환까지 이어가세요. 각 작업은 tool과 arguments로 구성합니다. 사용자는 일부만 선택하고 기타 의견을 남길 수 있습니다. 승인되지 않은 작업을 자동 재요청하지 마세요. 의견으로 바뀐 내용은 다시 승인받아야 합니다.",
             {
               actions: {
                 type: "array",

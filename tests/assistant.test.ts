@@ -7,6 +7,8 @@ import {
   assistantReply,
   assistantStatus,
 } from "../src/domain/assistant.ts";
+import { executionReport } from "../src/domain/assistant-execution.ts";
+import { issueDraft } from "../src/domain/create-issue.ts";
 import { createAssistantService } from "../src/server/assistant-service.ts";
 import {
   type CodexClient,
@@ -98,10 +100,10 @@ function fixture() {
       await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(turns, 1);
   };
-  const complete = () => {
+  const complete = (text = "변경안을 확인하세요.") => {
     emit("item/completed", {
       threadId: "thread",
-      item: { type: "agentMessage", text: "변경안을 확인하세요." },
+      item: { type: "agentMessage", text },
     });
     emit("turn/completed", {
       threadId: "thread",
@@ -338,10 +340,20 @@ test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다"
     for (let i = 0; i < 30 && !f.closed; i++)
       await new Promise((resolve) => setTimeout(resolve, 5));
     assert.equal(f.closed, true);
-    assert.equal(entries.length, 2);
-    assert.match(entries[0] ?? "", /"event":"started"/);
-    assert.match(entries[1] ?? "", /"event":"connection-closed"/);
-    assert.match(entries[1] ?? "", /"elapsedMs":\d+/);
+    const events = entries.filter((entry) =>
+      entry.startsWith("Fast Jira AI {"),
+    );
+    assert.equal(events.length, 2);
+    assert.match(events[0] ?? "", /"event":"started"/);
+    assert.match(events[1] ?? "", /"event":"connection-closed"/);
+    assert.match(events[1] ?? "", /"elapsedMs":\d+/);
+    assert(
+      entries.some(
+        (entry) =>
+          entry.startsWith("Fast Jira AI thread") &&
+          entry.includes('"threadId":"thread"'),
+      ),
+    );
     assert(!entries.join(" ").includes("조회"), "대화 내용이 로그에 포함됨");
   } finally {
     f.assistant.dispose();
@@ -504,6 +516,266 @@ test("네이티브 확인의 기타 의견은 실행을 거절한 뒤 같은 턴
     assert.match(JSON.stringify(steer.params), /설명만 해주세요/);
     f.complete();
     await result;
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+const mockCreation = {
+  project: "AA",
+  type: "2",
+  parent: "AA-1",
+  fields: { summary: "[모의] 프롬프트 반영" },
+};
+function stubCreation(f: ReturnType<typeof fixture>) {
+  let count = 0;
+  f.service.validateCreation = async (value) => issueDraft(value);
+  f.service.createIssue = async () => {
+    count++;
+    return { key: "AA-99" };
+  };
+  return () => count;
+}
+async function approvalOf(f: ReturnType<typeof fixture>, requestId: string) {
+  for (let step = 0; step < 60; step++) {
+    const request = f.assistant.approvals.pending(requestId)[0];
+    if (request) return request;
+    await Promise.resolve();
+  }
+  throw new Error("모의 승인 화면 누락");
+}
+function emitCreation(f: ReturnType<typeof fixture>) {
+  f.emit(
+    "item/tool/call",
+    {
+      threadId: "thread",
+      tool: "jira_apply_changes",
+      arguments: {
+        actions: [{ tool: "jira_create_issue", arguments: mockCreation }],
+      },
+    },
+    71,
+  );
+}
+test("대상 확인 뒤 생성 요청은 UI 승인까지 대기하고 모델의 조기 종료·중복 승인이 생성을 중복하지 않는다", async () => {
+  const f = fixture(),
+    created = stubCreation(f),
+    requestId = "a".repeat(32);
+  try {
+    const run = f.assistant.run({
+      prompt: "그래 맞아. 거기에 생성하면 돼",
+      context,
+      requestId,
+      history: [
+        { role: "assistant", text: "모의 상위 작업(AA-1) 아래에 만들까요?" },
+      ],
+    });
+    let finished = false;
+    void run.then(() => {
+      finished = true;
+    });
+    await f.waitTurn();
+    emitCreation(f);
+    const request = await approvalOf(f, requestId);
+    assert.match(request.details, /프롬프트 반영/);
+    assert.equal(created(), 0);
+    f.complete("승인 요청을 보냈고 아직 기다리고 있습니다.");
+    await Promise.resolve();
+    assert.equal(finished, false, "승인 대기를 끝내고 허위 대기 답변을 반환함");
+    f.assistant.approvals.respond({
+      requestId,
+      id: request.id,
+      approved: true,
+      values: {},
+    });
+    const reply = assistantReply(await run);
+    assert.equal(created(), 1);
+    assert.equal(reply.execution?.[0]?.status, "applied");
+    assert.match(
+      executionReport(reply.execution ?? [], "fixture.atlassian.net"),
+      /완료.*프롬프트 반영/,
+    );
+    assert.equal(reply.answer, "", "도구 완료 전의 오래된 안내가 표시됨");
+    assert.doesNotMatch(reply.answer, /기다리고/);
+    assert.throws(
+      () =>
+        f.assistant.approvals.respond({
+          requestId,
+          id: request.id,
+          approved: true,
+          values: {},
+        }),
+      /종료/,
+    );
+    assert.equal(created(), 1);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+for (const decision of ["skip", "feedback", "expire"] as const)
+  test(`생성 승인 ${decision}는 저장하지 않고 모델 답변과 별도로 실제 미실행 결과를 반환한다`, async (t) => {
+    const f = fixture(),
+      created = stubCreation(f),
+      requestId = "b".repeat(32);
+    try {
+      const run = f.assistant.run({
+        prompt: "하위 작업 생성",
+        context,
+        requestId,
+      });
+      await f.waitTurn();
+      if (decision === "expire") t.mock.timers.enable({ apis: ["setTimeout"] });
+      emitCreation(f);
+      const request = await approvalOf(f, requestId);
+      if (decision === "expire") {
+        t.mock.timers.tick(300000);
+        t.mock.timers.reset();
+      } else
+        f.assistant.approvals.respond({
+          requestId,
+          id: request.id,
+          approved: false,
+          values:
+            decision === "feedback"
+              ? { feedback: "다른 상위로 바꿔주세요" }
+              : {},
+        });
+      for (let step = 0; step < 20; step++) await Promise.resolve();
+      f.complete(
+        decision === "feedback"
+          ? "상위는 모의 상위 작업(AA-1)입니다. 어떤 상위로 바꿀지 알려 주세요."
+          : "이슈를 생성했습니다.",
+      );
+      const reply = await run;
+      assert.equal(created(), 0);
+      assert.equal(reply.execution?.[0]?.status, "notApproved");
+      assert.match(
+        executionReport(reply.execution ?? [], "fixture.atlassian.net"),
+        /미실행/,
+      );
+      if (decision === "feedback") assert.match(reply.answer, /모의 상위 작업/);
+      assert.equal(
+        reply.execution?.[0]?.reason,
+        decision === "expire"
+          ? "expired"
+          : decision === "feedback"
+            ? "feedback"
+            : undefined,
+      );
+    } finally {
+      f.assistant.dispose();
+    }
+  });
+test("승인 대기 중 취소하면 뒤늦은 승인이나 후속 변경을 실행하지 않는다", async () => {
+  const f = fixture(),
+    created = stubCreation(f),
+    requestId = "c".repeat(32),
+    abort = new AbortController();
+  try {
+    const run = f.assistant.run(
+      { prompt: "생성", context, requestId },
+      abort.signal,
+    );
+    const rejected = assert.rejects(run, /취소/);
+    await f.waitTurn();
+    emitCreation(f);
+    const request = await approvalOf(f, requestId);
+    abort.abort();
+    await rejected;
+    assert.equal(created(), 0);
+    assert.deepEqual(f.assistant.approvals.pending(requestId), []);
+    assert.throws(
+      () =>
+        f.assistant.approvals.respond({
+          requestId,
+          id: request.id,
+          approved: true,
+          values: {},
+        }),
+      /종료/,
+    );
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("연결 MCP의 생성도 완료 이벤트 전에는 종료하지 않고 확인된 실행 결과를 표시한다", async () => {
+  const f = fixture();
+  try {
+    const run = f.assistant.run({ prompt: "모의 생성", context });
+    await f.waitTurn();
+    f.emit("item/started", {
+      threadId: "thread",
+      item: {
+        id: "mcp-1",
+        type: "mcpToolCall",
+        tool: "jira_create_issue",
+        status: "inProgress",
+      },
+    });
+    let finished = false;
+    void run.then(() => {
+      finished = true;
+    });
+    f.complete("승인 결과를 기다리는 중입니다.");
+    await Promise.resolve();
+    assert.equal(finished, false);
+    const execution = [
+      {
+        tool: "jira_create_issue",
+        label: "이슈 생성 · 모의 작업",
+        status: "applied",
+        keys: ["AA-99"],
+      },
+    ];
+    f.emit("item/completed", {
+      threadId: "thread",
+      item: {
+        id: "mcp-1",
+        type: "mcpToolCall",
+        tool: "jira_create_issue",
+        status: "completed",
+        result: {
+          content: [{ type: "text", text: JSON.stringify({ execution }) }],
+        },
+      },
+    });
+    const reply = await run;
+    assert.match(
+      executionReport(reply.execution ?? [], "fixture.atlassian.net"),
+      /완료.*모의 작업/,
+    );
+    assert.equal(reply.execution?.[0]?.keys[0], "AA-99");
+    assert.doesNotMatch(reply.answer, /기다리는/);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+test("한 작업을 실행한 뒤 남은 작업의 필수 질문도 함께 반환한다", async () => {
+  const f = fixture(),
+    created = stubCreation(f),
+    requestId = "d".repeat(32);
+  try {
+    const run = f.assistant.run({
+      prompt: "하위 작업 두 개를 만들어줘",
+      context,
+      requestId,
+    });
+    await f.waitTurn();
+    emitCreation(f);
+    const request = await approvalOf(f, requestId);
+    f.assistant.approvals.respond({
+      requestId,
+      id: request.id,
+      approved: true,
+      values: {},
+    });
+    for (let i = 0; i < 40; i++) await Promise.resolve();
+    f.complete("둘째 작업의 상위는 Alpha(AA-1)와 Beta(AA-2) 중 어느 것인가요?");
+    const reply = await run;
+    assert.equal(created(), 1);
+    assert.equal(reply.execution?.[0]?.status, "applied");
+    assert.match(reply.answer, /Alpha.*Beta/);
   } finally {
     f.assistant.dispose();
   }

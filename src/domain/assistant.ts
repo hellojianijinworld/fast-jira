@@ -1,4 +1,8 @@
 import { type ChangeProposal, changeProposal } from "./agent.ts";
+import {
+  type AssistantExecution,
+  decodeExecutions,
+} from "./assistant-execution.ts";
 import { type IssueDraft, issueDraft } from "./create-issue.ts";
 import { isRecord, record, requiredString } from "./validation.ts";
 export interface AssistantModel {
@@ -24,6 +28,7 @@ export interface AssistantReply {
   issues?: Issue[];
   conversationId: string;
   threadId?: string;
+  execution?: AssistantExecution[];
   answer: string;
   proposals: ChangeProposal[];
   creations?: IssueDraft[];
@@ -87,6 +92,9 @@ export function assistantReply(value: unknown): AssistantReply {
       ? {}
       : { issues: wireArray(data.issues, decodeIssue) }),
     answer: data.answer,
+    ...(data.execution === undefined
+      ? {}
+      : { execution: decodeExecutions(data.execution) }),
     proposals: data.proposals.map((value) => changeProposal(value, "")),
     reconnected: data.reconnected === true,
     ...(data.creations === undefined

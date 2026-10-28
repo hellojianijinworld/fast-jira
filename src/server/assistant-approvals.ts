@@ -36,7 +36,12 @@ export function createAssistantApprovals() {
     runs.set(id, pending);
     let closed = false;
     const ask: ApprovalHandler = (request) => {
-      if (closed) return Promise.resolve({ approved: false, values: {} });
+      if (closed)
+        return Promise.resolve({
+          approved: false,
+          values: {},
+          reason: "cancelled",
+        });
       return new Promise((resolve) => {
         const approval = {
           ...request,
@@ -54,7 +59,7 @@ export function createAssistantApprovals() {
           id: randomUUID(),
         };
         const timer = setTimeout(
-          () => finish({ approved: false, values: {} }),
+          () => finish({ approved: false, values: {}, reason: "expired" }),
           5 * 60_000,
         );
         function finish(answer: ApprovalDecision) {
@@ -71,7 +76,7 @@ export function createAssistantApprovals() {
       close() {
         closed = true;
         for (const item of pending.values())
-          item.finish({ approved: false, values: {} });
+          item.finish({ approved: false, values: {}, reason: "cancelled" });
         runs.delete(id);
       },
     };
@@ -126,7 +131,7 @@ export function createAssistantApprovals() {
     dispose() {
       for (const pending of runs.values())
         for (const item of pending.values())
-          item.finish({ approved: false, values: {} });
+          item.finish({ approved: false, values: {}, reason: "cancelled" });
       runs.clear();
     },
   };

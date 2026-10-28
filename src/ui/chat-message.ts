@@ -6,6 +6,7 @@ export function chatMessage(
   text: string,
   model = "",
   navigation?: { site: string; select(key: string): void },
+  executionSummary = "",
 ) {
   const row = element("article", `chat-message chat-message-${role}`),
     author = element("div", "chat-author", role === "user" ? "나" : "AI"),
@@ -23,7 +24,15 @@ export function chatMessage(
         /* 외부 링크는 원래 주소로 연다. */
       }
       if (key) {
-        const anchor = element("a", "chat-issue-link", key);
+        const anchor = element(
+          "a",
+          "chat-issue-link",
+          label === url
+            ? key
+            : label.includes(key)
+              ? label
+              : `${label} (${key})`,
+        );
         anchor.href = `?issue=${encodeURIComponent(key)}`;
         anchor.addEventListener("click", (event) => {
           if (
@@ -44,9 +53,11 @@ export function chatMessage(
   }
   function inline(block: HTMLElement, value: string) {
     for (const part of value.split(
-      /(\[[^\]\n]+\]\(https?:\/\/[^\s<>)]+\)|\*\*[^*]+\*\*|`[^`]+`|https?:\/\/[^\s<>()]+)/g,
+      /(\[(?:[^[\]\n]|\[[^[\]\n]*\])+\]\(https?:\/\/[^\s<>)]+\)|\*\*[^*]+\*\*|`[^`]+`|https?:\/\/[^\s<>()]+)/g,
     )) {
-      const markdown = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s<>)]+)\)$/);
+      const markdown = part.match(
+        /^\[((?:[^[\]\n]|\[[^[\]\n]*\])+)\]\((https?:\/\/[^\s<>)]+)\)$/,
+      );
       if (markdown?.[1] && markdown[2] && safeHref(markdown[2]))
         block.append(link(markdown[2], markdown[1]));
       else if (part.startsWith("**") && part.endsWith("**")) {
@@ -89,6 +100,19 @@ export function chatMessage(
       body.append(block);
     }
   }
-  row.append(author, body);
+  row.append(author);
+  if (executionSummary) {
+    const result = element("section", "chat-execution-result");
+    result.setAttribute("aria-label", "실행 결과");
+    result.append(element("strong", "", "실행 결과"));
+    for (const line of executionSummary.split("\n")) {
+      const paragraph = element("p");
+      inline(paragraph, line);
+      result.append(paragraph);
+    }
+    row.append(result);
+  }
+  body.hidden = !text;
+  row.append(body);
   return row;
 }

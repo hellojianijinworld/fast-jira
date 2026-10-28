@@ -19,6 +19,7 @@ export interface AssistantApproval {
 }
 export interface ApprovalDecision {
   approved: boolean;
+  reason?: "expired" | "cancelled";
   values: Record<string, JsonValue>;
 }
 export type ApprovalHandler = (

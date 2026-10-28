@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { test } from "node:test";
 import { assistantStatus } from "../src/domain/assistant.ts";
+import { executionReport } from "../src/domain/assistant-execution.ts";
 import { createAssistantService } from "../src/server/assistant-service.ts";
 import { createClaudeAssistant } from "../src/server/claude-assistant.ts";
 import {
@@ -503,3 +504,77 @@ test("Claude 권한 콜백은 사용자가 승인할 때까지 대기하고 영�
     assistant.dispose();
   }
 });
+
+for (const approved of [true, false])
+  test(`Claude 생성 모의 실행도 승인 ${approved} 결과로 최종 답변을 확정한다`, async () => {
+    const jira = service();
+    let writes = 0,
+      prompts = 0;
+    jira.validateCreation = async () => ({
+      project: "AA",
+      type: "2",
+      parent: "AA-1",
+      fields: { summary: "모의 하위 작업" },
+    });
+    jira.createIssue = async () => {
+      writes++;
+      return { key: "AA-99" };
+    };
+    const claude = createClaudeAssistant(
+      () => jira,
+      "모의 실행",
+      async ({ args }) => {
+        const config = JSON.parse(
+          args[args.indexOf("--mcp-config") + 1] ?? "{}",
+        ).mcpServers.fast_jira;
+        const response = await rpc(config.url, config.headers, "tools/call", {
+          name: "jira_apply_changes",
+          arguments: {
+            actions: [
+              {
+                tool: "jira_create_issue",
+                arguments: {
+                  project: "AA",
+                  type: "2",
+                  parent: "AA-1",
+                  fields: { summary: "모의 하위 작업" },
+                },
+              },
+            ],
+          },
+        }).then((r) => r.json());
+        assert.equal(response.result.isError, approved ? undefined : true);
+        return {
+          is_error: false,
+          result: "승인 결과를 아직 기다리고 있습니다.",
+        };
+      },
+    );
+    try {
+      const reply = await claude.run(
+        {
+          prompt: "하위 작업 생성",
+          context,
+          model: "claude:sonnet",
+          history: [],
+        },
+        undefined,
+        async () => {
+          prompts++;
+          return { approved, values: {} };
+        },
+      );
+      assert.equal(prompts, 1);
+      assert.equal(writes, approved ? 1 : 0);
+      assert.equal(
+        reply.execution?.[0]?.status,
+        approved ? "applied" : "notApproved",
+      );
+      assert.match(
+        executionReport(reply.execution ?? [], "fixture.atlassian.net"),
+        approved ? /완료.*모의 하위 작업/ : /미실행/,
+      );
+    } finally {
+      claude.dispose();
+    }
+  });

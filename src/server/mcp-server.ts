@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { JsonValue } from "../domain/adf.ts";
 import type { ApprovalHandler } from "../domain/assistant-approval.ts";
+import type { AssistantExecution } from "../domain/assistant-execution.ts";
 import { isRecord } from "../domain/validation.ts";
 import { callApprovedJiraTool } from "./jira-approvals.ts";
 import type { JiraToolDefinition } from "./jira-tools.ts";
@@ -16,6 +17,7 @@ export interface ToolService {
   definitions: readonly JiraToolDefinition[];
   call(name: string, args: unknown): Promise<unknown>;
   describeChange?(name: string, args: unknown): unknown;
+  onResult?(result: AssistantExecution): void;
 }
 /** 승인 응답은 MCP 클라이언트가 제공한다. 모델이 보낸 승인 플래그는 사용하지 않는다. */
 export function createToolServer(
@@ -63,6 +65,10 @@ export function createToolServer(
             approved:
               response.action === "accept" && !response.content?.feedback,
             values: (response.content ?? {}) as Record<string, JsonValue>,
+            ...(response._meta?.["fast-jira/approval-reason"] === "expired" ||
+            response._meta?.["fast-jira/approval-reason"] === "cancelled"
+              ? { reason: response._meta["fast-jira/approval-reason"] }
+              : {}),
           };
         });
       const result = await callApprovedJiraTool(

@@ -11,6 +11,7 @@ export const codexApprovalMethods = new Set([
   "item/permissions/requestApproval",
   "mcpServer/elicitation/request",
   "item/tool/requestUserInput",
+  "tool/requestUserInput",
 ]);
 /** 프로토콜의 이번 실행/턴 승인만 사용한다. 세션·정책 변경 승인은 생성하지 않는다. */
 export async function answerCodexApproval(
@@ -50,7 +51,10 @@ export async function answerCodexApproval(
     null,
     2,
   );
-  if (method === "item/tool/requestUserInput") {
+  if (
+    method === "item/tool/requestUserInput" ||
+    method === "tool/requestUserInput"
+  ) {
     const questions = Array.isArray(params.questions)
       ? params.questions.map(record)
       : [];
@@ -115,7 +119,9 @@ export async function answerCodexApproval(
         : feedbackOnly
           ? { feedback: answer.values.feedback }
           : null,
-      _meta: null,
+      _meta: answer.reason
+        ? { "fast-jira/approval-reason": answer.reason }
+        : null,
     };
   }
   const answer = await confirm({

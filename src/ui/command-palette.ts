@@ -1,6 +1,7 @@
+import { executionReport } from "../domain/assistant-execution.ts";
 import type { IssueDraft } from "../domain/create-issue.ts";
 import "./command-palette.css";
-import { type Api, subscribeVoice } from "../client/api.ts";
+import { type Api, ApiError, subscribeVoice } from "../client/api.ts";
 import {
   createCodexVoice,
   type VoiceCallbacks,
@@ -724,6 +725,8 @@ export function createCommandPalette(config: {
           message.role,
           message.text,
           message.model ?? current?.model ?? selectedModel,
+          message.executionNote,
+          message.executionSummary,
         ),
       ),
     );
@@ -781,14 +784,29 @@ export function createCommandPalette(config: {
       table,
     );
   }
-  function renderMessage(role: "user" | "assistant", text: string, model = "") {
-    return chatMessage(role, text, model, {
-      site: config.site,
-      select: (key) => {
-        dialog.close();
-        config.select(key);
+  function renderMessage(
+    role: "user" | "assistant",
+    text: string,
+    model = "",
+    executionNote?: string,
+    executionSummary?: string,
+  ) {
+    const message = chatMessage(
+      role,
+      text,
+      model,
+      {
+        site: config.site,
+        select: (key) => {
+          dialog.close();
+          config.select(key);
+        },
       },
-    });
+      executionSummary,
+    );
+    if (executionNote)
+      message.append(element("p", "chat-execution-note", executionNote));
+    return message;
   }
   let thinkingMessage: HTMLElement | undefined;
   function hideThinking() {
@@ -870,11 +888,24 @@ export function createCommandPalette(config: {
       conversationId = active.conversationId = reply.conversationId;
       if (reply.threadId) active.threadId = reply.threadId;
       else delete active.threadId;
-      const answer = reply.answer || "변경안을 확인해 주세요.";
+      const answer =
+        reply.answer ||
+        (reply.execution?.length
+          ? ""
+          : "답변을 받지 못했어요. 다시 요청해 주세요.");
+      const executionSummary = reply.execution?.length
+        ? executionReport(reply.execution, config.site)
+        : undefined;
+      const executionNote =
+        reply.execution?.length === 0 && !reply.proposals.length
+          ? "이 답변에는 확인된 Jira 실행 결과가 없어요."
+          : undefined;
       active.messages.push({
         role: "assistant",
         text: answer,
         model: selectedModel,
+        ...(executionNote ? { executionNote } : {}),
+        ...(executionSummary ? { executionSummary } : {}),
       });
       if (reply.proposals.length)
         active.messages.push({
@@ -886,7 +917,13 @@ export function createCommandPalette(config: {
         transcript.clientHeight + 80;
       hideThinking();
       aiResults.append(
-        renderMessage("assistant", answer, selectedModel),
+        renderMessage(
+          "assistant",
+          answer,
+          selectedModel,
+          executionNote,
+          executionSummary,
+        ),
         ...reply.proposals.map(proposal),
       );
       saveConversation();
@@ -899,16 +936,27 @@ export function createCommandPalette(config: {
       if (alive && !controller.signal.aborted) {
         conversationId = active.conversationId = "";
         const message = errorText(error);
+        const executionNote =
+          error instanceof ApiError &&
+          (error.status === 0 || (error.status >= 400 && error.status < 500))
+            ? undefined
+            : "실행 결과를 확인하지 못했어요. 일부 변경은 저장됐을 수 있으니 다시 실행하기 전에 결과를 확인해 주세요.";
         active.messages.push({
           role: "assistant",
           text: `요청 실패: ${message}`,
+          ...(executionNote ? { executionNote } : {}),
         });
         const follow =
           transcript.scrollHeight - transcript.scrollTop <
           transcript.clientHeight + 80;
         hideThinking();
         aiResults.append(
-          renderMessage("assistant", `요청 실패: ${message}`, selectedModel),
+          renderMessage(
+            "assistant",
+            `요청 실패: ${message}`,
+            selectedModel,
+            executionNote,
+          ),
         );
         status.textContent = "";
         if (!input.value) input.value = prompt;
@@ -1043,12 +1091,19 @@ export function createCommandPalette(config: {
     request?.abort();
     hideThinking();
     conversationId = "";
-    status.textContent = "요청을 중지했어요.";
+    status.textContent = "요청을 중지했어요. 이미 저장된 변경은 유지돼요.";
     if (current) {
       current.conversationId = "";
-      current.messages.push({ role: "assistant", text: "요청을 중지했어요." });
+      current.messages.push({
+        role: "assistant",
+        text: "요청을 중지했어요. 이미 저장된 변경은 유지돼요.",
+      });
       aiResults.append(
-        renderMessage("assistant", "요청을 중지했어요.", selectedModel),
+        renderMessage(
+          "assistant",
+          "요청을 중지했어요. 이미 저장된 변경은 유지돼요.",
+          selectedModel,
+        ),
       );
       saveConversation();
     }

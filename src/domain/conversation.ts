@@ -3,6 +3,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   model?: string;
+  executionNote?: string;
+  executionSummary?: string;
 }
 export interface Conversation {
   id: string;
@@ -17,7 +19,11 @@ export function isChatMessage(value: unknown): value is ChatMessage {
     isRecord(value) &&
     (value.role === "user" || value.role === "assistant") &&
     typeof value.text === "string" &&
-    (value.model === undefined || typeof value.model === "string")
+    (value.model === undefined || typeof value.model === "string") &&
+    (value.executionNote === undefined ||
+      typeof value.executionNote === "string") &&
+    (value.executionSummary === undefined ||
+      typeof value.executionSummary === "string")
   );
 }
 export function decodeConversations(value: unknown): Conversation[] {
@@ -54,7 +60,10 @@ export function conversationContext(
   let remaining = 20_000;
   for (const message of messages.slice(-20).reverse()) {
     if (remaining <= 0) break;
-    const text = message.text.slice(-remaining);
+    const text = [message.executionSummary, message.text]
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(-remaining);
     result.unshift({ role: message.role, text });
     remaining -= text.length;
   }

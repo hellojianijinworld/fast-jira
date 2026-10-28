@@ -169,3 +169,19 @@ test("원본 Codex 링크만 만들고 저장한 뒤에도 복원한다", () => 
     null,
   );
 });
+
+test("실행 결과와 후속 질문을 함께 보관하고 연결 복구 때도 맥락을 유지한다", () => {
+  const messages = [
+    {
+      role: "assistant" as const,
+      text: "두 번째 작업의 상위는 어디인가요?",
+      executionSummary: "완료 · 첫 작업 AA-99",
+    },
+  ];
+  const restored = decodeConversations([{ ...chat, messages }])[0];
+  assert.equal(restored?.messages[0]?.executionSummary, "완료 · 첫 작업 AA-99");
+  assert.match(
+    conversationContext(messages)[0]?.text ?? "",
+    /첫 작업 AA-99[\s\S]*상위는 어디/,
+  );
+});

@@ -60,7 +60,11 @@ test("승인은 현재 브라우저 요청에만 한 번 적용되고 거절·�
   );
   const cancelled = run.ask(request);
   run.close();
-  assert.equal((await cancelled).approved, false);
+  assert.deepEqual(await cancelled, {
+    approved: false,
+    values: {},
+    reason: "cancelled",
+  });
   assert.equal((await run.ask(request)).approved, false);
   assert.throws(() => broker.pending("invalid"), /식별자/);
   const other = broker.open(token),
@@ -217,7 +221,11 @@ test("오래된 승인 요청은 자동 거절되고 재사용할 수 없다", a
     pending = run.ask(request);
   const id = broker.pending(token)[0]?.id;
   t.mock.timers.tick(300000);
-  assert.equal((await pending).approved, false);
+  assert.deepEqual(await pending, {
+    approved: false,
+    values: {},
+    reason: "expired",
+  });
   assert.throws(
     () => broker.respond({ requestId: token, id, approved: true, values: {} }),
     /종료/,
@@ -266,4 +274,25 @@ test("MCP 확인 질문의 기타 의견은 실행 없이 전달된다", async (
     content: { feedback: "다시 제안해 주세요" },
     _meta: null,
   });
+});
+
+test("공식 tool/requestUserInput 질문도 UI 응답만 원래 선택지로 전달한다", async () => {
+  const { codexApprovalMethods } = await import(
+    "../src/server/codex-approvals.ts"
+  );
+  assert(codexApprovalMethods.has("tool/requestUserInput"));
+  const result = await answerCodexApproval(
+    "tool/requestUserInput",
+    {
+      questions: [
+        {
+          id: "target",
+          question: "어떤 상위인가요?",
+          options: [{ label: "모의 상위" }],
+        },
+      ],
+    },
+    async () => ({ approved: true, values: { target: "모의 상위" } }),
+  );
+  assert.deepEqual(result, { answers: { target: { answers: ["모의 상위"] } } });
 });

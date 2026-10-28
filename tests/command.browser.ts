@@ -61,7 +61,9 @@ let approvalToken = "",
 let releaseApproval: (() => void) | undefined;
 let holdAnswer = false,
   releaseAnswer: (() => void) | undefined,
-  unread = false;
+  unread = false,
+  noExecution = false,
+  executionPreview = false;
 const savedChats = new Map<string, string>();
 const storage = {
   getItem: (key: string) => savedChats.get(key) ?? null,
@@ -77,7 +79,9 @@ let localItems = [issue],
 let releaseSearch: (() => void) | undefined;
 let prompt = "",
   searchQuery = "",
-  fail = false;
+  fail = false,
+  networkFailure = false,
+  assistantCalls = 0;
 let voiceTranscript: ((text: string) => void) | undefined;
 function mockVoice(callbacks: VoiceCallbacks) {
   let active = false;
@@ -185,6 +189,8 @@ const api = createApi(async (input, init) => {
     return Response.json({});
   }
   if (path.pathname === "/api/assistant/run") {
+    assistantCalls++;
+    if (networkFailure) throw new TypeError("Failed to fetch");
     if (holdApproval) {
       approvalToken = JSON.parse(String(init?.body)).requestId;
       pendingApproval = true;
@@ -200,6 +206,36 @@ const api = createApi(async (input, init) => {
       });
     if (fail)
       return Response.json({ error: "모의 연결 실패" }, { status: 503 });
+    if (executionPreview) {
+      const execution = [
+        {
+          tool: "jira_create_issue",
+          label: "이슈 생성 · [모의] 프롬프트 반영",
+          status: "applied" as const,
+          keys: ["AA-99"],
+        },
+        {
+          tool: "jira_edit_issue",
+          label: "기존 이슈 제목 수정",
+          status: "notApproved" as const,
+          keys: ["AA-1"],
+        },
+        {
+          tool: "jira_description",
+          label: "본문 수정",
+          status: "failed" as const,
+          keys: ["AA-2"],
+          error: "모의 권한 오류",
+        },
+      ];
+      return Response.json({
+        conversationId: "test",
+        threadId: "01a1804c-6b69-7621-aa0f-83a2a66d2959",
+        answer: "남은 작업의 상위는 모의 창체 개선(AA-1)이 맞나요?",
+        execution,
+        proposals: [],
+      });
+    }
     return Response.json({
       conversationId: "test",
       threadId: "01a1804c-6b69-7621-aa0f-83a2a66d2959",
@@ -212,7 +248,13 @@ const api = createApi(async (input, init) => {
           }
         : {}),
       ...(holdApproval && approvalAccepted ? { issues: [issue] } : {}),
-      proposals: [{ keys: [issue.key], field: "assignee", value: "user" }],
+      ...(noExecution
+        ? { proposals: [], execution: [] }
+        : {
+            proposals: [
+              { keys: [issue.key], field: "assignee", value: "user" },
+            ],
+          }),
     });
   }
   if (path.pathname === "/api/bulk-options")
@@ -854,6 +896,12 @@ await check(
         dialog().textContent?.includes("모의 연결 실패"),
       "실패 입력·안내 누락",
     );
+    assert(
+      dialog()
+        .querySelector(".chat-message:last-child .chat-execution-note")
+        ?.textContent?.includes("다시 실행하기 전에"),
+      "연결 실패의 불확실한 실행 결과를 안내하지 않음",
+    );
     dialog().style.width = "300px";
     await tick();
     assert(
@@ -889,12 +937,12 @@ await check(
   },
 );
 await check(
-  "Jira 마크다운·주소 링크는 이슈 번호만 표시하고 내부 상세로 이동한다",
+  "Jira 링크의 제목은 보존하고 원문 주소만 이슈 번호로 줄여 내부 상세로 이동한다",
   async () => {
     let opened = "";
     const row = chatMessage(
       "assistant",
-      "[AA-17](https://fixture.atlassian.net/browse/AA-17)을 생성했습니다.\nhttps://fixture.atlassian.net/browse/AA-18\n[참고](https://example.com/reference)\n[위험](javascript:alert(1))\n**[AA-19](https://fixture.atlassian.net/browse/AA-19)**",
+      "[모의 상위 작업 · AA-17](https://fixture.atlassian.net/browse/AA-17)을 생성했습니다.\nhttps://fixture.atlassian.net/browse/AA-18\n[참고](https://example.com/reference)\n[위험](javascript:alert(1))\n**[AA-19](https://fixture.atlassian.net/browse/AA-19)**",
       "검사 모델",
       {
         site: "fixture.atlassian.net",
@@ -906,7 +954,7 @@ await check(
     const links = [...row.querySelectorAll<HTMLAnchorElement>("a")];
     assert(links.length === 4, "링크 파싱 실패 또는 위험 링크 생성");
     assert(
-      links[0]?.textContent === "AA-17" &&
+      links[0]?.textContent === "모의 상위 작업 · AA-17" &&
         links[0]?.getAttribute("href") === "?issue=AA-17",
       "마크다운 Jira 링크가 외부 주소로 표시됨",
     );
@@ -929,6 +977,23 @@ await check(
       !row.textContent?.includes("fixture.atlassian.net"),
       "Jira 원문 주소가 노출됨",
     );
+  },
+);
+await check(
+  "대괄호가 포함된 실제 이슈 제목도 링크 레이블과 번호를 유지한다",
+  async () => {
+    const row = chatMessage(
+      "assistant",
+      "[[창체] 프롬프트 검증](https://fixture.atlassian.net/browse/AA-20)",
+      "검사 모델",
+      { site: "fixture.atlassian.net", select: () => {} },
+    );
+    const link = row.querySelector("a");
+    assert(
+      link?.textContent === "[창체] 프롬프트 검증 (AA-20)",
+      "제목이나 번호가 사라짐",
+    );
+    assert(link?.getAttribute("href") === "?issue=AA-20", "내부 링크가 아님");
   },
 );
 await check(
@@ -1202,6 +1267,109 @@ await check(
     assert(prompt === "기본 Enter 검사", "기본 모드 전송");
   },
 );
+await check(
+  "실행하지 않은 답변은 확인된 결과가 없음을 표시하고 기록 복원 후에도 유지한다",
+  async () => {
+    noExecution = true;
+    try {
+      input().value = "읽기 전용으로 방향을 제안해 줘";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      await tick();
+      assert(
+        dialog().querySelector(".chat-message:last-child .chat-execution-note"),
+        "실행 없는 답변의 상태 누락",
+      );
+      palette.destroy();
+      palette = makePalette();
+      palette.open("ai");
+      await tick();
+      assert(
+        dialog().querySelector(".chat-message:last-child .chat-execution-note"),
+        "대화 복원 후 실행 상태 유실",
+      );
+    } finally {
+      noExecution = false;
+      executionPreview = false;
+    }
+  },
+);
+await check(
+  "실행 결과는 완료·미실행·실패와 내부 링크를 표시하고 기록에도 남긴다",
+  async () => {
+    executionPreview = true;
+    try {
+      input().value = "생성과 두 개 수정에 대한 모의 결과";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      await tick();
+      const result = dialog().querySelector(".chat-message:last-child");
+      assert(
+        result
+          ?.querySelector(".chat-execution-result")
+          ?.textContent?.includes("완료") &&
+          result.textContent.includes("미실행") &&
+          result.textContent.includes("실패"),
+        "부분 실행 상태 누락",
+      );
+      assert(
+        result
+          ?.querySelector(".command-answer")
+          ?.textContent?.includes("상위는 모의 창체 개선"),
+        "실행 결과가 후속 질문을 덮어씀",
+      );
+      const link = result?.querySelector<HTMLAnchorElement>(
+        'a[href="?issue=AA-99"]',
+      );
+      assert(
+        link?.textContent === "AA-99",
+        "앞의 대괄호 제목이 결과 링크에 섞임",
+      );
+      palette.destroy();
+      palette = makePalette();
+      palette.open("ai");
+      await tick();
+      assert(
+        dialog()
+          .querySelector(".chat-message:last-child")
+          ?.textContent?.includes("모의 권한 오류"),
+        "실행 기록 복원 실패",
+      );
+    } finally {
+      executionPreview = false;
+    }
+  },
+);
+await check(
+  "연결 유실은 결과 불확실성을 알리고 입력을 보존하며 자동 재실행하지 않는다",
+  async () => {
+    networkFailure = true;
+    try {
+      const before = assistantCalls;
+      input().value = "연결 유실을 재현할 모의 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      await tick();
+      const result = dialog().querySelector(".chat-message:last-child");
+      assert(result?.textContent?.includes("연결이 끊"), "연결 오류 안내 누락");
+      assert(
+        result?.textContent?.includes("저장됐을 수"),
+        "실행 결과를 미실행으로 단정함",
+      );
+      assert(
+        !result?.textContent?.includes("Failed to fetch"),
+        "기술 오류만 표시됨",
+      );
+      assert(
+        input().value === "연결 유실을 재현할 모의 요청",
+        "실패 입력 유실",
+      );
+      assert(assistantCalls === before + 1, "생성 요청을 자동 재실행함");
+    } finally {
+      networkFailure = false;
+    }
+  },
+);
 await check("destroy는 단축키와 명령창을 해제한다", async () => {
   palette.destroy();
   notice.destroy();
@@ -1245,6 +1413,7 @@ host.append(show);
 if (new URLSearchParams(location.search).has("preview")) {
   holdAnswer = new URLSearchParams(location.search).has("thinking");
   holdApproval = new URLSearchParams(location.search).has("approval");
+  executionPreview = new URLSearchParams(location.search).has("result");
   preview.open("ai");
   await tick();
   input().value = holdApproval
