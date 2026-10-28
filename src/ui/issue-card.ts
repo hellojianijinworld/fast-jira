@@ -86,8 +86,8 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
     );
   if (issue.status) meta.append(statusPill(issue.status, options.statusOrder));
   const main = element("span", "list-main");
-  main.append(identity, meta);
-  link.append(main, title);
+  main.append(identity, title);
+  link.append(main, meta);
   root.append(link);
   root.addEventListener("click", (event) => {
     if (
