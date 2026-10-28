@@ -2,7 +2,7 @@ import type { ProjectOption } from "../domain/catalog.ts";
 import type { Issue } from "../domain/issue.ts";
 import { activeTreePath } from "../domain/tree-context.ts";
 import { element, uiIcon } from "./dom.ts";
-import { issueTypeIcon, projectIcon } from "./meta.ts";
+import { issueTypeIcon, projectIcon, projectLabel } from "./meta.ts";
 
 /** 목록 높이를 바꾸지 않는 고정 경로. 이미 표시한 행과 이슈만 사용한다. */
 export function createTreeContext(
@@ -129,7 +129,11 @@ export function createTreeContext(
           const icon = project ? projectIcon(project) : null;
           if (icon) label.append(icon);
           label.append(
-            element("span", "tree-context-label", project?.name ?? projectKey),
+            element(
+              "span",
+              "tree-context-label",
+              project ? projectLabel(project) : projectKey,
+            ),
           );
           crumbs.push(label);
         }

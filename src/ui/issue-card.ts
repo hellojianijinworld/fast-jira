@@ -44,6 +44,7 @@ export function issueCard(issue: Issue, options: CardOptions): HTMLElement {
       issue.key,
       options.site ? `https://${options.site}/browse/${issue.key}` : null,
       options.copied,
+      issue.key.replace(/^.+-(\d+)$/, "$1"),
     ),
   );
   const meta = element("span", "list-meta");

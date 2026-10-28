@@ -6,7 +6,7 @@ import { branchState, groupIssues, searchAncestors } from "../domain/tree.ts";
 import type { ViewInfo } from "../domain/view-labels.ts";
 import { actionButton, element, iconButton, uiIcon } from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
-import { projectIcon } from "./meta.ts";
+import { projectIcon, projectLabel } from "./meta.ts";
 
 export interface TreeCallbacks {
   catalog: () => TreeCatalog;
@@ -409,7 +409,7 @@ export function createTreeView(
       count.title = "현재 표시된 이슈 수";
       const toggle = groupToggle(
         `project:${key}`,
-        project?.name ?? key,
+        project ? projectLabel(project) : key,
         projectTree,
       );
       toggle.classList.add("project-toggle");

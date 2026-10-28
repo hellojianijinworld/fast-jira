@@ -321,12 +321,14 @@ function exampleCards(size: ComponentSize = "auto") {
   return host;
 }
 await check(
-  "내용이 들어가는 카드는 한 줄, 긴 제목은 오른쪽 배지만 내려가며 높이가 달라진다",
+  "짧은 카드는 한 줄, 긴 제목은 필요한 높이를 사용하고 배지는 넘치지 않는다",
   () => {
     const compact = document.documentElement.dataset.compact;
     document.documentElement.dataset.compact = "false";
     const host = exampleCards("md");
     host.style.width = "760px";
+    const longTitle = host.querySelectorAll(".list-title")[2];
+    if (longTitle) longTitle.textContent = cardExamples[2][1].repeat(3);
     fixture.append(host);
     try {
       const rows = [...host.querySelectorAll<HTMLElement>(".list-item")];
@@ -339,7 +341,7 @@ await check(
         assert(
           index < 2
             ? meta.top < title.bottom && meta.bottom > title.top
-            : meta.top >= title.bottom,
+            : meta.bottom >= title.bottom,
           "제목 길이에 맞는 줄 배치가 아님",
         );
         assert(row.scrollWidth <= row.clientWidth + 1, "카드 가로 넘침");
@@ -367,7 +369,7 @@ await check(
     const compact = document.documentElement.dataset.compact;
     document.documentElement.dataset.compact = "false";
     const host = exampleCards("md");
-    host.style.width = "420px";
+    host.style.width = "360px";
     fixture.append(host);
     try {
       const row = host.querySelector(".list-item");
@@ -1666,6 +1668,18 @@ await check(
 await check(
   "티켓 번호는 아이콘 없이 공통 툴팁을 표시하고 복사 표시가 배치를 바꾸지 않는다",
   async () => {
+    const card = issueCard(emptyIssue("CLIPO-820", "제목"), {
+      statusOrder: [],
+      onSelect: () => {},
+      site: "example.atlassian.net",
+    });
+    const key = card.querySelector(".key");
+    assert(key?.textContent === "820", "카드에 프로젝트 접두어가 남음");
+    assert(
+      key?.getAttribute("aria-label") === "CLIPO-820 이슈 링크 복사" &&
+        card.querySelector("a")?.getAttribute("href") === "?issue=CLIPO-820",
+      "축약 표시가 전체 이슈 식별자를 변경함",
+    );
     const stop = startTooltips();
     const host = element("div");
     const copy = issueKeyCopy(
@@ -1735,7 +1749,7 @@ await check(
     try {
       const copy = card.querySelector<HTMLButtonElement>(".card-copy");
       assert(
-        copy?.textContent === issue.key && !copy.closest("a"),
+        copy?.textContent === "711" && !copy.closest("a"),
         "이슈키 자체가 독립된 복사 버튼이어야 함",
       );
       copy.click();
@@ -2666,8 +2680,8 @@ await check(
       );
       assert(
         nav?.querySelector(".tree-context-project")?.textContent ===
-          "검사 프로젝트",
-        "프로젝트 이름이 경로에 없다",
+          "검사 프로젝트 (TEST)",
+        "프로젝트 이름과 키가 경로에 없다",
       );
       assert(
         Boolean(
@@ -3625,9 +3639,9 @@ await check(
         "프로젝트 제목을 아직 보고 있는데 중복 경로가 나온다",
       );
       for (const [selector, label, expectedGroups] of [
-        ['[data-tree-key="AA"] .list-item', "첫 프로젝트", []],
-        ['[data-tree-key="completed:AA:tree"]', "첫 프로젝트", ["완료"]],
-        ['[data-tree-key="BB"] .list-item', "다른 프로젝트", []],
+        ['[data-tree-key="AA"] .list-item', "첫 프로젝트 (AA)", []],
+        ['[data-tree-key="completed:AA:tree"]', "첫 프로젝트 (AA)", ["완료"]],
+        ['[data-tree-key="BB"] .list-item', "다른 프로젝트 (BB)", []],
       ] as const) {
         const target = host.querySelector<HTMLElement>(selector ?? "");
         assert(target !== null, "스크롤 검사 대상 누락");
