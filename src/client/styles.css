@@ -1300,9 +1300,6 @@ dialog::backdrop {
   border-bottom: 1px solid var(--border);
 }
 @media (max-width: 900px) {
-  .tree-list {
-    --tree-gutter: 36px;
-  }
   .row-action {
     width: var(--icon-button-size);
     min-width: var(--icon-button-size);
@@ -1321,9 +1318,6 @@ dialog::backdrop {
     min-width: 24px;
     height: 24px;
     min-height: 24px;
-  }
-  .tree-section-toggle {
-    min-height: var(--button-height);
   }
   .comment-head {
     display: flex;

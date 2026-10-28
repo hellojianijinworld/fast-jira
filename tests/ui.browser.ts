@@ -3207,11 +3207,32 @@ await check(
       statusCategory: "done",
       summary: "현재 목록에 부모가 없는 작업",
     };
-    for (const item of [parent, child, orphan, done, doneTask, missingParent]) {
+    const activeChild = {
+      ...emptyIssue("TEST-1006", "진행 중인 하위 작업"),
+      parent: parent.key,
+      hasChildren: true,
+      hierarchyLevel: 0,
+    };
+    const grandchild = {
+      ...emptyIssue("TEST-1007", "두 단계 아래 작업"),
+      parent: activeChild.key,
+      hierarchyLevel: -1,
+    };
+    for (const item of [
+      parent,
+      child,
+      orphan,
+      done,
+      doneTask,
+      missingParent,
+      activeChild,
+      grandchild,
+    ]) {
       list.items.set(item.key, item);
       list.matched.add(item.key);
     }
     list.childPage(parent.key).loaded = true;
+    list.childPage(activeChild.key).loaded = true;
     const view = createTreeView(host, list, {
       site: "example",
       compactDoneParents: () => true,
@@ -3370,8 +3391,99 @@ await check(
           ),
         "다시 열어도 하위 목록이 복원되지 않는다",
       );
+      host
+        .querySelector<HTMLButtonElement>(
+          `[data-issue-key="${activeChild.key}"][aria-expanded="false"]`,
+        )
+        ?.click();
+      view.render();
+      function verifyAlignment() {
+        const rect = (selector: string) => {
+          const node = host.querySelector<HTMLElement>(selector);
+          if (!node) throw new Error(`정렬 검사 대상 없음: ${selector}`);
+          return node.getBoundingClientRect();
+        };
+        const near = (a: number, b: number, message: string) =>
+          assert(Math.abs(a - b) < 1, message);
+        const card = (key: string) =>
+          rect(`[data-tree-key="${key}"] > .tree-row .list-item`);
+        const root = card(parent.key),
+          nested = card(activeChild.key),
+          leaf = card(grandchild.key);
+        near(nested.left - root.left, 16, "하위 들여쓰기가 16px이 아님");
+        near(
+          leaf.left - nested.left,
+          16,
+          "다중 하위의 들여쓰기가 누적되지 않음",
+        );
+        near(nested.top - root.bottom, 8, "부모와 하위 간격이 8px이 아님");
+        near(leaf.top - nested.bottom, 8, "다중 하위의 세로 간격이 다름");
+        near(
+          card(done.key).left,
+          root.left,
+          "루트 완료 타일이 일반 카드 시작선과 다름",
+        );
+        near(
+          card(child.key).left,
+          nested.left,
+          "하위 완료 타일이 형제 카드 시작선과 다름",
+        );
+        const childEnd = rect(
+          `[data-tree-key="${activeChild.key}"] > .tree-children`,
+        );
+        const childDoneHeading = rect(
+          `[data-tree-key="completed:${parent.key}:tree"] .completed-heading`,
+        );
+        near(
+          childDoneHeading.top - childEnd.bottom,
+          12,
+          "펼친 분기와 완료 그룹 간격이 중복됨",
+        );
+        const rootDoneHeading = rect(
+          '[data-tree-key="completed:TEST:tree"] .completed-heading',
+        );
+        const rootIssues = rect('.project-tree > [data-tree-key="issues"]');
+        near(
+          rootDoneHeading.top - rootIssues.bottom,
+          12,
+          "일반 목록과 완료 그룹 간격이 12px이 아님",
+        );
+        near(
+          card(child.key).top - childDoneHeading.bottom,
+          6,
+          "완료 제목과 타일 간격이 6px이 아님",
+        );
+        const projectArrow = rect(".project-toggle .tree-section-control");
+        const issueArrow = rect(`[data-issue-key="${parent.key}"]`);
+        near(
+          issueArrow.left - projectArrow.left,
+          16,
+          "프로젝트와 직속 이슈의 깊이가 다름",
+        );
+        const completionArrow = rect(
+          '[data-group-key="completed:TEST:tree"] .tree-section-control',
+        );
+        near(
+          completionArrow.left,
+          issueArrow.left,
+          "완료 그룹 화살표가 같은 깊이의 이슈와 다름",
+        );
+        for (const selector of [
+          ".project-toggle .tree-section-control",
+          ".tree-toggle",
+          '[data-group-key="completed:TEST:tree"] .tree-section-control',
+        ]) {
+          const button = rect(selector);
+          near(button.width, 24, "펼침 버튼 너비가 24px이 아님");
+          near(button.height, 24, "펼침 버튼 높이가 24px이 아님");
+        }
+      }
       const theme = document.documentElement.dataset.theme;
       try {
+        for (const width of [960, 480, 320]) {
+          host.style.width = `${width}px`;
+          verifyAlignment();
+        }
         host.style.width = "320px";
         for (const mode of ["light", "dark"]) {
           document.documentElement.dataset.theme = mode;

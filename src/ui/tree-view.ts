@@ -390,7 +390,8 @@ export function createTreeView(
       group.dataset.treeKey = key;
       const head = element("div", "project-heading");
       const projectTree = element("div", "project-tree");
-      projectTree.append(branch("", key, 0, 0));
+      const issues = branch("", key, 0, 0);
+      if (issues.children.length) projectTree.append(issues);
       const done = branch("", key, 0, 0, "completed");
       if (done.children.length)
         projectTree.append(

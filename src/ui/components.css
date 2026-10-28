@@ -278,14 +278,31 @@ a {
 }
 
 .tree-list {
-  --tree-gutter: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tree-row-gap);
   margin: 0;
   padding: 0;
   list-style: none;
 }
+.root-tree {
+  gap: var(--tree-project-gap);
+}
+.project-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tree-branch-gap);
+  padding-inline-start: var(--tree-indent);
+}
+.project-tree:not(:empty) {
+  margin-block-start: var(--tree-child-gap);
+}
 .tree-children {
-  margin: 0 10px;
-  padding: 4px 0 8px 6px;
+  margin: var(--tree-child-gap) 0 0;
+  padding-inline-start: var(--tree-indent);
+}
+.tree-list > :where(li:has(> .tree-children)) + li {
+  margin-block-start: calc(var(--tree-branch-gap) - var(--tree-row-gap));
 }
 .tree-row {
   position: relative;
@@ -299,15 +316,18 @@ a {
   flex: 1;
   min-width: 0;
 }
+.tree-row .list-item {
+  margin: 0;
+}
 .tree-toggle {
   position: absolute;
   inset-inline-start: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
+  width: var(--tree-gutter);
+  min-width: var(--tree-gutter);
+  height: var(--tree-gutter);
+  min-height: var(--tree-gutter);
   padding: 2px;
   color: var(--muted);
   background: transparent;
@@ -318,13 +338,6 @@ a {
 .tree-toggle:hover {
   color: var(--blue);
   background: var(--blue-soft);
-}
-@media (max-width: 900px) {
-  .tree-toggle {
-    width: 32px;
-    height: 32px;
-    min-height: 32px;
-  }
 }
 .row-action {
   width: 26px;
@@ -363,22 +376,21 @@ a {
   align-items: center;
   justify-content: center;
   width: var(--tree-gutter);
-  height: 24px;
+  height: var(--tree-gutter);
+  border-radius: var(--radius-5);
+  color: var(--muted);
 }
 .tree-toggle .ui-icon,
 .tree-section-toggle .ui-icon {
-  width: 14px;
-  height: 14px;
-}
-.project-group + .project-group {
-  margin-top: var(--density-space-4-5);
+  width: var(--tree-icon-size);
+  height: var(--tree-icon-size);
 }
 .project-heading {
   display: flex;
   align-items: center;
   gap: var(--density-space-2);
   min-height: var(--pane-heading-height);
-  padding: 0 4px;
+  padding: 0;
   color: var(--secondary-text);
   font-size: var(--font-size-13);
   font-weight: var(--font-weight-emphasis);
@@ -389,13 +401,17 @@ a {
   flex: none;
   object-fit: contain;
 }
+.project-toggle .project-icon {
+  margin-inline-end: var(--tree-row-gap);
+}
 .project-count {
+  margin-inline-start: var(--tree-row-gap);
   color: var(--muted);
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-medium);
 }
 .child-page {
-  padding: 5px 0 8px 58px;
+  padding: var(--tree-child-gap) 0 0 var(--tree-gutter);
 }
 .child-more {
   background: var(--soft);
@@ -940,11 +956,11 @@ a {
 
 /* 완료된 하위만 타일로 모으며 일반 카드의 아이콘과 클릭 동작을 공유한다. */
 .completed-group {
-  margin: var(--density-space-2-5) 0 var(--density-space-3-5);
+  margin: calc(var(--tree-branch-gap) - var(--tree-row-gap)) 0 0;
   min-width: 0;
 }
 .completed-heading {
-  margin: var(--density-space-3-5) 0 7px;
+  margin: 0 0 var(--tree-row-gap);
   color: var(--muted);
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-medium);
@@ -953,7 +969,10 @@ a {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
   grid-auto-rows: calc(56px + var(--participant-avatar-size) + 2px);
-  gap: var(--density-space-1-5);
+  gap: var(--tree-row-gap);
+}
+.tree-section > .completed-grid {
+  padding-inline-start: var(--tree-gutter);
 }
 .completed-grid > li {
   min-width: 0;
@@ -1252,8 +1271,8 @@ a {
 .tree-section-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 24px;
+  gap: 0;
+  min-height: var(--tree-gutter);
   padding: 0;
   border: 0;
   background: transparent;
@@ -1266,6 +1285,10 @@ a {
 }
 .tree-section-toggle:hover {
   color: var(--text);
+}
+.tree-section-toggle:hover .tree-section-control {
+  color: var(--blue);
+  background: var(--blue-soft);
 }
 
 .participant-summary,
