@@ -7,6 +7,7 @@ export interface ApprovalField {
   type: "text" | "number" | "boolean" | "json";
   required: boolean;
   options?: string[];
+  description?: string;
 }
 export interface AssistantApproval {
   id: string;
@@ -49,6 +50,9 @@ export function approvalFields(value: unknown): ApprovalField[] {
             : field.type === "object" || field.type === "array"
               ? "json"
               : "text",
+      ...(typeof field.description === "string"
+        ? { description: field.description }
+        : {}),
       required: Array.isArray(schema.required) && schema.required.includes(key),
       ...(Array.isArray(field.enum) &&
       field.enum.every((item) => typeof item === "string")
@@ -86,6 +90,9 @@ export function decodeApprovals(value: unknown): AssistantApproval[] {
         label: field.label,
         type: field.type as ApprovalField["type"],
         required: field.required,
+        ...(typeof field.description === "string"
+          ? { description: field.description }
+          : {}),
         ...(field.options === undefined
           ? {}
           : { options: field.options as string[] }),

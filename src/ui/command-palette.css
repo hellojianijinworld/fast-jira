@@ -577,10 +577,10 @@
 
 .assistant-approval {
   display: grid;
-  gap: var(--density-space-3);
+  gap: var(--density-space-2);
   margin-block: var(--density-space-3);
-  padding: var(--density-space-4);
-  border: 1px solid var(--blue);
+  padding: var(--density-space-3);
+  border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
 }
@@ -607,4 +607,36 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--density-space-2);
+}
+
+.assistant-answer-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: var(--density-space-2);
+}
+.assistant-answer-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--density-space-2);
+  cursor: pointer;
+}
+.assistant-answer-choice input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+}
+.assistant-approval-field textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: var(--density-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  resize: vertical;
+}
+.awaiting-approval .command-form textarea {
+  height: 38px;
+  min-height: 38px;
 }

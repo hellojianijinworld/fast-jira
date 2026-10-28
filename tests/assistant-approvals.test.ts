@@ -224,3 +224,46 @@ test("오래된 승인 요청은 자동 거절되고 재사용할 수 없다", a
   );
   run.close();
 });
+
+test("다른 의견은 승인하지 않고 허용한 의견 값만 보존한다", async () => {
+  const broker = createAssistantApprovals(),
+    run = broker.open(token),
+    answer = run.ask(request);
+  const id = broker.pending(token)[0]?.id;
+  broker.respond({
+    requestId: token,
+    id,
+    approved: false,
+    values: { approve: true, feedback: "본문을 다시 제안해주세요" },
+  });
+  const result = await answer;
+  assert.equal(result.approved, false);
+  assert.deepEqual(
+    { ...result.values },
+    { feedback: "본문을 다시 제안해주세요" },
+  );
+  run.close();
+});
+test("MCP 확인 질문의 기타 의견은 실행 없이 전달된다", async () => {
+  const result = await answerCodexApproval(
+    "mcpServer/elicitation/request",
+    {
+      serverName: "fast_jira",
+      mode: "form",
+      _meta: { "fast-jira/confirmation": true },
+      requestedSchema: {
+        type: "object",
+        properties: { feedback: { type: "string" } },
+      },
+    },
+    async () => ({
+      approved: false,
+      values: { feedback: "다시 제안해 주세요" },
+    }),
+  );
+  assert.deepEqual(result, {
+    action: "accept",
+    content: { feedback: "다시 제안해 주세요" },
+    _meta: null,
+  });
+});

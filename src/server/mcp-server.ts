@@ -6,6 +6,10 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { JsonValue } from "../domain/adf.ts";
+import type { ApprovalHandler } from "../domain/assistant-approval.ts";
+import { isRecord } from "../domain/validation.ts";
+import { callApprovedJiraTool } from "./jira-approvals.ts";
 import type { JiraToolDefinition } from "./jira-tools.ts";
 
 export interface ToolService {
@@ -14,7 +18,10 @@ export interface ToolService {
   describeChange?(name: string, args: unknown): unknown;
 }
 /** 승인 응답은 MCP 클라이언트가 제공한다. 모델이 보낸 승인 플래그는 사용하지 않는다. */
-export function createToolServer(tools: () => ToolService) {
+export function createToolServer(
+  tools: () => ToolService,
+  approve?: ApprovalHandler,
+) {
   const server = new Server(
     { name: "fast-jira", version: "0.2.0" },
     { capabilities: { tools: {} } },
@@ -29,50 +36,54 @@ export function createToolServer(tools: () => ToolService) {
           (tool) => tool.name === request.params.name,
         );
       if (!definition) throw new Error("지원하지 않는 도구입니다.");
-      if (!definition.annotations.readOnlyHint) {
-        if (!server.getClientCapabilities()?.elicitation)
-          throw new Error(
-            "이 MCP 클라이언트는 사용자 확인을 지원하지 않아 변경을 실행할 수 없어요.",
-          );
-        const change = JSON.stringify(
-          current.describeChange
-            ? current.describeChange(
-                request.params.name,
-                request.params.arguments,
-              )
-            : (request.params.arguments ?? {}),
-          null,
-          2,
-        );
-        if (change.length > 30000)
-          throw new Error(
-            "확인할 변경 내용이 너무 길어요. 요청을 나눠 주세요.",
-          );
-        const approval = await server.elicitInput({
-          mode: "form",
-          message: `Jira 변경 요청: ${definition.name}\n${change}\n이 변경을 실행할까요?`,
-          requestedSchema: {
-            type: "object",
-            properties: {
-              approve: { type: "boolean", title: "이 변경 실행 승인" },
+      const ask: ApprovalHandler =
+        approve ??
+        (async (confirmation) => {
+          if (!server.getClientCapabilities()?.elicitation)
+            throw new Error(
+              "이 MCP 클라이언트는 사용자 확인을 지원하지 않아 변경을 실행할 수 없어요.",
+            );
+          const response = await server.elicitInput({
+            mode: "form",
+            _meta: { "fast-jira/confirmation": true },
+            message: `${confirmation.title}\n${confirmation.description}\n${confirmation.details}`,
+            requestedSchema: {
+              type: "object",
+              properties: {
+                feedback: {
+                  type: "string",
+                  title:
+                    "기타 의견 (의견을 적으면 실행하지 않고 다시 제안합니다)",
+                },
+              },
+              required: [],
             },
-            required: ["approve"],
-          },
+          });
+          return {
+            approved:
+              response.action === "accept" && !response.content?.feedback,
+            values: (response.content ?? {}) as Record<string, JsonValue>,
+          };
         });
-        if (approval.action !== "accept" || approval.content?.approve !== true)
-          throw new Error("승인하지 않아 Jira를 변경하지 않았어요.");
-      }
+      const result = await callApprovedJiraTool(
+        current,
+        request.params.name,
+        request.params.arguments,
+        ask,
+      );
       return {
+        ...(!definition.annotations.readOnlyHint &&
+        isRecord(result) &&
+        Array.isArray(result.results) &&
+        result.results.every(
+          (item) => isRecord(item) && item.status !== "applied",
+        )
+          ? { isError: true }
+          : {}),
         content: [
           {
             type: "text" as const,
-            text:
-              JSON.stringify(
-                await current.call(
-                  request.params.name,
-                  request.params.arguments,
-                ),
-              ) ?? "null",
+            text: JSON.stringify(result) ?? "null",
           },
         ],
       };
@@ -93,7 +104,11 @@ export function createToolServer(tools: () => ToolService) {
 }
 
 /** 웹 서버와 대화용 연결이 같은 표준 전송·도구 처리기를 사용한다. */
-export function createMcpEndpoint(tools: () => ToolService, token: string) {
+export function createMcpEndpoint(
+  tools: () => ToolService,
+  token: string,
+  approve?: ApprovalHandler,
+) {
   const sessions = new Map<
     string,
     { transport: StreamableHTTPServerTransport; server: Server; used: number }
@@ -130,7 +145,7 @@ export function createMcpEndpoint(tools: () => ToolService, token: string) {
             sessionIdGenerator: () => randomUUID(),
             enableJsonResponse: true,
           });
-          const server = createToolServer(tools);
+          const server = createToolServer(tools, approve);
           session = { transport, server, used: Date.now() };
           const current = session;
           transport.onclose = () => {

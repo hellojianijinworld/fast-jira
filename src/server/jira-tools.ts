@@ -149,7 +149,7 @@ export function createJiraTools(
     ),
     definition(
       "jira_prepare_issue",
-      "생성 폼을 채울 초안만 만듭니다. 실제 Jira 생성은 사용자가 폼을 확인하고 생성 버튼을 누를 때만 수행합니다. 먼저 catalog와 creation_options로 유형·필드·상위를 확인하세요. 설명은 ADF 문서입니다. 링크는 본문에 보존하고 외부 링크 내용을 읽었다고 주장하지 마세요. 불명확한 상위는 임의로 고르지 마세요.",
+      "생성 데이터를 검증하며 저장하지 않습니다. 실제 생성은 jira_create_issue 또는 jira_apply_changes로 요청하여 사용자 승인을 받으세요. 먼저 catalog와 creation_options로 유형·필드·상위를 확인하세요. 설명은 ADF 문서입니다. 링크는 본문에 보존하고 외부 링크 내용을 읽었다고 주장하지 마세요. 불명확한 상위는 임의로 고르지 마세요.",
       {
         project: stringSchema,
         type: stringSchema,
@@ -166,6 +166,51 @@ export function createJiraTools(
     ),
     ...(options.allowMutations
       ? [
+          definition(
+            "jira_create_issue",
+            "새 이슈 또는 하위 이슈를 생성합니다. catalog와 creation_options로 실제 유형·필수 필드·상위를 확인하고 사용자 승인 후 실행합니다. requestId는 재시도 시 같은 값을 사용해 중복 생성을 방지합니다.",
+            {
+              project: stringSchema,
+              type: stringSchema,
+              parent: stringSchema,
+              fields: { type: "object" },
+              requestId: stringSchema,
+            },
+            ["project", "type", "fields"],
+            true,
+          ),
+          definition(
+            "jira_apply_changes",
+            "생성·수정 작업들을 한 번에 승인 요청합니다. 각 작업은 tool과 arguments로 구성합니다. 사용자는 일부만 선택하고 기타 의견을 남길 수 있습니다. 승인되지 않은 작업을 자동 재요청하지 마세요. 의견으로 바뀐 내용은 다시 승인받아야 합니다.",
+            {
+              actions: {
+                type: "array",
+                minItems: 1,
+                maxItems: 50,
+                items: {
+                  type: "object",
+                  properties: {
+                    tool: {
+                      type: "string",
+                      enum: [
+                        "jira_create_issue",
+                        "jira_edit_issue",
+                        "jira_description",
+                        "jira_update_issues",
+                        "jira_comment",
+                        "jira_undo",
+                      ],
+                    },
+                    arguments: { type: "object" },
+                  },
+                  required: ["tool", "arguments"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            ["actions"],
+            true,
+          ),
           definition(
             "jira_update_issues",
             "사용자가 요청한 이슈 1~50개의 필드를 일괄 변경합니다. 대상·필드·값이 불명확하면 먼저 질문하세요. 부분 실패와 되돌리기 token을 반환합니다.",
@@ -319,6 +364,13 @@ export function createJiraTools(
         return service.validateCreation(input);
       case "jira_propose_change":
         return changeProposal(input, service.site);
+      case "jira_create_issue": {
+        const requestId = string(input, "requestId");
+        const draft = await service.validateCreation(input, true);
+        return { ...(await service.createIssue(draft, requestId)), requestId };
+      }
+      case "jira_apply_changes":
+        throw new Error("작업 묶음은 사용자 승인 경로에서 실행해야 합니다.");
       case "jira_update_issues": {
         const plan = changeProposal(input, service.site);
         return service.bulk.apply(plan.keys, plan.field, plan.value);

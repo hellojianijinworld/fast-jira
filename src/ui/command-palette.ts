@@ -283,10 +283,14 @@ export function createCommandPalette(config: {
         subscribe: subscribeVoice,
         ...voiceCallbacks,
       });
+  let awaitingApproval = false;
   const approvalPanel = createAssistantApprovalPanel(config.api, (waiting) => {
     if (!alive) return;
+    awaitingApproval = waiting;
+    dialog.classList.toggle("awaiting-approval", waiting);
+    status.classList.toggle("chat-thinking", busy && !waiting);
     if (waiting) {
-      status.textContent = "작업 내용을 확인하고 승인하거나 거절해 주세요.";
+      status.textContent = "";
       if (!dialog.open) config.unread?.(true);
       else scrollConversation();
     } else if (busy) status.textContent = "생각하고 있어요…";
@@ -316,7 +320,7 @@ export function createCommandPalette(config: {
         : "Codex 로그인으로 음성 입력";
     form.setAttribute("aria-busy", String(busy));
     welcome.hidden = aiResults.childElementCount > 0;
-    status.classList.toggle("chat-thinking", busy);
+    status.classList.toggle("chat-thinking", busy && !awaitingApproval);
     provider.dataset.state = ready
       ? "ready"
       : loadingModels
@@ -642,6 +646,13 @@ export function createCommandPalette(config: {
         requestId,
       );
       if (!alive || controller.signal.aborted) return;
+      if (reply.issues?.length)
+        await config
+          .changed(reply.issues)
+          .catch(() =>
+            config.notice("Jira 변경은 저장됐지만 화면 갱신에 실패했어요."),
+          );
+      if (!alive || controller.signal.aborted) return;
       conversationId = active.conversationId = reply.conversationId;
       const answer = reply.answer || "변경안을 확인해 주세요.";
       active.messages.push({
@@ -660,19 +671,6 @@ export function createCommandPalette(config: {
       aiResults.append(
         chatMessage("assistant", answer, selectedModel),
         ...reply.proposals.map(proposal),
-        ...(reply.creations ?? []).map((draft) => {
-          const card = element("div", "create-draft-card");
-          const button = actionButton("생성 내용 확인", "plus", { size: "sm" });
-          button.addEventListener("click", () => {
-            dialog.close();
-            config.create?.(draft);
-          });
-          card.append(
-            element("span", "", String(draft.fields.summary ?? "새 이슈")),
-            button,
-          );
-          return card;
-        }),
       );
       saveConversation();
       if (follow) scrollConversation();

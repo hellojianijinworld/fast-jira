@@ -59,6 +59,7 @@ function fixture() {
         return { data: [{ name: "unrelated" }], nextCursor: null };
       if (method === "app/installed") return { apps: [] };
       if (method === "thread/start") return { thread: { id: "thread" } };
+      if (method === "turn/steer") return {};
       if (method === "turn/start") {
         turns++;
         return {};
@@ -162,7 +163,7 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
       "apps._default.approvals_reviewer": "user",
     });
     assert.ok(
-      !start.dynamicTools.some((tool) => tool.name === "jira_update_issues"),
+      start.dynamicTools.some((tool) => tool.name === "jira_apply_changes"),
     );
     f.emit(
       "item/tool/call",
@@ -215,7 +216,10 @@ test("동시 실행과 숨은 변경 도구를 차단하고 취소하면 연결�
   const f = fixture(),
     abort = new AbortController();
   try {
-    const pending = f.assistant.run({ prompt: "조회", context }, abort.signal);
+    const pending = f.assistant.run(
+      { prompt: "조회", context, requestId: "a".repeat(32) },
+      abort.signal,
+    );
     const rejected = assert.rejects(pending, /취소/);
     await f.waitTurn();
     await assert.rejects(
@@ -232,7 +236,8 @@ test("동시 실행과 숨은 변경 도구를 차단하고 취소하면 연결�
       1,
     );
     await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.equal((f.replies[0] as { success: boolean }).success, false);
+    assert.equal(f.replies.length, 0);
+    assert.equal(f.assistant.approvals.pending("a".repeat(32)).length, 1);
     assert.equal(f.writes, 0);
     abort.abort();
     await rejected;
@@ -455,5 +460,41 @@ test("승인 HTTP는 올바른 요청 토큰과 동일 출처 사용자 응답�
     f.assistant.dispose();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("네이티브 확인의 기타 의견은 실행을 거절한 뒤 같은 턴의 사용자 입력으로 전달한다", async () => {
+  const f = fixture(),
+    requestId = "b".repeat(32);
+  try {
+    const result = f.assistant.run({ prompt: "작업 확인", context, requestId });
+    await f.waitTurn();
+    f.emit(
+      "item/commandExecution/requestApproval",
+      {
+        threadId: "thread",
+        turnId: "turn",
+        itemId: "command",
+        command: "touch target.txt",
+      },
+      71,
+    );
+    const pending = f.assistant.approvals.pending(requestId)[0];
+    assert(pending);
+    f.assistant.approvals.respond({
+      requestId,
+      id: pending.id,
+      approved: false,
+      values: { feedback: "파일을 만들지 말고 설명만 해주세요" },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(f.replies, [{ decision: "decline" }]);
+    const steer = f.requests.find((item) => item.method === "turn/steer");
+    assert(steer);
+    assert.match(JSON.stringify(steer.params), /설명만 해주세요/);
+    f.complete();
+    await result;
+  } finally {
+    f.assistant.dispose();
   }
 });

@@ -504,6 +504,22 @@ export function createJiraQuery(
     };
   }
   return {
+    async issuesByKeys(input: readonly string[]) {
+      const keys = [...new Set(input.map((key) => parseIssueKey(key, "")))];
+      const issues: Issue[] = [];
+      for (let offset = 0; offset < keys.length; offset += 100) {
+        let cursor = "";
+        do {
+          const page = await search(
+            `key in (${keys.slice(offset, offset + 100).join(", ")})`,
+            cursor,
+          );
+          issues.push(...page.issues);
+          cursor = page.nextPageToken ?? "";
+        } while (cursor);
+      }
+      return metadata.withDefaultPriorities(issues);
+    },
     relatedFieldIds: relatedFields,
     browseConditions,
     sortedPage,

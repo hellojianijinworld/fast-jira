@@ -38,7 +38,21 @@ export function createAssistantApprovals() {
     const ask: ApprovalHandler = (request) => {
       if (closed) return Promise.resolve({ approved: false, values: {} });
       return new Promise((resolve) => {
-        const approval = { ...request, id: randomUUID() };
+        const approval = {
+          ...request,
+          fields: request.fields.some((field) => field.key === "feedback")
+            ? request.fields
+            : [
+                ...request.fields,
+                {
+                  key: "feedback",
+                  label: "기타 의견",
+                  type: "text" as const,
+                  required: false,
+                },
+              ],
+          id: randomUUID(),
+        };
         const timer = setTimeout(
           () => finish({ approved: false, values: {} }),
           5 * 60_000,
@@ -81,27 +95,33 @@ export function createAssistantApprovals() {
       if (typeof data.approved !== "boolean" || !isRecord(data.values))
         throw new JiraError("승인 응답을 확인하세요.", 400);
       const values: Record<string, JsonValue> = Object.create(null);
-      if (data.approved)
-        for (const field of item.request.fields) {
-          const input = data.values[field.key];
-          if (input === undefined) {
-            if (field.required)
-              throw new JiraError(`${field.label} 값을 입력하세요.`, 400);
-            continue;
-          }
-          if (
-            (field.type === "text" &&
-              (typeof input !== "string" ||
-                (field.required && !input.trim()))) ||
-            (field.type === "boolean" && typeof input !== "boolean") ||
-            (field.type === "number" &&
-              (typeof input !== "number" || !Number.isFinite(input))) ||
-            (field.options && !field.options.includes(String(input)))
-          )
-            throw new JiraError(`${field.label} 값을 확인하세요.`, 400);
-          values[field.key] = input as JsonValue;
+      for (const field of item.request.fields) {
+        if (!data.approved && field.key !== "feedback") continue;
+        const input = data.values[field.key];
+        if (input === undefined) {
+          if (field.required)
+            throw new JiraError(`${field.label} 값을 입력하세요.`, 400);
+          continue;
         }
-      item.finish({ approved: data.approved, values });
+        if (
+          (field.type === "text" &&
+            (typeof input !== "string" || (field.required && !input.trim()))) ||
+          (field.type === "boolean" && typeof input !== "boolean") ||
+          (field.type === "number" &&
+            (typeof input !== "number" || !Number.isFinite(input))) ||
+          (field.options && !field.options.includes(String(input)))
+        )
+          throw new JiraError(`${field.label} 값을 확인하세요.`, 400);
+        values[field.key] = input as JsonValue;
+      }
+      if (typeof values.feedback === "string" && values.feedback.length > 4000)
+        throw new JiraError("의견은 4,000자 이내로 입력하세요.", 400);
+      item.finish({
+        approved:
+          data.approved &&
+          !(typeof values.feedback === "string" && values.feedback.trim()),
+        values,
+      });
     },
     dispose() {
       for (const pending of runs.values())

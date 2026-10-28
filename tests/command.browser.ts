@@ -56,7 +56,8 @@ let holdChange = false,
 let conversation = "";
 let approvalToken = "",
   pendingApproval = false,
-  holdApproval = false;
+  holdApproval = false,
+  approvalAccepted = false;
 let releaseApproval: (() => void) | undefined;
 let holdAnswer = false,
   releaseAnswer: (() => void) | undefined,
@@ -162,18 +163,24 @@ const api = createApi(async (input, init) => {
         ? [
             {
               id: "approval",
-              title: "Slack 메시지 보내기",
-              description:
-                "이번 요청에 한해 실행합니다. 대상과 내용을 확인하세요.",
-              details:
-                "채널: 모의 프로젝트\n메시지: 진행 상황 확인 요청\n실제로 전송하지 않는 UI 검사입니다.",
-              fields: [],
+              title: "이 작업을 진행할까요?",
+              description: "요청하신 내용을 수정하려고 합니다.",
+              details: "대상: AA-1\n제목: 가운뎃점 처리 기준 정리",
+              fields: [
+                {
+                  key: "feedback",
+                  label: "기타 의견",
+                  type: "text",
+                  required: false,
+                },
+              ],
             },
           ]
         : [],
     );
   if (path.pathname === "/api/assistant/approve") {
     pendingApproval = false;
+    approvalAccepted = JSON.parse(String(init?.body)).approved === true;
     releaseApproval?.();
     return Response.json({});
   }
@@ -196,6 +203,14 @@ const api = createApi(async (input, init) => {
     return Response.json({
       conversationId: "test",
       answer: "대상 이슈를 확인했습니다. 아래 변경안을 확인하세요.",
+      ...(holdApproval
+        ? {
+            creations: [
+              { project: "AA", type: "1", fields: { summary: "레거시 초안" } },
+            ],
+          }
+        : {}),
+      ...(holdApproval && approvalAccepted ? { issues: [issue] } : {}),
       proposals: [{ keys: [issue.key], field: "assignee", value: "user" }],
     });
   }
@@ -902,6 +917,7 @@ await check("검색과 AI 대화의 여백도 공통 밀도를 따른다", async
 await check(
   "연결 도구 승인은 대화 안에 표시하고 거절 후에도 완료 상태를 유지한다",
   async () => {
+    fail = false;
     palette.open("ai");
     holdApproval = true;
     input().value = "모의 Slack 작업";
@@ -912,14 +928,19 @@ await check(
       "대화 안 승인 카드 누락",
     );
     assert(pendingApproval, "확인 전 실행 금지");
-    const deny = [
-      ...dialog().querySelectorAll<HTMLButtonElement>(
-        ".assistant-approval button",
-      ),
-    ].find((b) => b.textContent?.includes("거절"));
-    deny?.click();
+    const deny = dialog().querySelector<HTMLInputElement>(
+      ".assistant-approval input[value=deny]",
+    );
+    if (deny) {
+      deny.checked = true;
+      deny.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    dialog()
+      .querySelector<HTMLFormElement>(".assistant-approval")
+      ?.requestSubmit();
     await tick();
     holdApproval = false;
+    approvalAccepted = false;
     assert(
       !dialog().querySelector(".assistant-approval"),
       "완료된 승인 카드 잔존",
@@ -927,6 +948,35 @@ await check(
     assert(
       !dialog().textContent?.includes("생각하고 있어요"),
       "응답 후 생각 중 상태 잔존",
+    );
+  },
+);
+await check(
+  "승인 후 변경한 이슈만 갱신하고 생성 초안 모달 버튼을 표시하지 않는다",
+  async () => {
+    fail = false;
+    palette.open("ai");
+    holdApproval = true;
+    const before = updates.length;
+    input().value = "작업 변경";
+    dialog().querySelector("form")?.requestSubmit();
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const approve = dialog().querySelector<HTMLInputElement>(
+      ".assistant-approval input[value=allow]",
+    );
+    if (approve) {
+      approve.checked = true;
+      approve.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    dialog()
+      .querySelector<HTMLFormElement>(".assistant-approval")
+      ?.requestSubmit();
+    await tick();
+    holdApproval = false;
+    assert(updates.length === before + 1, "변경한 이슈 갱신 누락");
+    assert(
+      !dialog().querySelector(".create-draft-card"),
+      "생성 모달 우회 카드가 남았다",
     );
   },
 );
@@ -974,6 +1024,8 @@ if (new URLSearchParams(location.search).has("preview")) {
   holdApproval = new URLSearchParams(location.search).has("approval");
   preview.open("ai");
   await tick();
-  input().value = "내가 맡은 진행 중 작업을 모의 사용자에게 넘겨줘";
+  input().value = holdApproval
+    ? "제목과 본문을 수정하고 하위 작업을 만들어줘"
+    : "내가 맡은 진행 중 작업을 모의 사용자에게 넘겨줘";
   dialog().querySelector("form")?.requestSubmit();
 }

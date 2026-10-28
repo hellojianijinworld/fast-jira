@@ -18,7 +18,22 @@ export async function answerCodexApproval(
   params: Record<string, unknown>,
   ask: ApprovalHandler,
   item?: unknown,
+  onFeedback?: (text: string) => void,
 ): Promise<unknown> {
+  const confirm: ApprovalHandler = async (request) => {
+    const answer = await ask(request);
+    const ownConfirmation =
+      method === "mcpServer/elicitation/request" &&
+      isRecord(params._meta) &&
+      params._meta["fast-jira/confirmation"] === true;
+    if (
+      !ownConfirmation &&
+      typeof answer.values.feedback === "string" &&
+      answer.values.feedback.trim()
+    )
+      onFeedback?.(answer.values.feedback.trim());
+    return answer;
+  };
   const description =
     typeof params.reason === "string"
       ? params.reason
@@ -39,7 +54,7 @@ export async function answerCodexApproval(
     const questions = Array.isArray(params.questions)
       ? params.questions.map(record)
       : [];
-    const result = await ask({
+    const result = await confirm({
       title: "AI가 추가 확인을 요청했어요",
       description,
       details: "",
@@ -76,22 +91,34 @@ export async function answerCodexApproval(
         "연결 서비스가 추가 인증을 요청했어요. Codex에서 인증을 완료한 뒤 다시 시도해 주세요.",
       );
     }
-    const answer = await ask({
+    const confirmation =
+      isRecord(params._meta) && params._meta["fast-jira/confirmation"] === true;
+    const fields = approvalFields(params.requestedSchema);
+    const answer = await confirm({
       title: `${String(params.serverName ?? "연결 도구")} 실행 확인`,
       description,
       details,
-      fields: approvalFields(params.requestedSchema),
+      fields,
       ...(params.mode === "url" && typeof params.url === "string"
         ? { url: params.url }
         : {}),
     });
+    const feedbackOnly =
+      confirmation &&
+      !answer.approved &&
+      typeof answer.values.feedback === "string" &&
+      answer.values.feedback.trim().length > 0;
     return {
-      action: answer.approved ? "accept" : "decline",
-      content: answer.approved ? answer.values : null,
+      action: answer.approved || feedbackOnly ? "accept" : "decline",
+      content: answer.approved
+        ? answer.values
+        : feedbackOnly
+          ? { feedback: answer.values.feedback }
+          : null,
       _meta: null,
     };
   }
-  const answer = await ask({
+  const answer = await confirm({
     title: method.includes("fileChange")
       ? "파일 변경 확인"
       : method.includes("permissions")

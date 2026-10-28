@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { textDocument } from "../src/domain/adf.ts";
+import { issueDraft } from "../src/domain/create-issue.ts";
 import { createJiraService } from "../src/server/jira-service.ts";
 import { createJiraTools } from "../src/server/jira-tools.ts";
 
@@ -281,7 +282,7 @@ test("생성 메타정보에 계층이 없으면 실제 유형 정보로 보완�
   );
 });
 
-test("Codex와 Claude 모두 생성 도구 결과를 초안으로만 반환한다", async () => {
+test("수동 생성 폼의 AI 채우기는 Codex와 Claude 모두 초안만 반환한다", async () => {
   const { createAssistantService } = await import(
     "../src/server/assistant-service.ts"
   );
@@ -302,7 +303,9 @@ test("Codex와 Claude 모두 생성 도구 결과를 초안으로만 반환한�
         if (method === "app/installed") return { apps: [] };
         if (method === "mcpServerStatus/list")
           return { data: [], nextCursor: null };
-        if (method === "thread/start") return { thread: { id: "new" } };
+        if (method === "thread/start") {
+          return { thread: { id: "new" } };
+        }
         if (method === "turn/start") {
           setTimeout(
             () =>
@@ -345,7 +348,12 @@ test("Codex와 Claude 모두 생성 도구 결과를 초안으로만 반환한�
   const reply = await assistant.run({
     prompt: "작업 만들어줘",
     model: "test",
-    context: { projects: ["AA"], issue: "", keys: [] },
+    context: {
+      projects: ["AA"],
+      issue: "",
+      keys: [],
+      creation: issueDraft(draft),
+    },
   });
   assert.deepEqual(reply.creations, [draft]);
   assert.equal(f.writes, 0);
@@ -391,7 +399,12 @@ test("Codex와 Claude 모두 생성 도구 결과를 초안으로만 반환한�
   const other = await claude.run({
     prompt: "작업 만들어줘",
     model: "claude:sonnet",
-    context: { projects: ["AA"], issue: "", keys: [] },
+    context: {
+      projects: ["AA"],
+      issue: "",
+      keys: [],
+      creation: issueDraft(draft),
+    },
     history: [],
   });
   assert.deepEqual(other.creations, [draft]);
@@ -466,4 +479,47 @@ test("HTTP 생성 경로는 동일 출처 JSON만 허용하고 같은 요청 ID�
     assert.deepEqual(await response.json(), { key: "AA-11" });
   }
   assert.equal(f.writes, 1);
+});
+
+test("생성 MCP는 승인한 일반·하위 이슈만 생성하고 동일 요청 ID를 재사용한다", async () => {
+  const { callApprovedJiraTool } = await import(
+    "../src/server/jira-approvals.ts"
+  );
+  const f = fixture(),
+    tools = createJiraTools(f.service, { allowMutations: true });
+  const approve = async () => ({ approved: true, values: {} });
+  const args = { ...draft, requestId: "mcp_create_same_request" };
+  const one = await callApprovedJiraTool(
+    tools,
+    "jira_create_issue",
+    args,
+    approve,
+  );
+  assert.equal(f.writes, 1);
+  assert.match(JSON.stringify(one), /AA-11/);
+  await callApprovedJiraTool(tools, "jira_create_issue", args, approve);
+  assert.equal(f.writes, 1);
+  await callApprovedJiraTool(
+    tools,
+    "jira_create_issue",
+    { ...draft, type: "3", parent: "AA-1" },
+    approve,
+  );
+  assert.equal(f.writes, 2);
+  const denied = await callApprovedJiraTool(
+    tools,
+    "jira_create_issue",
+    draft,
+    async () => ({ approved: false, values: { feedback: "생성하지 마세요" } }),
+  );
+  assert.equal(f.writes, 2);
+  assert.match(JSON.stringify(denied), /notApproved/);
+  const invalid = await callApprovedJiraTool(
+    tools,
+    "jira_create_issue",
+    { ...draft, type: "3" },
+    approve,
+  );
+  assert.equal(f.writes, 2);
+  assert.match(JSON.stringify(invalid), /failed/);
 });

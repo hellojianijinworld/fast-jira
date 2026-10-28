@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
+import type { ApprovalHandler } from "../domain/assistant-approval.ts";
 import type { JiraToolDefinition } from "./jira-tools.ts";
 import { createMcpEndpoint } from "./mcp-server.ts";
 
@@ -8,9 +9,10 @@ import { createMcpEndpoint } from "./mcp-server.ts";
 export async function createAssistantMcp(
   definitions: readonly JiraToolDefinition[],
   call: (name: string, args: unknown) => Promise<unknown>,
+  approve?: ApprovalHandler,
 ) {
   const token = randomUUID(),
-    endpoint = createMcpEndpoint(() => ({ definitions, call }), token);
+    endpoint = createMcpEndpoint(() => ({ definitions, call }), token, approve);
   const server = createServer((req, res) => {
     if (req.url !== "/mcp") {
       res.writeHead(404).end();

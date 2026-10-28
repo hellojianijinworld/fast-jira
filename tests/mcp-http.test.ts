@@ -143,7 +143,7 @@ test("같은 웹 서버의 MCP는 인증을 요구하며 HTTP와 플러그인 �
     client.setRequestHandler(ElicitRequestSchema, async () => {
       prompts++;
       return approve
-        ? { action: "accept", content: { approve: true } }
+        ? { action: "accept", content: {} }
         : { action: "decline" };
     });
     try {

@@ -167,7 +167,7 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
         ),
       );
       assert(
-        !list.result.tools.some(
+        list.result.tools.some(
           (tool: { name: string }) => tool.name === "jira_update_issues",
         ),
       );

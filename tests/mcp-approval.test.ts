@@ -35,7 +35,7 @@ async function fixture(answer: "accept" | "decline" | null) {
     client.setRequestHandler(ElicitRequestSchema, async () => {
       prompts++;
       return answer === "accept"
-        ? { action: "accept", content: { approve: true } }
+        ? { action: "accept", content: {} }
         : { action: "decline" };
     });
   const [one, two] = InMemoryTransport.createLinkedPair();
@@ -71,4 +71,73 @@ test("조회는 승인 요청 없이 실행하고 알 수 없는 도구는 거�
     (await f.client.callTool({ name: "unknown", arguments: {} })).isError,
     true,
   );
+});
+
+test("표준 MCP도 한 작업씩 묻고 건너뛴 작업을 실행하지 않는다", async (t) => {
+  const calls: unknown[] = [];
+  let prompts = 0;
+  const definitions = [
+    "jira_apply_changes",
+    "jira_edit_issue",
+    "jira_create_issue",
+  ].map((name) => ({
+    name,
+    description: name,
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+      additionalProperties: false as const,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  }));
+  const server = createToolServer(() => ({
+    definitions,
+    call: async (name, args) => {
+      calls.push({ name, args });
+      return { key: "AA-2" };
+    },
+  }));
+  const client = new Client(
+    { name: "test", version: "1" },
+    { capabilities: { elicitation: { form: {} } } },
+  );
+  client.setRequestHandler(ElicitRequestSchema, async (request) => {
+    prompts++;
+    assert(request.params.mode === "form");
+    assert("feedback" in request.params.requestedSchema.properties);
+    return prompts === 1
+      ? { action: "decline" }
+      : { action: "accept", content: {} };
+  });
+  const [one, two] = InMemoryTransport.createLinkedPair();
+  await server.connect(one);
+  await client.connect(two);
+  t.after(async () => {
+    await client.close();
+    await server.close();
+  });
+  const result = await client.callTool({
+    name: "jira_apply_changes",
+    arguments: {
+      actions: [
+        {
+          tool: "jira_edit_issue",
+          arguments: { key: "AA-1", field: "summary", value: "새 제목" },
+        },
+        {
+          tool: "jira_create_issue",
+          arguments: {
+            project: "AA",
+            type: "2",
+            fields: { summary: "후속 작업" },
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(prompts, 2);
+  assert.equal(calls.length, 1);
+  assert.equal((calls[0] as { name: string }).name, "jira_create_issue");
+  assert.match(JSON.stringify(result), /notApproved/);
 });

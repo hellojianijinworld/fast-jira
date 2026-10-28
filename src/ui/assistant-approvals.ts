@@ -19,23 +19,21 @@ export function createAssistantApprovalPanel(
     let signature = "",
       alive = true,
       pollVersion = 0;
+    const cards = new Map<string, HTMLFormElement>();
     const alert = element("p", "error");
     alert.setAttribute("role", "alert");
     function card(request: AssistantApproval) {
-      const form = element("form", "assistant-approval"),
-        title = element("h3", "", request.title),
-        description = element("p", "", request.description),
-        error = element("p", "error"),
-        actions = element("div", "assistant-approval-actions");
-      error.setAttribute("role", "alert");
-      form.append(title, description);
+      const form = element("form", "assistant-approval");
+      form.append(
+        element("h3", "", request.title),
+        element("p", "", request.description),
+      );
       if (request.details) {
         const details = element("details");
         details.append(
-          element("summary", "", "실행 대상·내용 확인"),
+          element("summary", "", "내용 보기"),
           element("pre", "", request.details),
         );
-        details.open = true;
         form.append(details);
       }
       if (request.url && safeHref(request.url))
@@ -44,80 +42,146 @@ export function createAssistantApprovalPanel(
         string,
         HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
       >();
-      for (const field of request.fields) {
+      for (const field of request.fields.filter(
+        (field) => field.key !== "feedback",
+      )) {
         const label = element("label", "assistant-approval-field", field.label);
         const input = field.options
           ? element("select")
           : field.type === "json"
             ? element("textarea")
             : element("input");
-        if (input instanceof HTMLSelectElement) {
+        if (input instanceof HTMLSelectElement)
           input.append(
             new Option("선택하세요", ""),
             ...(field.options ?? []).map((value) => new Option(value, value)),
           );
-        } else if (input instanceof HTMLInputElement)
+        else if (input instanceof HTMLInputElement)
           input.type =
             field.type === "boolean"
               ? "checkbox"
               : field.type === "number"
                 ? "number"
                 : "text";
-        input.required = field.required && field.type !== "boolean";
         input.setAttribute("aria-label", field.label);
         inputs.set(field.key, input);
         label.append(input);
         form.append(label);
       }
-      const deny = actionButton("거절", "x"),
-        approve = actionButton("이번 요청만 승인", "check", "primary");
-      approve.type = "submit";
-      actions.append(deny, approve);
-      form.append(error, actions);
-      async function decide(approved: boolean) {
-        const values: Record<string, JsonValue> = Object.create(null);
-        try {
-          if (approve.disabled) return;
-          if (approved)
-            for (const field of request.fields) {
-              const input = inputs.get(field.key);
-              if (
-                !input ||
-                (!field.required && field.type !== "boolean" && !input.value)
-              )
-                continue;
-              values[field.key] =
-                field.type === "boolean" && input instanceof HTMLInputElement
-                  ? input.checked
-                  : field.type === "number"
-                    ? Number(input.value)
-                    : field.type === "json"
-                      ? JSON.parse(input.value)
-                      : input.value;
-            }
-          deny.disabled = approve.disabled = true;
-          await api.approveAssistant(requestId, request.id, approved, values);
-          if (alive && version === generation) {
-            pollVersion++;
-            signature = "";
-            form.remove();
-            void poll();
-          }
-        } catch (reason) {
-          if (alive && version === generation) {
-            error.textContent =
-              reason instanceof Error
-                ? reason.message
-                : "승인 응답을 전달하지 못했어요.";
-            deny.disabled = approve.disabled = false;
+      const choices = element("fieldset", "assistant-answer-options");
+      choices.setAttribute("aria-label", "답변 선택");
+      const radios = new Map<string, HTMLInputElement>();
+      for (const [value, text] of [
+        ["allow", "네, 진행해 주세요"],
+        ["deny", "아니요, 건너뛸게요"],
+        ["other", "다른 의견이 있어요"],
+      ]) {
+        const label = element("label", "assistant-answer-choice"),
+          radio = element("input");
+        radio.type = "radio";
+        radio.name = `answer-${request.id}`;
+        radio.value = value ?? "";
+        radio.required = true;
+        label.append(radio, element("span", "", text));
+        choices.append(label);
+        radios.set(value ?? "", radio);
+      }
+      const noteLabel = element(
+          "label",
+          "assistant-approval-field",
+          "기타 의견",
+        ),
+        note = element("textarea");
+      note.rows = 2;
+      note.maxLength = 4000;
+      note.setAttribute("aria-label", "기타 의견");
+      note.placeholder = "의견을 적어주세요";
+      noteLabel.append(note);
+      noteLabel.hidden = true;
+      const error = element("p", "error");
+      error.setAttribute("role", "alert");
+      const actions = element("div", "assistant-approval-actions"),
+        send = actionButton("답변 보내기", "send", "primary");
+      send.type = "submit";
+      send.disabled = true;
+      actions.append(send);
+      form.append(choices, noteLabel, error, actions);
+      let submitting = false;
+      function refresh() {
+        const choice = [...radios].find(([, radio]) => radio.checked)?.[0];
+        const focusNote = choice === "other" && noteLabel.hidden;
+        noteLabel.hidden = choice !== "other";
+        note.required = choice === "other";
+        for (const field of request.fields) {
+          const input = inputs.get(field.key);
+          if (input) {
+            input.disabled = choice !== "allow";
+            input.required =
+              choice === "allow" && field.required && field.type !== "boolean";
           }
         }
+        send.disabled =
+          submitting || !choice || (choice === "other" && !note.value.trim());
+        if (focusNote)
+          requestAnimationFrame(() => {
+            note.focus();
+            send.scrollIntoView({ block: "nearest" });
+          });
       }
+      form.addEventListener("input", refresh);
+      refresh();
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        void decide(true);
+        if (submitting || send.disabled) return;
+        void (async () => {
+          try {
+            const approved = radios.get("allow")?.checked === true,
+              values: Record<string, JsonValue> = Object.create(null);
+            if (approved)
+              for (const field of request.fields) {
+                const input = inputs.get(field.key);
+                if (
+                  !input ||
+                  (!field.required && field.type !== "boolean" && !input.value)
+                )
+                  continue;
+                values[field.key] =
+                  field.type === "boolean" && input instanceof HTMLInputElement
+                    ? input.checked
+                    : field.type === "number"
+                      ? Number(input.value)
+                      : field.type === "json"
+                        ? JSON.parse(input.value)
+                        : input.value;
+              }
+            if (radios.get("other")?.checked)
+              values.feedback = note.value.trim();
+            submitting = true;
+            send.disabled = true;
+            for (const radio of radios.values()) radio.disabled = true;
+            note.disabled = true;
+            await api.approveAssistant(requestId, request.id, approved, values);
+            if (alive && version === generation) {
+              pollVersion++;
+              signature = "";
+              form.remove();
+              cards.delete(request.id);
+              void poll();
+            }
+          } catch (reason) {
+            if (alive && version === generation) {
+              error.textContent =
+                reason instanceof Error
+                  ? reason.message
+                  : "답변을 전달하지 못했어요.";
+              submitting = false;
+              for (const radio of radios.values()) radio.disabled = false;
+              note.disabled = false;
+              refresh();
+            }
+          }
+        })();
       });
-      deny.addEventListener("click", () => void decide(false));
       return form;
     }
     async function poll() {
@@ -128,10 +192,22 @@ export function createAssistantApprovalPanel(
         const requests = await api.assistantApprovals(requestId, signal);
         if (!alive || version !== generation || currentPoll !== pollVersion)
           return;
-        const key = JSON.stringify(requests.map((request) => request.id));
+        const first = requests[0];
+        const key = first?.id ?? "none";
         if (key !== signature) {
           signature = key;
-          root.replaceChildren(...requests.map(card));
+          const active = new Set(first ? [first.id] : []);
+          for (const [id, form] of cards)
+            if (!active.has(id)) {
+              form.remove();
+              cards.delete(id);
+            }
+          for (const request of first ? [first] : [])
+            if (!cards.has(request.id)) {
+              const form = card(request);
+              cards.set(request.id, form);
+              root.append(form);
+            }
           changed(requests.length > 0);
         }
         alert.remove();
@@ -162,6 +238,7 @@ export function createAssistantApprovalPanel(
       clearTimeout(timer);
       signal.removeEventListener("abort", stop);
       root.replaceChildren();
+      cards.clear();
       changed(false);
     };
     stopCurrent = stop;

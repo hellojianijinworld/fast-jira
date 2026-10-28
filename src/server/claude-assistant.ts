@@ -11,6 +11,7 @@ import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { record } from "../domain/validation.ts";
 import { createAssistantMcp } from "./assistant-mcp.ts";
 import { type ClaudeCommand, runClaudeCommand } from "./claude-client.ts";
+import { changedJiraKeys } from "./jira-approvals.ts";
 import type { JiraService } from "./jira-service.ts";
 import { createJiraTools } from "./jira-tools.ts";
 
@@ -91,13 +92,16 @@ export function createClaudeAssistant(
         throw new Error("사용 가능한 Claude 모델 별칭을 선택하세요.");
       if (signal?.aborted) throw new Error("AI 요청을 취소했어요.");
       const service = getService(),
-        tools = createJiraTools(service);
+        tools = createJiraTools(service, {
+          allowMutations: !input.context.creation,
+        });
       const controller = new AbortController();
       const abort = () => controller.abort();
       signal?.addEventListener("abort", abort, { once: true });
       if (signal?.aborted) abort();
       active.add(controller);
       const proposals: ChangeProposal[] = [];
+      const changedKeys = new Set<string>();
       const creations: IssueDraft[] = [];
       let bridge: Awaited<ReturnType<typeof createAssistantMcp>> | undefined;
       try {
@@ -151,11 +155,17 @@ export function createClaudeAssistant(
                   }
                 : {
                     behavior: "deny",
-                    message: "사용자가 실행을 승인하지 않았습니다.",
+                    message:
+                      typeof answer?.values.feedback === "string" &&
+                      answer.values.feedback.trim()
+                        ? `사용자가 실행하지 않고 다음 의견을 전달했습니다. 변경은 다시 확인받으세요.\n${answer.values.feedback}`
+                        : "사용자가 실행을 승인하지 않았습니다.",
                     interrupt: false,
                   };
             }
             const value = await tools.call(name, args);
+            for (const key of changedJiraKeys(name, args, value))
+              changedKeys.add(key);
             if (name === "jira_prepare_issue") {
               if (creations.length >= 5)
                 throw new Error("생성안은 한 번에 5개까지 준비할 수 있습니다.");
@@ -177,6 +187,7 @@ export function createClaudeAssistant(
             }
             return value;
           },
+          approve ?? (async () => ({ approved: false, values: {} })),
         );
         const result = record(
           await command({
@@ -233,6 +244,13 @@ export function createClaudeAssistant(
             ? input.conversationId
             : `claude:${randomUUID()}`,
           answer: result.result,
+          ...(changedKeys.size
+            ? {
+                issues: await service
+                  .issuesByKeys([...changedKeys])
+                  .catch(() => []),
+              }
+            : {}),
           proposals,
           creations,
         };
