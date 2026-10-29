@@ -10,6 +10,7 @@ export function createTreeContext(
   host: HTMLElement,
   options: {
     scroller: () => HTMLElement;
+    topInset?: () => number;
     items: () => ReadonlyMap<string, Issue>;
     projects: () => readonly ProjectOption[];
     select: (key: string) => void;
@@ -59,7 +60,7 @@ export function createTreeContext(
   function update() {
     frame = 0;
     const scroller = options.scroller(),
-      edge = scroller.getBoundingClientRect().top;
+      edge = scroller.getBoundingClientRect().top + (options.topInset?.() ?? 0);
     const path = activeTreePath(
       [...host.querySelectorAll<HTMLElement>(".tree-parent")].map((row) => ({
         key: row.dataset.contextKey ?? "",

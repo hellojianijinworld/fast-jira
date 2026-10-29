@@ -576,24 +576,54 @@ await check(
     );
   },
 );
-await check(
-  "PC에서는 뷰와 상단 도구가 같은 줄에 있고 헤더 높이가 작다",
-  async () => {
-    if (innerWidth < 700) return;
-    const nav = root.querySelector<HTMLElement>(".top-nav"),
-      views = root.querySelector<HTMLElement>(".workspace-views"),
-      tools = root.querySelector<HTMLElement>(".nav-tools");
-    assert(nav && views && tools, "상단 구조");
-    assert(nav.getBoundingClientRect().height <= 64, "헤더 높이");
+await check("뷰는 왼쪽 목록 위에 붙고 스크롤해도 위치를 유지한다", async () => {
+  const nav = root.querySelector<HTMLElement>(".top-nav"),
+    workspace = root.querySelector<HTMLElement>(".workspace"),
+    views = root.querySelector<HTMLElement>(".workspace-views"),
+    browse = root.querySelector<HTMLElement>(".browse");
+  assert(nav && workspace && views && browse, "목록 뷰 구조");
+  assert(
+    !nav.contains(views) && views.parentElement === workspace,
+    "뷰가 상단 내비에 남음",
+  );
+  assert(views.getBoundingClientRect().height <= 40, "뷰 영역이 너무 높음");
+  if (innerWidth > 600) {
     assert(
       Math.abs(
-        views.getBoundingClientRect().top - tools.getBoundingClientRect().top,
-      ) < 12,
-      "상단 한 줄 정렬",
+        views.getBoundingClientRect().width -
+          browse.getBoundingClientRect().width,
+      ) < 1,
+      "목록과 뷰 폭 불일치",
+    );
+    assert(
+      Math.abs(
+        views.getBoundingClientRect().bottom -
+          browse.getBoundingClientRect().top,
+      ) < 1,
+      "뷰가 목록 바로 위에 붙지 않음",
+    );
+  }
+  const scroller = innerWidth <= 600 ? workspace : browse;
+  const spacer = element("div");
+  spacer.style.height = "1200px";
+  browse.append(spacer);
+  const before = views.getBoundingClientRect().top;
+  const previous = scroller.scrollTop;
+  try {
+    scroller.scrollTop = 100;
+    scroller.dispatchEvent(new Event("scroll"));
+    await wait();
+    assert(scroller.scrollTop > 0, "목록 스크롤 검사 불가");
+    assert(
+      Math.abs(views.getBoundingClientRect().top - before) < 1,
+      "스크롤 시 뷰가 사라짐",
     );
     assert(document.documentElement.scrollWidth <= innerWidth, "가로 넘침");
-  },
-);
+  } finally {
+    spacer.remove();
+    scroller.scrollTop = previous;
+  }
+});
 await check(
   "뷰 복제는 프로젝트·필터·하위 설정을 복사하고 이후 서로 독립적이다",
   async () => {

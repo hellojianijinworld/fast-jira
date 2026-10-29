@@ -696,6 +696,8 @@ export async function createApp(
   });
   const treeContext = createTreeContext(browse, listHost, {
     scroller: () => (layout.matches ? workspace : browse),
+    topInset: () =>
+      layout.matches ? (workspaceNavigation?.element.offsetHeight ?? 0) : 0,
     items: list.visibleItems,
     projects: () => catalog.projects,
     select: (key) => {
@@ -811,7 +813,7 @@ export async function createApp(
     remove: (id) => applyWorkspace(deleteWorkspace(workspaces, id)),
     error: notice.show,
   });
-  nav.insertBefore(workspaceNavigation.element, tools);
+  workspace.prepend(workspaceNavigation.element);
   browse.id = "workspace-list";
   browse.setAttribute("role", "tabpanel");
   render = () => {
