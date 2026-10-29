@@ -186,6 +186,16 @@ export function createJiraEdit(
         !arrayValue(editable.operations).includes("set")
       )
         throw invalid("이 이슈에서는 부모 변경이 지원되지 않습니다.");
+      if (!parentKey) {
+        const source = await client.json(
+          `${path}?fields=issuetype`,
+          decodeIssue,
+        );
+        if (source.hierarchyLevel !== null && source.hierarchyLevel < 0)
+          throw invalid(
+            "하위 작업은 부모 연결을 해제할 수 없어요. 다른 부모를 선택해 주세요.",
+          );
+      }
       if (parentKey) {
         const source = await read.detail(key);
         let ancestor = parentKey;

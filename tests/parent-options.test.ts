@@ -50,6 +50,7 @@ test("부모 후보는 선택 키를 묶어 읽고 같은 프로젝트의 동적
   const page = await service.parentOptions(["AA-1", "AA-2"], '배포 "계획"', "");
   assert.equal(page.issues[0]?.key, "AA-9");
   assert.equal(page.nextPageToken, "next");
+  assert.equal(page.canClear, true);
   const jql = queries.at(-1)?.searchParams.get("jql") ?? "";
   assert.match(jql, /project = AA/);
   assert.match(jql, /issuetype in \(20\)/);
@@ -64,4 +65,38 @@ test("부모 후보는 선택 키를 묶어 읽고 같은 프로젝트의 동적
   assert.equal(queries.at(-1)?.searchParams.get("nextPageToken"), "next");
   await assert.rejects(service.parentOptions([], "", ""));
   await assert.rejects(service.parentOptions(["AA-1"], "x\n", ""));
+});
+
+test("커스텀 이름의 하위 유형도 Jira 계층에 따라 부모 해제를 허용하지 않는다", async () => {
+  const service = createJiraService({
+    credentials: {
+      site: "example.atlassian.net",
+      email: "test@example.com",
+      token: "fake",
+    },
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.includes("createmeta"))
+        return Response.json({
+          issueTypes: [
+            { id: "10", name: "사용자 하위", hierarchyLevel: -1 },
+            { id: "20", name: "사용자 작업", hierarchyLevel: 0 },
+          ],
+          isLast: true,
+        });
+      return Response.json({
+        issues: [
+          {
+            key: "AA-1",
+            fields: {
+              project: { key: "AA" },
+              issuetype: { id: "10", hierarchyLevel: -1 },
+            },
+          },
+        ],
+        isLast: true,
+      });
+    },
+  });
+  assert.equal((await service.parentOptions(["AA-1"])).canClear, false);
 });

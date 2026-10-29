@@ -219,7 +219,10 @@ export function createApi(fetcher: typeof fetch = fetch) {
     parentOptions: (keys: string[], q = "", pageToken = "") =>
       request(
         `/api/parent-options?${new URLSearchParams({ keys: keys.join(","), q, pageToken })}`,
-        decodeIssuePage,
+        (value) => ({
+          ...decodeIssuePage(value),
+          canClear: record(value).canClear === true,
+        }),
       ),
     bulkOptions: (keys: string[], field: "status" | "assignee" | "priority") =>
       request("/api/bulk-options", decodeBulkOptions, {

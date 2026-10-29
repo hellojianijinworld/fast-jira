@@ -213,7 +213,8 @@ a {
   height: var(--card-dot-size);
   border-radius: var(--radius-full);
   background: var(--status-color);
-  outline: 1px solid color-mix(in srgb, var(--status-color) 45%, var(--border));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--status-color) 45%, var(--border));
 }
 .person-pill {
   max-width: 100%;

@@ -274,3 +274,19 @@ test("되돌리기의 현재값이 비어 있어도 비교하며 최신 조회 �
   );
   assert.equal(failed.calls.filter((call) => call.method !== "GET").length, 0);
 });
+
+test("하위 작업의 부모 해제는 Jira 쓰기 전에 차단한다", async () => {
+  const { edit, calls } = setup((url) =>
+    url.pathname.endsWith("/editmeta")
+      ? Response.json({ fields: { parent: { operations: ["set"] } } })
+      : Response.json({
+          key: "AA-1",
+          fields: { issuetype: { hierarchyLevel: -1 } },
+        }),
+  );
+  await assert.rejects(
+    edit.applyUpdate("AA-1", "parent", ""),
+    /하위 작업은 부모 연결을 해제할 수 없어요/,
+  );
+  assert.ok(calls.every((call) => call.method === "GET"));
+});

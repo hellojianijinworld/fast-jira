@@ -17,7 +17,14 @@ export async function parentSelect(
   initial.disabled = initial.selected = true;
   const clear = element("option", "", "부모 연결 해제");
   clear.value = "";
-  select.append(initial, clear);
+  select.append(initial);
+  const hint = element(
+    "p",
+    "view-help",
+    "하위 작업은 부모가 필요해요. 다른 부모로 변경할 수 있어요.",
+  );
+  hint.hidden = true;
+  host.append(hint);
   const issues = new Map<string, Issue>();
   let requestVersion = 0;
   let query = "",
@@ -35,7 +42,9 @@ export async function parentSelect(
     const value = select.value;
     if (!append) {
       issues.clear();
-      select.replaceChildren(initial, clear);
+      select.replaceChildren(initial);
+      if (page.canClear) select.append(clear);
+      hint.hidden = page.canClear;
     }
     for (const issue of page.issues) {
       if (issues.has(issue.key)) continue;

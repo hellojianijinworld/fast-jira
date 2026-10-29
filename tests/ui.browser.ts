@@ -2131,6 +2131,7 @@ await check(
               },
             ],
         nextPageToken: q || more ? null : "next",
+        canClear: true,
       });
     });
     const picker = await parentSelect(host, api, ["TEST-1"]);
@@ -3717,3 +3718,28 @@ if (groupPreview) {
 
 if (new URLSearchParams(location.search).get("theme") === "dark")
   document.documentElement.dataset.theme = "dark";
+
+await check(
+  "하위 작업의 부모 선택에는 연결 해제를 표시하지 않는다",
+  async () => {
+    const host = element("div");
+    fixture.append(host);
+    const api = createApi(async () =>
+      Response.json({ issues: [], nextPageToken: null, canClear: false }),
+    );
+    const picker = await parentSelect(host, api, ["TEST-1"]);
+    try {
+      assert(
+        ![...picker.select.options].some((option) => option.value === ""),
+        "하위 작업에 부모 해제 노출",
+      );
+      assert(
+        host.textContent?.includes("하위 작업은 부모가 필요해요"),
+        "부모 필수 안내 누락",
+      );
+    } finally {
+      picker.menu.destroy();
+      host.remove();
+    }
+  },
+);

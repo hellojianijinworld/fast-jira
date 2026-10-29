@@ -63,7 +63,8 @@ export function createParentOptions(
     const ids = types
       .filter((type) => type.hierarchyLevel === sourceLevel + 1)
       .map((type) => type.id);
-    if (!ids.length) return { issues: [], nextPageToken: null };
+    const canClear = sourceLevel >= 0;
+    if (!ids.length) return { issues: [], nextPageToken: null, canClear };
     if (ids.some((id) => !/^\d{1,20}$/.test(id)))
       throw new JiraError("Jira 유형 ID를 확인하지 못했어요.", 502);
     let filter = "";
@@ -73,9 +74,10 @@ export function createParentOptions(
         ? ` AND (key = ${parseIssueKey(query.trim().toUpperCase(), "")} OR ${text})`
         : ` AND ${text}`;
     }
-    return search(
+    const page = await search(
       `project = ${first.project} AND issuetype in (${ids.join(", ")}) AND key not in (${keys.join(", ")})${filter} ORDER BY updated DESC`,
       token,
     );
+    return { ...page, canClear };
   };
 }
