@@ -29,14 +29,15 @@ export function createViewOptions(
     { expires: number; pending: Promise<ViewOptions> }
   >();
   return {
-    load(projects: readonly string[]): Promise<ViewOptions> {
+    load(projects: readonly string[], force = false): Promise<ViewOptions> {
       if (!projects.length)
         return Promise.resolve({ statuses: [], users: [], types: [] });
       const key = [...projects].sort().join(",");
       const found = cache.get(key);
-      if (found && found.expires > now()) return found.pending;
+      if (!force && found && found.expires > now()) return found.pending;
       const seed = known();
       const reuse =
+        !force &&
         !found &&
         now() - createdAt < 300000 &&
         [...seed.projects].sort().join(",") === key &&

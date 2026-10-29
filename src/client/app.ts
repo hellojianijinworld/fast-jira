@@ -4,7 +4,7 @@ import type { LookupResult } from "../domain/details.ts";
 import { sameIssue, updateFavorites } from "../domain/favorites.ts";
 import { branchDefaults } from "../domain/filters.ts";
 import type { Issue } from "../domain/issue.ts";
-import { listCacheKey } from "../domain/list-snapshot.ts";
+import { listCacheKey, type ViewportAnchor } from "../domain/list-snapshot.ts";
 import { withParticipantHydration } from "../domain/sync.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import {
@@ -44,7 +44,7 @@ import { createWorkspaceNavigation } from "../ui/workspace-views.ts";
 import { createActivityController } from "./activity-controller.ts";
 import { type Api, ApiError } from "./api.ts";
 import { applyColorTheme } from "./color-theme.ts";
-import type { ListCache } from "./list-cache.ts";
+import type { CachedList, ListCache } from "./list-cache.ts";
 import { createListController } from "./list-controller.ts";
 import { createLiveUpdates } from "./live-updates.ts";
 import {
@@ -254,14 +254,18 @@ export async function createApp(
     if (cacheTimer) clearTimeout(cacheTimer);
     cacheTimer = setTimeout(persistCache, 500);
   }
+  const positions = new Map<string, ViewportAnchor[]>();
   let positionQuery = listCacheKey(initialFilters);
   let restoredPosition = cached ? store.position(positionQuery) : [];
   const listScroller = () => (layout.matches ? workspace : browse);
   function persistPosition() {
     if (list.cacheDenied) return;
     const anchors = captureViewportAnchor(listHost, listScroller());
-    if (listHost.querySelector("a.list-title"))
-      store.savePosition(listCacheKey(list.filters), anchors);
+    if (listHost.querySelector("a.list-title")) {
+      const key = listCacheKey(list.filters);
+      positions.set(key, anchors);
+      store.savePosition(key, anchors);
+    }
   }
   window.addEventListener("pagehide", persistCache);
   window.addEventListener("pagehide", persistPosition);
@@ -764,6 +768,7 @@ export async function createApp(
     projects: catalogProjects,
     catalog,
   }));
+  let workspaceRevision = 0;
   function applyWorkspace(next: WorkspaceViews) {
     if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
     const before = activeWorkspace(workspaces),
@@ -791,9 +796,39 @@ export async function createApp(
       q: "",
     };
     store.saveFilters(query, true);
-    void list.load(query);
-    void refreshCatalog(query.projects);
-    void activity.check(query.projects);
+    const revision = ++workspaceRevision;
+    const activate = (restored?: CachedList | null) => {
+      if (
+        destroyed ||
+        revision !== workspaceRevision ||
+        activeWorkspace(workspaces).id !== after.id ||
+        listCacheKey({
+          ...query,
+          ...views.resolve(globalView, false),
+          projects: [...activeWorkspace(workspaces).projects],
+        }) !== listCacheKey(query)
+      )
+        return;
+      if (restored) catalog = { ...catalog, ...restored.catalog };
+      const key = listCacheKey(query);
+      restoredPosition = restored
+        ? (positions.get(key) ?? store.position(key))
+        : [];
+      listScroller().scrollTop = 0;
+      void list.load(query, restored?.data);
+      void refreshCatalog(query.projects);
+      if (
+        [...before.projects].sort().join(",") !==
+        [...after.projects].sort().join(",")
+      )
+        void activity.check(query.projects);
+    };
+    if (cache) {
+      void cacheWrites
+        .then(() => cache.read(store.scope, query))
+        .then(activate)
+        .catch(() => activate());
+    } else activate();
   }
   workspaceNavigation = createWorkspaceNavigation({
     state: () => workspaces,
@@ -1079,13 +1114,10 @@ export async function createApp(
   if (firstSetup) showSettings();
   render();
   let metadataRevision = 0;
-  async function refreshCatalog(projects: readonly string[]) {
+  async function refreshCatalog(projects: readonly string[], force = false) {
     const revision = ++metadataRevision;
     try {
-      const [statuses, types] = await Promise.all([
-        api.statuses(projects),
-        api.types(projects).catch(() => []),
-      ]);
+      const { statuses, types } = await workspaceOptions.load(projects, force);
       if (destroyed || revision !== metadataRevision) return;
       catalogProjects = [...projects];
       catalog = { ...catalog, statuses, types };
@@ -1100,7 +1132,7 @@ export async function createApp(
         );
     }
   }
-  const metadata = refreshCatalog(list.filters.projects);
+  const metadata = refreshCatalog(list.filters.projects, true);
   await Promise.all([
     list.load(),
     metadata,

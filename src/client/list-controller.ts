@@ -244,7 +244,54 @@ export function createListController(
     }
     checkedAt = batch.checkedAt;
   }
-  async function load(reset?: Filters): Promise<void> {
+  function restoreSnapshot(snapshot: ListSnapshot) {
+    for (const issue of snapshot.items) {
+      const latest = readValues.get(issue.key);
+      if (changedAt.has(issue.key) && !latest) continue;
+      items.set(
+        issue.key,
+        latest && changedAt.has(issue.key) ? latest : rememberRead(issue),
+      );
+    }
+    for (const key of snapshot.matched) if (items.has(key)) matched.add(key);
+    for (const key of snapshot.direct) if (items.has(key)) direct.add(key);
+    checkedAt = snapshot.checkedAt ?? "";
+    reconciledAt = snapshot.reconciledAt ?? "";
+    restoredRoot = { count: direct.size, complete: snapshot.complete };
+    for (const [id, page] of snapshot.pages) {
+      pages.set(id, {
+        parent: page.parent,
+        issues: new Map(
+          page.issues.flatMap((issue) => {
+            const current = readValues.get(issue.key);
+            if (changedAt.has(issue.key) && !current) return [];
+            const latest =
+              current && changedAt.has(issue.key)
+                ? current
+                : rememberRead(issue);
+            return latest.parent === page.parent
+              ? [[latest.key, latest] as const]
+              : [];
+          }),
+        ),
+        loaded: true,
+        loading: false,
+        nextPageToken: "",
+        error: "",
+        pending: null,
+        restored: { count: page.issues.length, complete: page.complete },
+      });
+    }
+    for (const key of items.keys()) {
+      const latest = readValues.get(key);
+      if (latest) {
+        items.set(key, latest);
+        syncPages(latest);
+      }
+    }
+    syncPending = canSync();
+  }
+  async function load(reset?: Filters, snapshot?: ListSnapshot): Promise<void> {
     if (!alive || (!reset && loading)) return;
     if (reset) {
       epoch++;
@@ -276,6 +323,7 @@ export function createListController(
       checkedAt = reconciledAt = "";
       syncPending = false;
       nextPageToken = "";
+      if (snapshot) restoreSnapshot(snapshot);
     }
     const generation = epoch,
       query = cloneFilters(filters),
@@ -629,40 +677,7 @@ export function createListController(
     },
     restore(snapshot: ListSnapshot) {
       if (loading || loaded) return;
-      for (const issue of snapshot.items) {
-        readValues.set(issue.key, issue);
-        items.set(issue.key, issue);
-      }
-      for (const key of snapshot.matched) if (items.has(key)) matched.add(key);
-      for (const key of snapshot.direct) if (items.has(key)) direct.add(key);
-      checkedAt = snapshot.checkedAt ?? "";
-      reconciledAt = snapshot.reconciledAt ?? "";
-      restoredRoot = { count: direct.size, complete: snapshot.complete };
-      for (const [id, page] of snapshot.pages) {
-        pages.set(id, {
-          parent: page.parent,
-          issues: new Map(
-            page.issues.map((issue) => {
-              const latest = rememberRead(issue);
-              return [latest.key, latest];
-            }),
-          ),
-          loaded: true,
-          loading: false,
-          nextPageToken: "",
-          error: "",
-          pending: null,
-          restored: { count: page.issues.length, complete: page.complete },
-        });
-      }
-      for (const key of items.keys()) {
-        const latest = readValues.get(key);
-        if (latest) {
-          items.set(key, latest);
-          syncPages(latest);
-        }
-      }
-      syncPending = canSync();
+      restoreSnapshot(snapshot);
     },
     snapshot(): ListSnapshot {
       return {

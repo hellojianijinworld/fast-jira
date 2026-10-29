@@ -390,9 +390,13 @@ async function run() {
   );
   assert(unchanged === target(), "검증 때문에 변경 없는 카드를 교체했다");
   const nested = required('[data-tree-key="TEST-1"] > .tree-list');
+  const nextRow = nested.parentElement?.nextElementSibling;
   assert(
-    parseFloat(getComputedStyle(nested).paddingBottom) >= 8,
-    "펼친 아코디언 하단에 여백이 없다",
+    nextRow &&
+      nextRow.getBoundingClientRect().top -
+        nested.getBoundingClientRect().bottom >=
+        8,
+    "펼친 아코디언과 다음 항목 사이에 여백이 없다",
   );
   scroller().scrollTop = 0;
   reloaded.destroy();

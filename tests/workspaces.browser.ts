@@ -1,6 +1,9 @@
 import { createApi } from "../src/client/api.ts";
 import { createApp } from "../src/client/app.ts";
+import type { CachedList, ListCache } from "../src/client/list-cache.ts";
 import type { AppUpdateStatus } from "../src/domain/app-update.ts";
+import { listCacheKey } from "../src/domain/list-snapshot.ts";
+import { initialViews } from "../src/domain/views.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
 import { activeWorkspace } from "../src/domain/workspace-views.ts";
 import { appUpdate } from "../src/ui/app-update.ts";
@@ -24,6 +27,8 @@ const storage = {
   },
 };
 const calls: URL[] = [];
+let holdRoot = false;
+let releaseRoot: ((value: Response) => void) | undefined;
 let releaseOld: ((value: Response) => void) | undefined;
 const api = createApi(async (input, init) => {
   if (init?.method && init.method !== "GET")
@@ -50,6 +55,10 @@ const api = createApi(async (input, init) => {
         priorities: [],
       });
     case "/api/issues":
+      if (holdRoot)
+        return new Promise<Response>((resolve) => {
+          releaseRoot = resolve;
+        });
       if (url.searchParams.get("projects") === "DESIGN")
         return new Promise<Response>((resolve) => {
           releaseOld = resolve;
@@ -753,6 +762,124 @@ await check(
     } finally {
       window.fetch = originalFetch;
     }
+  },
+);
+await check(
+  "탭 복귀는 저장된 목록과 위치를 먼저 복원하고 메타정보를 다시 조회하지 않는다",
+  async () => {
+    app.destroy();
+    values.clear();
+    const base = {
+      projects: ["TEST"],
+      scope: "all" as const,
+      excludeDone: false,
+      statuses: null,
+      assignees: null,
+      sort: "recent",
+      q: "",
+    };
+    values.set(
+      "fastJira:filters:fixture.atlassian.net:my-account",
+      JSON.stringify({ ...base, configured: true }),
+    );
+    values.set(
+      "fastJira:workspaces:fixture.atlassian.net:my-account",
+      JSON.stringify({
+        version: 1,
+        activeId: "a",
+        tabs: [
+          {
+            id: "a",
+            name: "캐시 작업",
+            projects: ["TEST"],
+            views: initialViews(base),
+          },
+          {
+            id: "b",
+            name: "마감 작업",
+            projects: ["TEST"],
+            views: initialViews({ ...base, sort: "due" }),
+          },
+        ],
+      }),
+    );
+    const saved = new Map<string, CachedList>();
+    let releaseCache: (() => void) | undefined;
+    let delayOther = false;
+    const cache: ListCache = {
+      read: async (_scope, query) => {
+        if (delayOther && query.sort === "due")
+          await new Promise<void>((resolve) => {
+            releaseCache = resolve;
+          });
+        return structuredClone(saved.get(listCacheKey(query)) ?? null);
+      },
+      write: async (_scope, query, data) => {
+        saved.set(listCacheKey(query), structuredClone(data));
+      },
+      remove: async (_scope, query) => {
+        saved.delete(listCacheKey(query));
+      },
+    };
+    app = await createApp(root, api, storage, cache, updates);
+    const rows = Array.from({ length: 30 }, (_, index) => ({
+      ...emptyIssue(`TEST-${index + 1}`, `저장된 작업 ${index + 1}`),
+      statusId: "2",
+      status: "작업 중",
+    }));
+    app.list.updateMany(rows, new Set(rows.map((row) => row.key)), []);
+    const scroller = root.querySelector<HTMLElement>(
+      innerWidth <= 600 ? ".workspace" : ".browse",
+    );
+    assert(scroller, "스크롤 영역 누락");
+    scroller.scrollTop = 400;
+    const metadata = calls.filter((url) =>
+      ["/api/statuses", "/api/issue-types", "/api/activity"].includes(
+        url.pathname,
+      ),
+    ).length;
+    button("마감 작업").click();
+    await wait();
+    holdRoot = true;
+    button("캐시 작업").click();
+    await wait();
+    assert(
+      root.querySelectorAll(".browse .list-item").length === 30,
+      "검증을 기다리는 동안 캐시가 사라짐",
+    );
+    assert(scroller.scrollTop > 100, "이전 탭 스크롤이 복원되지 않음");
+    assert(
+      calls.filter((url) =>
+        ["/api/statuses", "/api/issue-types", "/api/activity"].includes(
+          url.pathname,
+        ),
+      ).length === metadata,
+      "같은 프로젝트 전환에서 메타·활동 중복 조회",
+    );
+    holdRoot = false;
+    releaseRoot?.(
+      Response.json({
+        issues: [{ ...rows[0], summary: "검증 후 제목" }],
+        ancestors: [],
+        nextPageToken: null,
+      }),
+    );
+    await wait();
+    assert(
+      root.querySelector(".browse .list-title")?.textContent === "검증 후 제목",
+      "검증 결과 미반영",
+    );
+    delayOther = true;
+    button("마감 작업").click();
+    await wait();
+    button("캐시 작업").click();
+    await wait();
+    releaseCache?.();
+    await wait();
+    assert(
+      app.list.filters.sort === "recent",
+      "이전 탭의 늦은 캐시가 현재 조건을 덮음",
+    );
   },
 );
 results.dataset.failures = String(failures);

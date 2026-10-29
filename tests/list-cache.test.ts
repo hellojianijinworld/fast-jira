@@ -9,6 +9,7 @@ import {
   type ListSnapshot,
   listCacheKey,
 } from "../src/domain/list-snapshot.ts";
+import type { SyncBatch } from "../src/domain/sync.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
 
 const filters: Filters = {
@@ -1081,3 +1082,121 @@ for (const source of ["direct", "matched", "child", "partial-parent"] as const)
     assert.equal(list.error, "");
     list.destroy();
   });
+
+test("다른 탭에서 돌아오면 캐시를 먼저 복원하고 루트 대신 변경분을 검증한다", async () => {
+  const stamp = new Date().toISOString();
+  const saved = { ...parent, id: "1", updated: stamp };
+  const response = deferred<SyncBatch>();
+  let roots = 0,
+    syncs = 0;
+  const list = createListController(
+    {
+      issues: async () => {
+        roots++;
+        return { issues: [], ancestors: [], nextPageToken: null };
+      },
+      children: async () => ({ issues: [], nextPageToken: null }),
+      sync: async () => {
+        syncs++;
+        return response.promise;
+      },
+    },
+    filters,
+    "me",
+  );
+  await list.load({ ...filters, projects: ["OTHER"] });
+  const pending = list.load(filters, {
+    items: [saved],
+    matched: [saved.key],
+    direct: [saved.key],
+    pages: [],
+    complete: true,
+    checkedAt: stamp,
+    reconciledAt: stamp,
+  });
+  assert.equal(list.items.get(saved.key)?.summary, saved.summary);
+  assert.equal(list.loading, true);
+  assert.equal(roots, 1);
+  assert.equal(syncs, 1);
+  response.resolve({
+    issues: [],
+    ancestors: [],
+    removed: [saved.key],
+    checkedAt: stamp,
+  });
+  await pending;
+  assert.equal(list.items.has(saved.key), false);
+  list.destroy();
+});
+
+test("탭 캐시를 복원한 뒤 예전 탭 응답과 오래된 자체 수정이 다시 섞이지 않는다", async () => {
+  const snapshot = await previous();
+  const old = deferred<{
+    issues: (typeof parent)[];
+    ancestors: never[];
+    nextPageToken: null;
+  }>();
+  let reads = 0;
+  const list = createListController(
+    {
+      issues: async () => {
+        reads++;
+        return reads === 1
+          ? old.promise
+          : { issues: [parent], ancestors: [], nextPageToken: null };
+      },
+      children: async () => ({ issues: [], nextPageToken: null }),
+    },
+    filters,
+    "me",
+  );
+  const waiting = list.load({ ...filters, projects: ["OTHER"] });
+  const edited = { ...parent, summary: "방금 수정한 제목" };
+  list.update(edited, true);
+  const restoring = list.load(filters, snapshot);
+  assert.equal(list.items.get(parent.key)?.summary, edited.summary);
+  assert.equal(list.childPage(parent.key).issues.size, 35);
+  await restoring;
+  old.resolve({
+    issues: [{ ...parent, key: "OTHER-1" }],
+    ancestors: [],
+    nextPageToken: null,
+  });
+  await waiting;
+  assert.equal(list.items.has("OTHER-1"), false);
+  list.destroy();
+});
+
+test("탭 캐시의 하위 목록은 이미 확인한 삭제와 부모 이동을 되돌리지 않는다", async () => {
+  const snapshot = await previous();
+  const moved = children[0],
+    removed = children[1];
+  assert.ok(moved && removed);
+  const rootReply = deferred<{
+    issues: (typeof parent)[];
+    ancestors: never[];
+    nextPageToken: null;
+  }>();
+  const list = createListController(
+    {
+      issues: async () => rootReply.promise,
+      children: async () => ({ issues: [], nextPageToken: null }),
+    },
+    filters,
+    "me",
+  );
+  list.restore(snapshot);
+  list.update({ ...moved, parent: "TEST-99" }, false);
+  list.applyChanges({
+    issues: [],
+    ancestors: [],
+    removed: [removed.key],
+    checkedAt: new Date().toISOString(),
+  });
+  const loading = list.load(filters, snapshot);
+  assert.equal(list.childPage(parent.key).issues.has(moved.key), false);
+  assert.equal(list.childPage(parent.key).issues.has(removed.key), false);
+  rootReply.resolve({ issues: [parent], ancestors: [], nextPageToken: null });
+  await loading;
+  list.destroy();
+});
