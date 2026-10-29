@@ -1,56 +1,18 @@
+import { workspaceEmoji } from "../domain/workspace-views.ts";
 import { element, iconButton, uiIcon } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
 
-const endpoint = "https://api.iconify.design";
-let collection: Promise<string[]> | undefined;
-
-function loadIcons(): Promise<string[]> {
-  if (!collection)
-    collection = fetch(`${endpoint}/collection?prefix=lucide`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error("아이콘을 불러오지 못했어요.");
-        const data: unknown = await response.json();
-        if (!data || typeof data !== "object")
-          throw new Error("아이콘을 불러오지 못했어요.");
-        const result = data as {
-          uncategorized?: unknown;
-          categories?: unknown;
-        };
-        const groups = [
-          result.uncategorized,
-          ...(result.categories && typeof result.categories === "object"
-            ? Object.values(result.categories)
-            : []),
-        ];
-        const names = [
-          ...new Set(
-            groups.flatMap((group) =>
-              Array.isArray(group)
-                ? group.filter(
-                    (name): name is string =>
-                      typeof name === "string" &&
-                      /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name),
-                  )
-                : [],
-            ),
-          ),
-        ].sort();
-        if (!names.length) throw new Error("아이콘을 불러오지 못했어요.");
-        return names;
-      })
-      .catch((error: unknown) => {
-        collection = undefined;
-        throw error;
-      });
-  return collection;
-}
-
-/** 아이콘 이름만 보관하며, 웹에서 받은 SVG를 문서에 삽입하지 않는다. */
+/** 기존 Lucide 이름은 유지하고 새 이모지는 이미지 요청 없이 표시한다. */
 export function workspaceIcon(name: string): HTMLSpanElement {
   const icon = element("span", "workspace-icon");
   icon.setAttribute("aria-hidden", "true");
-  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name))
-    icon.style.maskImage = `url("${endpoint}/lucide/${name}.svg")`;
+  const emoji = workspaceEmoji(name);
+  if (emoji) {
+    icon.classList.add("workspace-emoji");
+    icon.textContent = emoji;
+  } else if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
+    icon.style.maskImage = `url("https://api.iconify.design/lucide/${name}.svg")`;
+  }
   return icon;
 }
 
@@ -59,111 +21,73 @@ export function workspaceIconPicker(
   changed: (name: string) => void,
 ) {
   let selected = initial,
-    names: string[] = [],
-    limit = 80,
-    alive = true;
+    alive = true,
+    loading = false,
+    loaded = false;
   const root = element("div", "workspace-icon-picker"),
-    trigger = iconButton("뷰 아이콘 선택", "plus", { size: "sm" }),
+    trigger = iconButton("뷰 아이콘 선택", "smile", { size: "sm" }),
     panel = element("div", "select-options workspace-icon-panel"),
-    search = element("input"),
-    message = element("p", "view-help"),
-    grid = element("div", "workspace-icon-grid"),
-    more = element("button", "workspace-icon-more", "더 보기"),
+    content = element("div", "workspace-emoji-content"),
     clear = element("button", "workspace-icon-clear", "아이콘 없애기");
   trigger.setAttribute("aria-haspopup", "dialog");
   trigger.setAttribute("aria-expanded", "false");
   panel.popover = "auto";
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-label", "뷰 아이콘 선택");
-  search.type = "search";
-  search.placeholder = "아이콘 검색 (영어)";
-  search.setAttribute("aria-label", "아이콘 검색");
-  more.type = clear.type = "button";
-  more.hidden = true;
+  clear.type = "button";
   root.append(trigger, panel);
-  panel.append(search, message, grid, more, clear);
+  panel.append(content, clear);
   function sync() {
     trigger.replaceChildren(
-      selected ? workspaceIcon(selected) : uiIcon("plus"),
+      selected ? workspaceIcon(selected) : uiIcon("smile"),
     );
-    trigger.title = selected ? `뷰 아이콘: ${selected}` : "뷰 아이콘 선택";
     clear.hidden = !selected;
   }
-  function render() {
-    const matching = names.filter((name) =>
-      name.includes(search.value.trim().toLowerCase()),
-    );
-    grid.replaceChildren(
-      ...matching.slice(0, limit).map((name) => {
-        const button = element("button", "workspace-icon-choice");
-        button.type = "button";
-        button.setAttribute("aria-label", name);
-        button.title = name;
-        button.setAttribute("aria-pressed", String(selected === name));
-        button.append(workspaceIcon(name));
-        button.addEventListener("click", () => {
-          selected = name;
-          changed(name);
-          sync();
-          panel.hidePopover();
-          trigger.focus();
-        });
-        return button;
-      }),
-    );
-    more.hidden = matching.length <= limit;
-    message.textContent = matching.length
-      ? `${matching.length}개 아이콘`
-      : "검색 결과가 없어요.";
-  }
-  search.addEventListener("input", () => {
-    limit = 80;
-    render();
-  });
-  more.addEventListener("click", () => {
-    limit += 80;
-    render();
-  });
-  clear.addEventListener("click", () => {
-    selected = "";
-    changed("");
+  function choose(value: string) {
+    selected = value;
+    changed(value);
     sync();
     panel.hidePopover();
     trigger.focus();
-  });
-  panel.addEventListener("toggle", () =>
-    trigger.setAttribute(
-      "aria-expanded",
-      String(panel.matches(":popover-open")),
-    ),
-  );
-  trigger.addEventListener("click", () => {
-    if (panel.matches(":popover-open")) {
-      panel.hidePopover();
-      return;
+  }
+  clear.addEventListener("click", () => choose(""));
+  panel.addEventListener("toggle", () => {
+    const open = panel.matches(":popover-open");
+    trigger.setAttribute("aria-expanded", String(open));
+    if (!open) {
+      content.replaceChildren();
+      loaded = false;
     }
+  });
+  trigger.addEventListener("click", () => {
+    if (panel.matches(":popover-open")) return panel.hidePopover();
     Object.assign(
       panel.style,
       popoverPosition(trigger.getBoundingClientRect(), {
-        width: 320,
-        maxHeight: Math.min(400, innerHeight - 24),
+        width: 340,
+        maxHeight: Math.min(440, innerHeight - 24),
         viewportWidth: innerWidth,
         viewportHeight: innerHeight,
       }),
     );
     panel.showPopover();
-    search.focus();
-    if (names.length) return render();
-    message.textContent = "아이콘을 불러오고 있어요…";
-    void loadIcons()
-      .then((items) => {
-        if (!alive) return;
-        names = items;
-        render();
+    if (loaded || loading) return;
+    loading = true;
+    content.textContent = "이모지를 불러오고 있어요…";
+    void import("./workspace-emoji-picker.ts")
+      .then(({ createEmojiPicker }) => {
+        if (!alive || !panel.matches(":popover-open")) return;
+        const picker = createEmojiPicker((emoji) => choose(`emoji:${emoji}`));
+        content.replaceChildren(picker);
+        if (panel.matches(":popover-open")) picker.focus();
+        loaded = true;
       })
       .catch(() => {
         if (alive)
-          message.textContent = "아이콘을 불러오지 못했어요. 다시 열어 주세요.";
+          content.textContent = "이모지를 불러오지 못했어요. 다시 열어 주세요.";
+      })
+      .finally(() => {
+        loading = false;
       });
   });
   sync();
@@ -172,6 +96,7 @@ export function workspaceIconPicker(
     destroy() {
       alive = false;
       if (panel.matches(":popover-open")) panel.hidePopover();
+      content.replaceChildren();
     },
   };
 }

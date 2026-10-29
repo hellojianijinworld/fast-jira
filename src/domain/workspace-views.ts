@@ -1,6 +1,25 @@
 import { isRecord } from "./validation.ts";
 import { decodeViews, type ViewState } from "./views.ts";
 
+/** 저장한 이모지는 단일 글자 묶음으로 제한하고 텍스트로만 표시한다. */
+export function workspaceEmoji(value: string): string | null {
+  if (!value.startsWith("emoji:")) return null;
+  const emoji = value.slice(6);
+  if (
+    !emoji ||
+    emoji.length > 64 ||
+    !/(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3)/u.test(emoji)
+  )
+    return null;
+  return [
+    ...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
+      emoji,
+    ),
+  ].length === 1
+    ? emoji
+    : null;
+}
+
 export interface WorkspaceView {
   id: string;
   name: string;
@@ -68,7 +87,8 @@ export function decodeWorkspaces(
         id: item.id,
         name: workspaceName(item.name),
         ...(typeof item.icon === "string" &&
-        /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.icon) &&
+        (workspaceEmoji(item.icon) !== null ||
+          /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.icon)) &&
         item.icon.length <= 100
           ? { icon: item.icon }
           : {}),

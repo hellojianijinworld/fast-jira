@@ -4,7 +4,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { extname, resolve, sep } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import type { PeopleFilter } from "../domain/issue.ts";
@@ -493,7 +493,7 @@ export function createHttpServer(
         return;
       }
       if (
-        req.method === "GET" &&
+        (req.method === "GET" || req.method === "HEAD") &&
         (url.pathname === "/" || url.pathname.startsWith("/assets/"))
       ) {
         const path = resolve(
@@ -510,6 +510,7 @@ export function createHttpServer(
           ".js": "text/javascript; charset=utf-8",
           ".css": "text/css; charset=utf-8",
           ".svg": "image/svg+xml",
+          ".json": "application/json; charset=utf-8",
           ".png": "image/png",
         };
         const type = types[extname(path)];
@@ -520,7 +521,17 @@ export function createHttpServer(
             404,
           );
         });
-        res.writeHead(200, { "Content-Type": type }).end(body);
+        // 빌드 해시가 붙은 이모지 데이터는 HEAD로 변경 여부만 확인한다.
+        if (/^data-[\w-]+\.json$/.test(basename(path))) {
+          res.setHeader("ETag", `"${basename(path)}"`);
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+        res
+          .writeHead(200, {
+            "Content-Type": type,
+            "Content-Length": body.length,
+          })
+          .end(req.method === "HEAD" ? undefined : body);
         return;
       }
       throw new JiraError("경로를 찾지 못했습니다.", 404);

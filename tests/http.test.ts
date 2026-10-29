@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdir } from "node:fs/promises";
 import { test } from "node:test";
 import { record } from "../src/domain/validation.ts";
 import { createHttpServer } from "../src/server/http.ts";
@@ -486,4 +487,23 @@ test("설치 상태 확인은 인증 없이 서비스 식별 정보를 반환하
     instance: process.env.FAST_JIRA_INSTANCE ?? "",
   });
   assert.equal(app.count(), 0);
+});
+
+test("이모지 데이터는 JSON으로 제공하고 HEAD 캐시 검증에는 본문을 보내지 않는다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const files = await readdir(
+    new URL("../dist/client/assets/", import.meta.url),
+  );
+  const data = files.find((name) => /^data-[\w-]+\.json$/.test(name));
+  assert.ok(data, "이모지 데이터 빌드 누락");
+  const response = await fetch(`${app.base}/assets/${data}`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /application\/json/);
+  assert.ok(Array.isArray(await response.json()));
+  const head = await fetch(`${app.base}/assets/${data}`, { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get("etag"), response.headers.get("etag"));
+  assert.match(head.headers.get("cache-control") ?? "", /immutable/);
+  assert.equal(await head.text(), "");
 });

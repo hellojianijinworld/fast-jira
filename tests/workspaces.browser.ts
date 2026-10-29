@@ -684,37 +684,44 @@ await check(
 await check(
   "뷰 아이콘은 필요할 때 검색하고 선택한 값을 탭과 복원에 보존한다",
   async () => {
-    const originalFetch = window.fetch;
-    let requests = 0;
-    window.fetch = async (input, init) => {
-      if (String(input).includes("/collection?prefix=lucide")) {
-        requests++;
-        return Response.json({
-          uncategorized: ["briefcase", "folder", "star"],
-        });
-      }
-      return originalFetch(input, init);
-    };
-    try {
+    assert(!document.querySelector("emoji-picker"), "선택기 미리 생성");
+    assert(!customElements.get("emoji-picker"), "선택기 코드 미리 로드");
+    {
       button("뷰 만들기").click();
-      assert(requests === 0, "아이콘 목록을 미리 불러옴");
       const dialog = document.querySelector<HTMLDialogElement>(
         ".workspace-view-modal[open]",
       );
       assert(dialog, "뷰 만들기 모달");
-      button("뷰 아이콘 선택", dialog).click();
-      await wait();
-      const search = dialog.querySelector<HTMLInputElement>(
-        '[aria-label="아이콘 검색"]',
-      );
-      assert(search, "아이콘 검색 누락");
-      search.value = "star";
-      search.dispatchEvent(new Event("input"));
+      const trigger = button("뷰 아이콘 선택", dialog);
       assert(
-        dialog.querySelectorAll(".workspace-icon-choice").length === 1,
-        "아이콘 검색 결과",
+        trigger.querySelector("use")?.getAttribute("href")?.endsWith("#smile"),
+        "스마일 버튼 누락",
       );
-      button("star", dialog).click();
+      trigger.click();
+      let search: HTMLInputElement | null | undefined;
+      for (let tries = 0; tries < 200; tries++) {
+        search = dialog
+          .querySelector("emoji-picker")
+          ?.shadowRoot?.querySelector<HTMLInputElement>("input[type=search]");
+        if (search) break;
+        await wait();
+      }
+      assert(search, "이모지 검색 누락");
+      search.value = "로켓";
+      search.dispatchEvent(new Event("input"));
+      let choice: HTMLButtonElement | null | undefined;
+      for (let tries = 0; tries < 200; tries++) {
+        choice = dialog
+          .querySelector("emoji-picker")
+          ?.shadowRoot?.querySelector<HTMLButtonElement>(
+            '[role="option"][aria-label*="로켓"]',
+          );
+        if (choice) break;
+        await wait();
+      }
+      assert(choice, "한국어 이모지 검색 결과");
+      choice.click();
+      await wait();
       const picker = dialog.querySelector<HTMLElement>(".workspace-icon-panel");
       assert(
         picker && getComputedStyle(picker).display === "none",
@@ -728,7 +735,7 @@ await check(
       await wait();
       dialog.querySelector("form")?.requestSubmit();
       await wait();
-      assert(Number(requests) === 1, "아이콘 목록 요청 횟수");
+
       assert(
         root.querySelector(
           '[role="tab"][aria-selected="true"] .workspace-icon',
@@ -739,7 +746,7 @@ await check(
         values.get("fastJira:workspaces:fixture.atlassian.net:my-account") ??
           "{}",
       );
-      assert(activeWorkspace(stored).icon === "star", "아이콘 저장 누락");
+      assert(activeWorkspace(stored).icon === "emoji:🚀", "아이콘 저장 누락");
       app.destroy();
       app = await createApp(root, api, storage, undefined, updates);
       assert(
@@ -748,7 +755,9 @@ await check(
         ),
         "아이콘 복원 누락",
       );
-      button("아이콘 뷰").click();
+      root
+        .querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')
+        ?.click();
       button("뷰 복제").click();
       await wait();
       const duplicated = JSON.parse(
@@ -756,11 +765,9 @@ await check(
           "{}",
       );
       assert(
-        activeWorkspace(duplicated).icon === "star",
+        activeWorkspace(duplicated).icon === "emoji:🚀",
         "복제 뷰 아이콘 누락",
       );
-    } finally {
-      window.fetch = originalFetch;
     }
   },
 );

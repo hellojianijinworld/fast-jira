@@ -153,3 +153,21 @@ test("뷰 아이콘은 저장과 복원을 거치며 기존 데이터와 잘못�
   };
   assert.equal(decodeWorkspaces(invalid, ["TEST"])?.tabs[0]?.icon, undefined);
 });
+
+test("이모지 뷰 아이콘은 조합형·피부색·깃발도 보존하고 여러 글자와 잘못된 값은 제외한다", () => {
+  const original = initialWorkspaces(["TEST"], base);
+  for (const emoji of ["😀", "👩🏽‍💻", "🇰🇷", "1️⃣", "⭐️"]) {
+    const saved = saveWorkspace(original, {
+      ...activeWorkspace(original),
+      icon: `emoji:${emoji}`,
+    });
+    assert.equal(
+      decodeWorkspaces(saved, ["TEST"])?.tabs[0]?.icon,
+      `emoji:${emoji}`,
+    );
+  }
+  for (const icon of ["emoji:", "emoji:abc", "emoji:😀😀", "emoji:<img>"]) {
+    const saved = { ...original, tabs: [{ ...original.tabs[0], icon }] };
+    assert.equal(decodeWorkspaces(saved, ["TEST"])?.tabs[0]?.icon, undefined);
+  }
+});

@@ -32,6 +32,8 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.32.2"
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "emoji-picker-element": "^1.29.1",
+    "emoji-picker-element-data": "^1.8.0"
   }
 }

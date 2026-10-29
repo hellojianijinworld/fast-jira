@@ -1743,38 +1743,36 @@ dialog::backdrop {
   flex-direction: column;
   gap: 8px;
 }
-.workspace-icon-panel input {
-  width: 100%;
-}
-.workspace-icon-panel .view-help {
-  margin: 0;
-}
-.workspace-icon-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
-  gap: 2px;
-  overflow-y: auto;
-  min-height: 0;
-}
-.workspace-icon-choice {
-  width: 34px;
-  min-height: 34px;
-  padding: 0;
-  color: var(--text);
+.workspace-emoji {
   background: transparent;
+  font-size: 16px;
+  line-height: 1;
 }
-.workspace-icon-choice:hover,
-.workspace-icon-choice[aria-pressed="true"] {
-  color: var(--blue);
-  background: var(--blue-soft);
+.workspace-emoji-content {
+  min-height: 0;
+  overflow: auto;
 }
-.workspace-icon-more,
+.workspace-emoji-content emoji-picker {
+  width: 100%;
+  height: 350px;
+  --background: var(--surface);
+  --border-color: var(--border);
+  --input-border-color: var(--border);
+  --input-font-color: var(--text);
+  --input-placeholder-color: var(--muted);
+  --outline-color: var(--blue);
+  --indicator-color: var(--blue);
+  --category-font-color: var(--text);
+  --input-font-size: var(--text-body-size);
+  --button-hover-background: var(--hover);
+  --button-active-background: var(--selected);
+  --border-size: 0;
+}
 .workspace-icon-clear {
   min-height: 30px;
   background: transparent;
   color: var(--blue);
 }
-.workspace-icon-more:hover,
 .workspace-icon-clear:hover {
   background: var(--hover);
 }
