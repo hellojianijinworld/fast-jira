@@ -47,7 +47,7 @@ main {
 }
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   padding: 0;
@@ -593,7 +593,9 @@ dialog::backdrop {
 }
 
 .splitter {
-  width: 24px;
+  position: relative;
+  z-index: 22;
+  width: 1px;
   display: grid;
   place-items: center;
   cursor: col-resize;
@@ -601,18 +603,24 @@ dialog::backdrop {
 }
 .splitter::before {
   content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   width: 1px;
   height: 100%;
   background: var(--border);
 }
+/* 왼쪽 목록의 스크롤바를 가리지 않도록 드래그 영역만 오른쪽으로 넓힌다. */
+.splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0 -9px 0 0;
+}
 .splitter:hover::before,
+.splitter:active::before,
 .splitter:focus-visible::before {
   width: 4px;
   background: var(--blue);
-}
-.splitter:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: -2px;
 }
 @media (max-width: 600px) {
   .splitter {
@@ -706,10 +714,6 @@ dialog::backdrop {
   margin-top: var(--density-space-5);
 }
 
-/* Loading belongs to its heading or card row, never to the splitter. */
-.splitter {
-  position: relative;
-}
 .detail-pane {
   border-left: 0;
   border-radius: var(--radius-8) 0 0 var(--radius-8);
