@@ -13,7 +13,7 @@ export const codexApprovalMethods = new Set([
   "item/tool/requestUserInput",
   "tool/requestUserInput",
 ]);
-/** 프로토콜의 이번 실행/턴 승인만 사용한다. 세션·정책 변경 승인은 생성하지 않는다. */
+/** Jira 밖의 로컬 실행·권한 확대는 거절하고, 연결 자료 확인과 사용자 질문만 전달한다. */
 export async function answerCodexApproval(
   method: string,
   params: Record<string, unknown>,
@@ -21,6 +21,13 @@ export async function answerCodexApproval(
   item?: unknown,
   onFeedback?: (text: string) => void,
 ): Promise<unknown> {
+  if (method === "item/permissions/requestApproval")
+    return { permissions: {}, scope: "turn" };
+  if (
+    method === "item/commandExecution/requestApproval" ||
+    method === "item/fileChange/requestApproval"
+  )
+    return { decision: "decline" };
   const confirm: ApprovalHandler = async (request) => {
     const answer = await ask(request);
     const ownConfirmation =
@@ -124,28 +131,7 @@ export async function answerCodexApproval(
         : null,
     };
   }
-  const answer = await confirm({
-    title: method.includes("fileChange")
-      ? "파일 변경 확인"
-      : method.includes("permissions")
-        ? "추가 접근 권한 확인"
-        : "명령 실행 확인",
-    description,
-    details,
-    fields: [],
-  });
-  if (method === "item/permissions/requestApproval")
-    return {
-      permissions: answer.approved ? (params.permissions ?? {}) : {},
-      scope: "turn",
-    };
-  if (
-    answer.approved &&
-    Array.isArray(params.availableDecisions) &&
-    !params.availableDecisions.includes("accept")
-  )
-    return { decision: "decline" };
-  return { decision: answer.approved ? "accept" : "decline" };
+  return { decision: "decline" };
 }
 /** 연결을 비활성화하지 않고, 읽기 전용이 아닌 도구의 실행을 사용자 승인으로 보낸다. */
 export async function codexToolApprovals(native: CodexClient) {

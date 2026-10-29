@@ -208,7 +208,7 @@ export function createClaudeAssistant(
               "json",
               "--no-session-persistence",
               "--tools",
-              "default",
+              "",
               "--mcp-config",
               JSON.stringify({ mcpServers: { fast_jira: bridge.config } }),
               "--allowedTools",

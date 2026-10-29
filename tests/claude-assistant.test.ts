@@ -124,10 +124,7 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
       if (command.args[0] === "auth") return loggedIn;
       runCount++;
       assert(command.args.includes("--no-session-persistence"));
-      assert.equal(
-        command.args[command.args.indexOf("--tools") + 1],
-        "default",
-      );
+      assert.equal(command.args[command.args.indexOf("--tools") + 1], "");
       assert(!command.args.includes("--strict-mcp-config"));
       assert(command.args.includes("--permission-prompt-tool"));
       assert(command.args.includes("--append-system-prompt"));

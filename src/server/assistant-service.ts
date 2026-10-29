@@ -248,7 +248,12 @@ export function createAssistantService(
             sandbox: "read-only",
             approvalPolicy: "on-request",
             approvalsReviewer: "user",
-            config: toolApprovals,
+            config: {
+              ...toolApprovals,
+              "features.shell_tool": false,
+              "features.multi_agent": false,
+              "tools.view_image": false,
+            },
             developerInstructions: instructions,
             dynamicTools: tools.definitions.map(
               ({ name, description, inputSchema }) => ({

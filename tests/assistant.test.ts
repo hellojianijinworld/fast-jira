@@ -160,6 +160,9 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
     assert.equal(start.model, "available");
     assert.equal(start.ephemeral, false);
     assert.deepEqual(start.config, {
+      "features.shell_tool": false,
+      "features.multi_agent": false,
+      "tools.view_image": false,
       "mcp_servers.unrelated.default_tools_approval_mode": "writes",
       "apps._default.default_tools_approval_mode": "writes",
       "apps._default.approvals_reviewer": "user",
@@ -405,13 +408,12 @@ test("연결 도구의 승인 요청은 대화에 보류되고 사용자 응답�
     });
     await f.waitTurn();
     f.emit(
-      "item/commandExecution/requestApproval",
+      "mcpServer/elicitation/request",
       {
         threadId: "thread",
-        itemId: "command",
-        command: "touch target.txt",
-        cwd: "/tmp",
-        availableDecisions: ["accept", "decline"],
+        serverName: "notion",
+        mode: "form",
+        message: "자료 조회 확인",
       },
       42,
     );
@@ -425,7 +427,9 @@ test("연결 도구의 승인 요청은 대화에 보류되고 사용자 응답�
       values: {},
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.deepEqual(f.replies, [{ decision: "decline" }]);
+    assert.deepEqual(f.replies, [
+      { action: "decline", content: null, _meta: null },
+    ]);
     f.complete();
     await result;
     assert.deepEqual(f.assistant.approvals.pending(requestId), []);
@@ -492,12 +496,13 @@ test("네이티브 확인의 기타 의견은 실행을 거절한 뒤 같은 턴
     const result = f.assistant.run({ prompt: "작업 확인", context, requestId });
     await f.waitTurn();
     f.emit(
-      "item/commandExecution/requestApproval",
+      "mcpServer/elicitation/request",
       {
         threadId: "thread",
         turnId: "turn",
-        itemId: "command",
-        command: "touch target.txt",
+        serverName: "notion",
+        mode: "form",
+        message: "자료 조회 확인",
       },
       71,
     );
@@ -510,7 +515,9 @@ test("네이티브 확인의 기타 의견은 실행을 거절한 뒤 같은 턴
       values: { feedback: "파일을 만들지 말고 설명만 해주세요" },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.deepEqual(f.replies, [{ decision: "decline" }]);
+    assert.deepEqual(f.replies, [
+      { action: "decline", content: null, _meta: null },
+    ]);
     const steer = f.requests.find((item) => item.method === "turn/steer");
     assert(steer);
     assert.match(JSON.stringify(steer.params), /설명만 해주세요/);

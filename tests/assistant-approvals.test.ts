@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { AssistantApproval } from "../src/domain/assistant-approval.ts";
 import { createAssistantApprovals } from "../src/server/assistant-approvals.ts";
 import {
   answerCodexApproval,
@@ -101,49 +100,26 @@ test("승인 폼은 필수 값과 선택지를 검사하고 요청한 필드만 
   assert.deepEqual({ ...(await promise).values }, { target: "B" });
   run.close();
 });
-test("Codex 명령·파일 승인은 자동 진행하지 않고 이번 실행만 승인한다", async () => {
-  let shown: Omit<AssistantApproval, "id"> | undefined;
-  const approved = async (r: Omit<AssistantApproval, "id">) => {
-    shown = r;
-    return { approved: true, values: {} };
+test("Jira 범위 밖의 명령·파일·권한 요청은 사용자 확인 없이 거절한다", async () => {
+  const ask = async () => {
+    assert.fail("범위 밖 실행을 승인 UI로 보내면 안 됩니다");
   };
-  assert.deepEqual(
-    await answerCodexApproval(
-      "item/commandExecution/requestApproval",
-      {
-        command: "touch target.txt",
-        cwd: "/tmp",
-        availableDecisions: ["accept", "decline"],
-      },
-      approved,
-    ),
-    { decision: "accept" },
-  );
-  assert.match(shown?.details ?? "", /touch target.txt/);
-  assert.deepEqual(
-    await answerCodexApproval(
-      "item/commandExecution/requestApproval",
-      { availableDecisions: ["decline"] },
-      approved,
-    ),
-    { decision: "decline" },
-  );
-  assert.deepEqual(
-    await answerCodexApproval(
-      "item/fileChange/requestApproval",
-      {},
-      async () => ({ approved: false, values: {} }),
-      { changes: [{ path: "target.txt", diff: "-old\n+new" }] },
-    ),
-    { decision: "decline" },
-  );
+  for (const method of [
+    "item/commandExecution/requestApproval",
+    "item/fileChange/requestApproval",
+  ]) {
+    assert.deepEqual(
+      await answerCodexApproval(method, { command: "touch target.txt" }, ask),
+      { decision: "decline" },
+    );
+  }
   assert.deepEqual(
     await answerCodexApproval(
       "item/permissions/requestApproval",
       { permissions: { network: { enabled: true } } },
-      approved,
+      ask,
     ),
-    { permissions: { network: { enabled: true } }, scope: "turn" },
+    { permissions: {}, scope: "turn" },
   );
 });
 test("MCP 폼은 사용자가 확인한 값만 돌려주고 거절은 원격 승인이 되지 않는다", async () => {
