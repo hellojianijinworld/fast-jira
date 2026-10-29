@@ -238,6 +238,11 @@ test("HTTP 검증 오류·존재하지 않는 경로·정적 빌드 파일을 �
   assert.equal((await fetch(`${app.base}/api/unknown`)).status, 404);
   const response = await fetch(`${app.base}/`);
   assert.equal(response.status, 200);
+  assert.equal(
+    response.headers.get("content-security-policy"),
+    "frame-ancestors 'none'",
+  );
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
   const html = await response.text();
   assert.ok(html.includes("Fast Jira"));
   assert.ok(html.includes('rel="icon"'));

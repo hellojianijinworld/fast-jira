@@ -280,6 +280,8 @@ export function createHttpServer(
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+    res.setHeader("X-Frame-Options", "DENY");
     try {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       const hosts = [
