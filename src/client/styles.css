@@ -764,9 +764,6 @@ dialog::backdrop {
   width: 100%;
   opacity: 0;
 }
-.detail-pane {
-  margin-right: var(--pane-gutter);
-}
 @keyframes loading-spin {
   to {
     transform: rotate(360deg);
