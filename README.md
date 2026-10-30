@@ -52,7 +52,7 @@ README의 AI 설치 가이드를 따라 최신 정식 릴리스를 설치하고,
 | **Managing** | “실행 상태 확인해줘.” “업데이트해줘.” “종료해줘.” |
 | **Contribute** | “Fast Jira 개발 환경을 준비해줘.” |
 
-설치는 AI가 정식 Release의 실행용 ZIP을 받아 진행합니다. 일반 설치·업데이트에는 Git이나 npm 빌드가 필요하지 않고 Node 24.22.2를 사용합니다. macOS 선택 도메인의 최초 설정에는 npm이 필요합니다. Codex 또는 Claude Code처럼 로컬 명령을 실행할 수 있는 환경이 필요합니다. 일반 ChatGPT·Claude 웹채팅만으로 설치되는 방식은 아닙니다. Jira 연결 정보는 앱에 직접 입력하고, macOS의 선택 도메인 설정은 시스템 인증창에서 승인합니다. 터미널을 열어 명령을 실행할 필요가 없습니다. 승인하지 않으면 localhost 주소로 사용합니다.
+설치는 AI가 정식 Release의 실행용 ZIP을 받아 진행합니다. 일반 설치·업데이트에는 Git이나 npm 빌드가 필요하지 않고 Node 24.22.2를 사용합니다. 선택 도메인의 최초 설정에는 npm이 필요하고 Windows에서는 OpenSSL도 필요합니다. Codex 또는 Claude Code처럼 로컬 명령을 실행할 수 있는 환경이 필요합니다. 일반 ChatGPT·Claude 웹채팅만으로 설치되는 방식은 아닙니다. Jira 연결 정보는 앱에 직접 입력하고, macOS·Windows의 선택 도메인 설정은 OS 승인창에서 승인합니다. 터미널을 열어 명령을 실행할 필요가 없습니다. 승인하지 않으면 localhost 주소로 사용합니다.
 
 설치와 실행 절차는 [AI 설치 가이드](INSTALL.md), 개발 방법은 [기여 가이드](CONTRIBUTING.md)에 모았습니다.
 
@@ -82,7 +82,7 @@ API 토큰이나 회사의 이슈 본문·대화·원본 로그는 올리지 마
 - Codex·Claude Code 플러그인 · 공통 로컬 웹·MCP 서버
 - macOS에서 실제 설치 검증 · Windows·Linux용 실행 경로와 모의 검사는 제공하지만 실기기 검증은 별도
 - Node 백그라운드 실행 · OS 자동 시작 등록 없이 Managing으로 제어
-- 기본 접속은 localhost · macOS에서는 선택적으로 `https://fast-jira.local` 설정 시도(Node 24.22.2, 승인 취소 시 localhost 사용)
+- 기본 접속은 localhost · macOS·Windows에서 선택적으로 `https://fast-jira.local` 자동 설정 시도(승인 취소·검증 실패 시 localhost 사용). Windows UAC·브라우저 실기기 검증은 별도
 - MCP 조회·수정 · 수정은 지원 클라이언트의 확인 UI에서 사용자 승인 필요
 - 댓글 좋아요·이모지 반응 미지원. 답글은 Jira의 미문서화 동작에 의존
 

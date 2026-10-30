@@ -4,7 +4,7 @@
 
 ## 완료 기준과 지원 범위
 
-- Node.js 24.22.2와 현재 AI 플랫폼의 CLI. 일반 설치·업데이트에는 Git과 npm 빌드가 필요하지 않습니다. macOS 선택 도메인의 최초 Portless 설치에는 npm이 필요하며 공식 Node 배포본에 포함됩니다. 공개 배포 파일에는 GitHub 로그인이 필요하지 않습니다.
+- Node.js 24.22.2와 현재 AI 플랫폼의 CLI. 일반 설치·업데이트에는 Git과 npm 빌드가 필요하지 않습니다. macOS·Windows 선택 도메인의 최초 Portless 설치에는 npm이 필요하며 공식 Node 배포본에 포함됩니다. 공개 배포 파일에는 GitHub 로그인이 필요하지 않습니다.
 - macOS·Windows·Linux에서 Node 백그라운드 실행을 제공합니다. OS 서비스·로그인 훅·예약 작업은 등록하지 않습니다. 재부팅한 뒤에는 Managing으로 다시 시작합니다. Windows·Linux 실기기 검증 여부는 따로 보고합니다.
 - API 토큰이 없어도 앱과 플러그인 설치는 완료할 수 있습니다. 인증 전 상태를 연결 성공으로 보고하지 마세요.
 - 기존 4173 서비스·설정·다른 프로그램을 종료하거나 덮어쓰지 마세요. 포트 충돌이면 다른 포트로 테스트하거나 이전 서비스의 소유와 이전 의도를 확인합니다.
@@ -12,7 +12,7 @@
 ## 1. 설치 경로와 실행 환경 확인
 
 1. 현재 요청을 수행하는 플랫폼이 Codex인지 Claude Code인지 확인합니다. 둘을 모두 등록하는 것은 사용자가 요청했을 때만 합니다.
-2. `package.json`의 `engines.node`에 고정된 Node.js 24.22.2를 사용합니다. 기존 전역 Node를 임의로 교체하지 말고 버전 관리자 또는 Fast Jira 전용 경로를 사용합니다. `node --version`과 해당 AI 플랫폼 CLI의 도움말을 확인합니다. 일반 설치에서 Git을 요구하지 않습니다. macOS 선택 도메인을 설정할 때만 `npm --version`도 확인합니다. 지원 Node가 없으면 설치 방식을 제안하고 필요한 승인 후 진행합니다.
+2. `package.json`의 `engines.node`에 고정된 Node.js 24.22.2를 사용합니다. 기존 전역 Node를 임의로 교체하지 말고 버전 관리자 또는 Fast Jira 전용 경로를 사용합니다. `node --version`과 해당 AI 플랫폼 CLI의 도움말을 확인합니다. 일반 설치에서 Git을 요구하지 않습니다. macOS·Windows 선택 도메인을 설정할 때만 `npm --version`도 확인합니다. 지원 Node가 없으면 설치 방식을 제안하고 필요한 승인 후 진행합니다.
 3. 개인 설정을 우선 재사용합니다. 배포 원본은 사용자가 지정한 새 경로 또는 `~/Applications/fast-jira-release-버전`에 준비합니다. 기존 checkout에 수정이 있으면 reset/clean/checkout으로 덮어쓰지 않고 별도 설치 소스 경로를 사용합니다. 공개 저장소이므로 GitHub 로그인을 요구하지 않습니다. 접근 실패를 곧바로 인증 문제로 단정하지 마세요.
 4. 두 AI 플랫폼은 같은 개인 폴더를 사용합니다. macOS는 `~/Library/Application Support/Fast Jira`, Windows는 `%LOCALAPPDATA%/Fast Jira`, Linux는 `$XDG_DATA_HOME/fast-jira`(미설정 시 `~/.local/share/fast-jira`)입니다. `FAST_JIRA_HOME` 또는 `--home`으로 지정했다면 관리 명령과 MCP 프로세스 환경에도 같은 `FAST_JIRA_HOME`을 적용합니다.
 
@@ -69,7 +69,7 @@ node "$PLUGIN_ROOT/dist/cli/main.js" open
 ```
 
 - 실행 전에 로컬 도메인 설정에 대한 사용자 동의를 받습니다. 동의하면 `--domain yes`, 거부하면 `--domain no`로 실행합니다. macOS와 고정 Node 버전에서 `https://fast-jira.local`을 설정하며 Portless 0.15.11을 개인 폴더에 선택 설치합니다. 설치기가 Fast Jira의 설정 목적과 변경 항목을 설명하는 macOS 시스템 인증창을 열면 사용자가 그 창에서 승인합니다. 실행 주체 이름은 OS가 `osascript`로 표시합니다. 인증서 신뢰 승인은 설치기가 만든 임시 GUI 앱에서 macOS 기본 승인창으로 요청합니다. 관리자 승인과 인증서 승인이 별도로 표시될 수 있으며, 해당 창에서 사용자가 승인하면 설치기가 나머지를 완료합니다. 신뢰 대상은 현재 사용자의 fast-jira.local 전용 서버 인증서이며 범용 CA 신뢰로 확대하지 않습니다. 시스템 인증서 신뢰 검사와 실제 HTTPS 응답까지 확인합니다. 인증서 보조 앱은 실행 후 제거합니다. hosts·로컬 인증서·443 프록시 설정만 관리자 권한으로 수행하며 앱과 MCP 서버는 일반 사용자로 실행합니다.
-- 사용자에게 터미널 열기, 명령 복사, `sudo` 실행을 요구하지 않습니다. 암호는 채팅이나 AI 도구에 입력하지 않습니다. OS 인증창을 취소하거나 연결 확인에 실패하면 localhost로 설치를 완료합니다. Windows·Linux는 현재 도메인용 시스템 인증창을 지원하지 않으므로 localhost로 설치합니다. OS 서비스 등록·LAN 공유는 하지 않습니다.
+- 사용자에게 터미널 열기, 명령 복사, `sudo` 실행을 요구하지 않습니다. 암호는 채팅이나 AI 도구에 입력하지 않습니다. OS 인증창을 취소하거나 연결 확인에 실패하면 localhost로 설치를 완료합니다. Windows는 설치기가 UAC 승인창을 요청하고 hosts 연결을 적용합니다. 프록시와 fast-jira.local 서버 인증서 등록은 현재 사용자로 처리합니다. OpenSSL을 PATH·Git·OpenSSL 기본 설치 경로에서 찾으며 없으면 localhost로 유지합니다. OpenSSL이 필요하면 AI가 공식 설치 방식을 안내하되 사용자에게 터미널 실행을 요구하지 않습니다. Windows UAC 클릭·실제 브라우저 신뢰는 실기기 확인이 필요합니다. Linux의 도메인 자동 설정은 아직 구현하지 않아 localhost로 설치합니다. OS 서비스 등록·LAN 공유는 하지 않습니다.
 - `setup`은 실행 파일을 개인 폴더의 `runtime/`에 복사하고 Node를 독립 백그라운드 프로세스로 실행합니다. 터미널과 AI를 닫아도 유지되며 재부팅 후 자동 시작하지 않습니다. 이후 Managing의 `start`로 시작합니다.
 - `config/service.json`은 실행 설정, `config/connection.env`는 웹과 MCP가 공유하는 Jira 인증입니다. `config/mcp-token`은 로컬 MCP 연결 전용이며 Jira 토큰과 별개입니다. 플러그인 캐시 안에 인증을 저장하지 않습니다.
 - 재설치·업데이트는 인증 파일을 보존합니다. `--port`는 최초·재설치 `setup`에만 사용합니다. 예: `setup --port 4174`.
