@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configureLocalDomain } from "../src/cli/local-domain.ts";
+import {
+  configureLocalDomain,
+  verifyAddress,
+} from "../src/cli/local-domain.ts";
 
 // Windows CI의 일회성 관리자 계정에서만 실행한다. UAC 클릭 자체는 검사하지 않는다.
 assert.equal(process.platform, "win32");
@@ -35,7 +38,45 @@ const env = {
 };
 const cli = join(home, "tools/node_modules/portless/dist/cli.js");
 try {
-  const result = await configureLocalDomain(home, port, true, instance);
+  const result = await configureLocalDomain(home, port, true, instance, {
+    verify: async (state, expected) => {
+      const valid = await verifyAddress(state, expected);
+      if (!valid) {
+        const curl = spawnSync(
+          "curl.exe",
+          [
+            "--disable",
+            "--verbose",
+            "--noproxy",
+            "fast-jira.local",
+            "--cacert",
+            join(state, "ca.pem"),
+            "--max-time",
+            "10",
+            "https://fast-jira.local/api/health",
+          ],
+          { encoding: "utf8", timeout: 15000 },
+        );
+        console.log("HTTPS 확인 결과", {
+          status: curl.status,
+          stdout: curl.stdout,
+          stderr: curl.stderr,
+        });
+        const hosts = await readFile(
+          join(
+            process.env.SystemRoot ?? "C:/Windows",
+            "System32/drivers/etc/hosts",
+          ),
+          "utf8",
+        );
+        console.log(
+          "Fast Jira hosts",
+          hosts.split(/\r?\n/).filter((line) => line.includes("fast-jira")),
+        );
+      }
+      return valid;
+    },
+  });
   assert.equal(result.url, "https://fast-jira.local", result.message);
   const again = await configureLocalDomain(home, port, true, instance);
   assert.equal(again.url, result.url);
