@@ -281,6 +281,8 @@ test("Windows는 UAC 승인 후 현재 사용자 인증서를 신뢰하고 실�
       (x) =>
         x.command.endsWith("curl.exe") &&
         !x.args.includes("--cacert") &&
+        x.args.includes("--ssl-revoke-best-effort") &&
+        !x.args.includes("--ssl-no-revoke") &&
         !x.args.includes("-k"),
     ),
   );

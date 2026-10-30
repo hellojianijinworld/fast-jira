@@ -50,6 +50,7 @@ async function readDomainHealth(state: string) {
     process.platform === "win32" ? windowsTool("curl.exe") : "/usr/bin/curl",
     [
       "--disable",
+      ...(process.platform === "win32" ? ["--ssl-revoke-best-effort"] : []),
       "--silent",
       "--fail",
       "--noproxy",
@@ -171,6 +172,8 @@ export async function configureLocalDomain(
         windowsTool("curl.exe"),
         [
           "--disable",
+          // 로컬 인증서는 CRL 배포 주소가 없다. 체인·호스트 검증은 유지한다.
+          "--ssl-revoke-best-effort",
           "--fail",
           "--silent",
           "--show-error",
