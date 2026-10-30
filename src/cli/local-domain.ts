@@ -158,11 +158,15 @@ export async function configureLocalDomain(
       if (!connected) await startWindowsDomain(cli, port, env, run);
       if (!(await (options.verify ?? verifyAddress)(state, instance)))
         throw new Error("접속 검증에 실패했어요.");
-      await run(
-        windowsTool("certutil.exe"),
-        ["-user", "-addstore", "Root", join(state, "windows-cert.pem")],
-        env,
-      );
+      await (
+        options.trust ??
+        ((state: string) =>
+          run(
+            windowsTool("certutil.exe"),
+            ["-user", "-addstore", "Root", join(state, "windows-cert.pem")],
+            env,
+          ))
+      )(state);
       await run(
         windowsTool("curl.exe"),
         [

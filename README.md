@@ -56,6 +56,8 @@ README의 AI 설치 가이드를 따라 최신 정식 릴리스를 설치하고,
 
 설치와 실행 절차는 [AI 설치 가이드](INSTALL.md), 개발 방법은 [기여 가이드](CONTRIBUTING.md)에 모았습니다.
 
+Windows 로컬 도메인 자동 설정은 현재 `main`의 변경 사항이며 다음 Release부터 배포됩니다. 기존 `v0.1.0` 설치 파일은 그대로 유지하며, Windows에서는 localhost로 이용합니다.
+
 ## 처음 열었다면
 
 1. 앱에서 Jira 사이트·Atlassian 이메일·API 토큰을 입력해 연결합니다. [토큰 발급](https://id.atlassian.com/manage-profile/security/api-tokens)은 본인이 진행하고, 토큰은 AI 대화에 붙여넣지 않습니다.

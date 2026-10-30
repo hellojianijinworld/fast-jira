@@ -39,7 +39,17 @@ const env = {
 };
 const cli = join(home, "tools/node_modules/portless/dist/cli.js");
 try {
+  // CI는 대화형 화면이 없어 일회성 관리자 환경의 컴퓨터 인증서 저장소를 사용한다.
+  const trust = async (state: string) => {
+    const result = spawnSync(
+      "certutil.exe",
+      ["-addstore", "Root", join(state, "windows-cert.pem")],
+      { stdio: "inherit", timeout: 30000 },
+    );
+    assert.equal(result.status, 0);
+  };
   const result = await configureLocalDomain(home, port, true, instance, {
+    trust,
     verify: async (state, expected) => {
       const valid = await verifyAddress(state, expected);
       if (!valid) {
@@ -86,10 +96,12 @@ try {
   assert.equal(certificate.issuer, certificate.subject);
   assert.equal(certificate.checkHost("fast-jira.local"), "fast-jira.local");
   assert.equal(certificate.checkHost("another.local"), undefined);
-  const again = await configureLocalDomain(home, port, true, instance);
+  const again = await configureLocalDomain(home, port, true, instance, {
+    trust,
+  });
   assert.equal(again.url, result.url);
   console.log(
-    "Windows: hosts·HTTPS 프록시·인증서 신뢰·실제 응답·재실행 통과. UAC 클릭은 미검증.",
+    "Windows: hosts·HTTPS 프록시·인증서 신뢰·실제 응답·재실행 통과. UAC·현재 사용자 인증서 승인 UI는 미검증.",
   );
 } finally {
   for (const args of [
@@ -102,6 +114,16 @@ try {
       timeout: 30000,
       stdio: "ignore",
     });
+  const certificateFile = join(home, "config/portless/windows-cert.pem");
+  const certificate = await readFile(certificateFile)
+    .then((bytes) => new X509Certificate(bytes))
+    .catch(() => null);
+  if (certificate)
+    spawnSync(
+      "certutil.exe",
+      ["-delstore", "Root", certificate.fingerprint.replaceAll(":", "")],
+      { stdio: "ignore", timeout: 30000 },
+    );
   server.kill();
   await once(server, "exit");
   await rm(home, { recursive: true, force: true });

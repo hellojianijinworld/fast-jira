@@ -4,6 +4,8 @@
 
 ## 완료 기준과 지원 범위
 
+Windows 로컬 도메인 자동 설정은 `main` 개발 버전에 반영되어 있으며 다음 Release에 포함합니다. 기존 정식 `v0.1.0` ZIP에는 포함되지 않으므로 해당 배포본의 Windows 설치는 localhost로 완료합니다.
+
 - Node.js 24.22.2와 현재 AI 플랫폼의 CLI. 일반 설치·업데이트에는 Git과 npm 빌드가 필요하지 않습니다. macOS·Windows 선택 도메인의 최초 Portless 설치에는 npm이 필요하며 공식 Node 배포본에 포함됩니다. 공개 배포 파일에는 GitHub 로그인이 필요하지 않습니다.
 - macOS·Windows·Linux에서 Node 백그라운드 실행을 제공합니다. OS 서비스·로그인 훅·예약 작업은 등록하지 않습니다. 재부팅한 뒤에는 Managing으로 다시 시작합니다. Windows·Linux 실기기 검증 여부는 따로 보고합니다.
 - API 토큰이 없어도 앱과 플러그인 설치는 완료할 수 있습니다. 인증 전 상태를 연결 성공으로 보고하지 마세요.
