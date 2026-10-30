@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { X509Certificate } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ try {
             "--noproxy",
             "fast-jira.local",
             "--cacert",
-            join(state, "ca.pem"),
+            join(state, "windows-cert.pem"),
             "--max-time",
             "10",
             "https://fast-jira.local/api/health",
@@ -78,6 +79,13 @@ try {
     },
   });
   assert.equal(result.url, "https://fast-jira.local", result.message);
+  const certificate = new X509Certificate(
+    await readFile(join(home, "config/portless/windows-cert.pem")),
+  );
+  assert.equal(certificate.ca, false);
+  assert.equal(certificate.issuer, certificate.subject);
+  assert.equal(certificate.checkHost("fast-jira.local"), "fast-jira.local");
+  assert.equal(certificate.checkHost("another.local"), undefined);
   const again = await configureLocalDomain(home, port, true, instance);
   assert.equal(again.url, result.url);
   console.log(

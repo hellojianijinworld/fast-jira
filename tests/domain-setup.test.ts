@@ -273,7 +273,7 @@ test("Windows는 UAC 승인 후 현재 사용자 인증서를 신뢰하고 실�
         x.command.endsWith("certutil.exe") &&
         x.args.includes("-user") &&
         x.args.includes("Root") &&
-        x.args.some((a) => a.endsWith("fast-jira_local.pem")),
+        x.args.some((a) => a.endsWith("windows-cert.pem")),
     ),
   );
   assert(

@@ -84,7 +84,19 @@ if (!$openssl) { throw 'Fast Jira 로컬 HTTPS 주소에는 OpenSSL이 필요해
     powershellArguments(`$ErrorActionPreference='Stop'
 $openssl=[IO.File]::ReadAllText(${quote(`${env.PORTLESS_STATE_DIR}/openssl-path.txt`)})
 $env:PATH=[IO.Path]::GetDirectoryName($openssl)+';'+$env:PATH
-& ${quote(process.execPath)} ${quote(cli)} proxy start --port 443 --tld local --skip-trust
+$cert=${quote(`${env.PORTLESS_STATE_DIR}/windows-cert.pem`)}
+$key=${quote(`${env.PORTLESS_STATE_DIR}/windows-key.pem`)}
+$renew=!(Test-Path -LiteralPath $cert) -or !(Test-Path -LiteralPath $key)
+if (!$renew) { & $openssl x509 -checkend 86400 -noout -in $cert; $renew=$LASTEXITCODE -ne 0 }
+if ($renew) {
+  & $openssl req -x509 -newkey rsa:2048 -nodes -days 365 -keyout $key -out $cert -subj '/CN=fast-jira.local' -addext 'subjectAltName=DNS:fast-jira.local' -addext 'basicConstraints=critical,CA:FALSE' -addext 'extendedKeyUsage=serverAuth'
+  if ($LASTEXITCODE -ne 0) { exit 1 }
+  if (Test-Path -LiteralPath ${quote(`${env.PORTLESS_STATE_DIR}/proxy.pid`)}) {
+    & ${quote(process.execPath)} ${quote(cli)} proxy stop --port 443
+    if ($LASTEXITCODE -ne 0) { exit 1 }
+  }
+}
+& ${quote(process.execPath)} ${quote(cli)} proxy start --port 443 --tld local --skip-trust --cert $cert --key $key
 exit $LASTEXITCODE
 `),
     env,

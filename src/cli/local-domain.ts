@@ -56,7 +56,7 @@ async function readDomainHealth(state: string) {
       "--noproxy",
       "fast-jira.local",
       "--cacert",
-      join(state, "ca.pem"),
+      join(state, process.platform === "win32" ? "windows-cert.pem" : "ca.pem"),
       "--max-time",
       "10",
       `${LOCAL_DOMAIN}/api/health`,
@@ -160,12 +160,7 @@ export async function configureLocalDomain(
         throw new Error("접속 검증에 실패했어요.");
       await run(
         windowsTool("certutil.exe"),
-        [
-          "-user",
-          "-addstore",
-          "Root",
-          join(state, "host-certs/fast-jira_local.pem"),
-        ],
+        ["-user", "-addstore", "Root", join(state, "windows-cert.pem")],
         env,
       );
       await run(
