@@ -1,5 +1,6 @@
 import { execFile, spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -8,6 +9,8 @@ import {
   trustLocalCertificate,
   verifyLocalCertificate,
 } from "./certificate-trust.ts";
+
+import { startWindowsDomain, windowsTool } from "./windows-domain.ts";
 
 export const LOCAL_DOMAIN = "https://fast-jira.local";
 const PORTLESS_VERSION = "0.15.11";
@@ -44,7 +47,7 @@ export function npmScript(node: string) {
 const curl = promisify(execFile);
 async function readDomainHealth(state: string) {
   const { stdout } = await curl(
-    "/usr/bin/curl",
+    process.platform === "win32" ? windowsTool("curl.exe") : "/usr/bin/curl",
     [
       "--disable",
       "--silent",
@@ -95,11 +98,12 @@ export async function configureLocalDomain(
       message:
         "로컬 도메인은 Node.js 24 이상에서 설정할 수 있어요. localhost로 실행했어요.",
     };
-  if ((options.platform ?? process.platform) !== "darwin")
+  const platform = options.platform ?? process.platform;
+  if (platform !== "darwin" && platform !== "win32")
     return {
       ...fallback,
       message:
-        "이 OS에서는 로컬 도메인의 시스템 인증창을 지원하지 않아 localhost로 실행했어요.",
+        "이 OS의 로컬 도메인 자동 설정은 아직 지원하지 않아 localhost로 실행했어요.",
     };
   const run = options.run ?? execute,
     prefix = join(home, "tools"),
@@ -117,6 +121,7 @@ export async function configureLocalDomain(
   for (const key of Object.keys(env))
     if (key.startsWith("JIRA_") || key === "NODE_OPTIONS") delete env[key];
   try {
+    if (platform === "win32") await mkdir(state, { recursive: true });
     if (!existsSync(cli)) {
       const npm = npmScript(process.execPath);
       if (!npm && !options.run) throw new Error("npm을 찾지 못했어요.");
@@ -134,6 +139,52 @@ export async function configureLocalDomain(
         ],
         env,
       );
+    }
+    if (platform === "win32") {
+      let connected = false;
+      if (existsSync(join(state, "proxy.pid"))) {
+        try {
+          await run(
+            process.execPath,
+            [cli, "alias", "fast-jira", String(port)],
+            env,
+          );
+          connected = await (options.verify ?? verifyAddress)(state, instance);
+        } catch {
+          /* 처음 설정하거나 hosts 연결을 복구할 때만 승인을 요청한다. */
+        }
+      }
+      if (!connected) await startWindowsDomain(cli, port, env, run);
+      if (!(await (options.verify ?? verifyAddress)(state, instance)))
+        throw new Error("접속 검증에 실패했어요.");
+      await run(
+        windowsTool("certutil.exe"),
+        [
+          "-user",
+          "-addstore",
+          "Root",
+          join(state, "host-certs/fast-jira_local.pem"),
+        ],
+        env,
+      );
+      await run(
+        windowsTool("curl.exe"),
+        [
+          "--disable",
+          "--fail",
+          "--silent",
+          "--show-error",
+          "--noproxy",
+          "fast-jira.local",
+          "--max-time",
+          "10",
+          "--output",
+          "NUL",
+          `${LOCAL_DOMAIN}/api/health`,
+        ],
+        env,
+      );
+      return { url: LOCAL_DOMAIN, message: "로컬 도메인 연결을 확인했어요." };
     }
     // OS 인증창만 사용한다. 앱 서버·npm 설치는 일반 사용자 권한을 유지한다.
     const user = userInfo();

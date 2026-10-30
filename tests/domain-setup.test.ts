@@ -143,7 +143,7 @@ test("시스템 인증 취소는 수동 작업 없이 localhost로 끝난다", a
 });
 
 test("인증창 미지원 OS에서는 터미널 승인을 요청하지 않는다", async () => {
-  for (const platform of ["win32", "linux"] as const) {
+  for (const platform of ["linux"] as const) {
     const result = await configureLocalDomain(
       "/tmp/example",
       4173,
@@ -241,4 +241,66 @@ test("도메인 응답은 같은 앱·인스턴스인 경우에만 인정한다"
     }),
     false,
   );
+});
+
+test("Windows는 UAC 승인 후 현재 사용자 인증서를 신뢰하고 실제 연결을 검증한다", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "jira user's folder-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const calls: { command: string; args: string[] }[] = [];
+  const result = await configureLocalDomain(home, 4173, true, "mine", {
+    platform: "win32",
+    major: 24,
+    run: async (command, args) => {
+      calls.push({ command, args });
+    },
+    verify: async () => true,
+  });
+  assert.equal(result.url, "https://fast-jira.local");
+  const scripts = calls
+    .filter((x) => x.command.endsWith("powershell.exe"))
+    .map((x) => Buffer.from(x.args.at(-1) ?? "", "base64").toString("utf16le"));
+  assert(
+    scripts.some(
+      (x) =>
+        x.includes("-Verb RunAs") &&
+        x.includes("-Wait") &&
+        x.includes("ExitCode"),
+    ),
+  );
+  assert(
+    calls.some(
+      (x) =>
+        x.command.endsWith("certutil.exe") &&
+        x.args.includes("-user") &&
+        x.args.includes("Root") &&
+        x.args.some((a) => a.endsWith("fast-jira_local.pem")),
+    ),
+  );
+  assert(
+    calls.some(
+      (x) =>
+        x.command.endsWith("curl.exe") &&
+        !x.args.includes("--cacert") &&
+        !x.args.includes("-k"),
+    ),
+  );
+  assert(
+    !calls.some((x) => x.command.includes("osascript") || x.command === "sudo"),
+  );
+});
+
+test("Windows UAC 취소 또는 OS 인증서 검증 실패는 localhost로 복귀한다", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "jira-windows-cancel-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  for (const fail of ["powershell.exe", "certutil.exe", "curl.exe"]) {
+    const result = await configureLocalDomain(home, 4173, true, "mine", {
+      platform: "win32",
+      major: 24,
+      run: async (command) => {
+        if (command.endsWith(fail)) throw new Error("denied");
+      },
+      verify: async () => true,
+    });
+    assert.equal(result.url, "http://localhost:4173");
+  }
 });

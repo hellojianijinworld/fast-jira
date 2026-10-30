@@ -20,3 +20,17 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm run package:plugin
+  windows-domain:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node --import tsx --test tests/domain-setup.test.ts tests/windows-domain.test.ts
+      - run: node --import tsx scripts/check-windows-domain.ts
