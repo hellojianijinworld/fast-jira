@@ -1,7 +1,8 @@
 import { shortcutLabel } from "../domain/commands.ts";
-import { element, externalLink, uiIcon } from "./dom.ts";
+import { feedbackUrl, PRODUCT_URL } from "../domain/product.ts";
+import { actionButton, element, externalLink, uiIcon } from "./dom.ts";
 
-export function helpContent(): HTMLElement {
+export function helpContent(options: { start?: () => void } = {}): HTMLElement {
   const content = element("div", "help-content");
   const intro = element(
     "p",
@@ -47,13 +48,16 @@ export function helpContent(): HTMLElement {
     list.append(element("dt", "", name), element("dd", "", keys));
   shortcuts.append(list);
   const links = element("footer", "help-links");
-  const github = externalLink(
-    "https://github.com/hellojianijinworld/fast-jira",
-    "",
-    "button-link outline",
-  );
+  const github = externalLink(PRODUCT_URL, "", "button-link outline");
   github.append(uiIcon("external-link"), document.createTextNode("GitHub"));
-  links.append(github);
+  if (options.start) {
+    const start = actionButton("시작 안내 다시 보기", "circle-help", {
+      variant: "outline",
+    });
+    start.addEventListener("click", options.start);
+    links.append(start);
+  }
+  links.append(github, externalLink(feedbackUrl("bug"), "버그 제보"));
   content.append(intro, features, privacy, shortcuts, links);
   return content;
 }

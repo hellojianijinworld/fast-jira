@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 설치 안내 먼저 확인하기
+    url: https://github.com/hellojianijinworld/fast-jira/blob/main/INSTALL.md
+    about: AI와 함께 설치하는 순서와 지원 환경을 확인해 주세요.

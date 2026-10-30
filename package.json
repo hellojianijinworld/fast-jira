@@ -1,14 +1,14 @@
 {
   "name": "fast-jira",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": "24.22.2"
   },
   "scripts": {
     "dev": "tsx watch src/server/dev.ts",
-    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/server/mcp.ts --outDir dist/server --emptyOutDir false && vite build --ssr src/cli/main.ts --outDir dist/cli && vite build --ssr src/cli/release-main.ts --outDir dist/cli --emptyOutDir false && vite build --ssr src/cli/mcp-bridge.ts --outDir dist/cli --emptyOutDir false",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/server/main.ts --outDir dist/server && vite build --ssr src/server/mcp.ts --outDir dist/server --emptyOutDir false && vite build --ssr src/cli/main.ts --outDir dist/cli && vite build --ssr src/cli/release-main.ts --outDir dist/cli --emptyOutDir false && vite build --ssr src/cli/mcp-bridge.ts --outDir dist/cli --emptyOutDir false && vite build --ssr src/cli/download-main.ts --outDir dist/cli --emptyOutDir false",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "lint": "biome check .",
@@ -21,7 +21,9 @@
     "pretest": "npm run build",
     "prepare": "node scripts/install-hooks.mjs",
     "check:commit": "node scripts/check-commit.mjs",
-    "package:plugin": "npm run build && node scripts/package-plugin.mjs"
+    "package:plugin": "npm run build && node scripts/package-plugin.mjs",
+    "package:release": "npm run package:plugin && tsx scripts/package-release.ts",
+    "smoke:release": "tsx scripts/smoke-release.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
@@ -34,6 +36,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "emoji-picker-element": "^1.29.1",
-    "emoji-picker-element-data": "^1.8.0"
+    "emoji-picker-element-data": "^1.8.0",
+    "fflate": "0.8.3"
   }
 }

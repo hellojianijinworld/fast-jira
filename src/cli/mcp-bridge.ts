@@ -8,12 +8,14 @@ import {
   ElicitRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { APP_VERSION } from "../domain/product.ts";
 import { createJiraTools } from "../server/jira-tools.ts";
-import { installationPaths } from "./config.ts";
+import { assertNodeSupported, installationPaths } from "./config.ts";
 import { readServiceConfig } from "./service.ts";
 
+assertNodeSupported();
 const server = new Server(
-  { name: "fast-jira", version: "0.2.0" },
+  { name: "fast-jira", version: APP_VERSION },
   { capabilities: { tools: {} } },
 );
 type Connection = { remote: Client; transport: StreamableHTTPClientTransport };
@@ -37,7 +39,7 @@ async function client() {
       server.getClientCapabilities()?.elicitation,
     );
     const remote = new Client(
-      { name: "fast-jira-plugin", version: "0.2.0" },
+      { name: "fast-jira-plugin", version: APP_VERSION },
       { capabilities: supportsApproval ? { elicitation: { form: {} } } : {} },
     );
     if (supportsApproval)

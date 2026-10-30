@@ -1,0 +1,37 @@
+name: 개선·기능 제안
+description: 더 편하게 쓰기 위한 아이디어를 알려주세요.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        API 토큰, Jira 사이트·계정 정보, 회사의 이슈 본문·대화·원본 로그는 올리지 마세요.
+        캡처는 민감한 정보를 가린 뒤 첨부해 주세요. 이 내용은 공개 이슈로 등록돼요.
+  - type: input
+    id: version
+    attributes:
+      label: Fast Jira 버전
+      placeholder: "예: 0.1.0"
+  - type: input
+    id: environment
+    attributes:
+      label: 사용 환경
+      placeholder: "예: macOS / Chrome / Codex"
+  - type: textarea
+    id: problem
+    attributes:
+      label: 겪고 있는 불편
+      description: 어떤 상황에서 불편했나요?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 원하는 동작
+      description: 어떻게 바뀌면 좋을까요?
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 추가 설명
+      description: 필요한 경우 민감한 정보를 가린 캡처를 첨부해 주세요.

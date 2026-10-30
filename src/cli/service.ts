@@ -14,8 +14,8 @@ import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import {
+  assertNodeSupported,
   type InstallationPaths,
-  nodeSupported,
   parseServiceConfig,
   type ServiceConfig,
 } from "./config.ts";
@@ -329,8 +329,7 @@ export async function setupService(
   paths: InstallationPaths,
   port?: number,
 ): Promise<void> {
-  if (!nodeSupported(process.versions.node))
-    throw new Error("Node.js 22.12 이상이 필요합니다.");
+  assertNodeSupported();
   await migrateConfiguration(paths);
   const old = await readServiceConfig(paths);
   const config = parseServiceConfig({
@@ -414,8 +413,7 @@ export async function withServiceLock<T>(
 
 export async function doctor(source: string) {
   await validateRuntime(source);
-  if (!nodeSupported(process.versions.node))
-    throw new Error("Node.js 22.12 이상이 필요합니다.");
+  assertNodeSupported();
   return {
     platform: process.platform,
     node: process.versions.node,

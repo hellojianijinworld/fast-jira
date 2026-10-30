@@ -1,6 +1,6 @@
 {
   "name": "fast-jira",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "개인 Jira 작업을 빠르게 탐색하고 수정하는 로컬 앱. Setup, Managing, Contribute를 제공합니다.",
   "author": {
     "name": "hellojianijinworld",

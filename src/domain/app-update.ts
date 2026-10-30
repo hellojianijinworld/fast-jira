@@ -1,7 +1,8 @@
+import { PRODUCT_REPOSITORY } from "./product.ts";
 import { record } from "./validation.ts";
 
 export const UPDATE_INTERVAL = 5 * 60 * 1000;
-export const UPDATE_REPOSITORY = "hellojianijinworld/fast-jira";
+export const UPDATE_REPOSITORY = PRODUCT_REPOSITORY;
 export interface AppRelease {
   version: string;
   commit: string;

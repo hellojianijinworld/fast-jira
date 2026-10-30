@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   copyFile,
@@ -9,12 +9,11 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   type AppRelease,
   decodeUpdateJob,
-  UPDATE_REPOSITORY,
   type UpdateJob,
   updating,
   versionParts,
@@ -22,6 +21,7 @@ import {
 import { record } from "../domain/validation.ts";
 import { installationPaths } from "./config.ts";
 import { PluginUpdateError, withPluginUpdates } from "./plugin-update.ts";
+import { bindMarketplace, downloadRelease } from "./release-artifact.ts";
 import { setupService, withServiceLock } from "./service.ts";
 
 interface StoredUpdateJob extends UpdateJob {
@@ -109,32 +109,16 @@ function updateEnvironment(environment: NodeJS.ProcessEnv) {
     join(homedir(), ".local/bin"),
     "/usr/local/bin",
     "/opt/homebrew/bin",
-  ].join(":");
+  ].join(delimiter);
   return env;
 }
-type Execute = (
-  command: string,
-  args: string[],
-  cwd: string,
-  env: NodeJS.ProcessEnv,
-) => Promise<void>;
-const execute: Execute = async (command, args, cwd, env) => {
-  const result = spawnSync(command, args, {
-    cwd,
-    env,
-    stdio: "ignore",
-    timeout: 180000,
-  });
-  if (result.status !== 0)
-    throw new Error(`${command} 실행을 완료하지 못했어요.`);
-};
-/** 기존 checkout을 수정하지 않고 고정 커밋을 별도 폴더에서 빌드한 뒤 교체한다. */
+/** 사전 빌드 ZIP을 검증한 뒤 앱과 플러그인을 함께 교체한다. */
 export async function runReleaseUpdate(
   home: string,
   id: string,
   options: {
     environment?: NodeJS.ProcessEnv;
-    execute?: Execute;
+    fetcher?: typeof fetch;
     install?: (source: string) => Promise<void>;
     plugins?: typeof withPluginUpdates;
   } = {},
@@ -151,33 +135,14 @@ export async function runReleaseUpdate(
       job.pid = process.pid;
       await writeUpdateJob(home, job);
       const source = join(work, "source");
-      await mkdir(source, { recursive: true, mode: 0o700 });
-      const run = options.execute ?? execute,
-        env = updateEnvironment(options.environment ?? process.env);
-      for (const args of [
-        ["init"],
-        [
-          "fetch",
-          "--depth",
-          "1",
-          `https://github.com/${UPDATE_REPOSITORY}.git`,
-          job.commit,
-        ],
-        ["checkout", "--detach", job.commit],
-      ])
-        await run("git", args, source, env);
-      async function verifyVersion() {
-        const pkg = record(
-          JSON.parse(await readFile(join(source, "package.json"), "utf8")),
-        );
-        if (pkg.name !== "fast-jira" || pkg.version !== job?.version)
-          throw new Error("선택한 배포 버전과 코드가 일치하지 않습니다.");
-      }
-      await verifyVersion();
-      await run("npm", ["ci", "--ignore-scripts"], source, env);
-      await run("npm", ["run", "build"], source, env);
-      await verifyVersion();
-      await run(process.execPath, ["scripts/package-plugin.mjs"], source, env);
+      await mkdir(work, { recursive: true, mode: 0o700 });
+      const env = updateEnvironment(options.environment ?? process.env);
+      await downloadRelease(
+        { version: job.version, commit: job.commit },
+        source,
+        options.fetcher,
+      );
+      await bindMarketplace(join(source, "dist/marketplace"), home);
       job.phase = "installing";
       job.message = "앱과 설치된 Fast Jira 플러그인을 업데이트하고 있어요…";
       await writeUpdateJob(home, job);
@@ -186,7 +151,9 @@ export async function runReleaseUpdate(
         job.version,
         env,
         () =>
-          (options.install ?? ((root) => setupService(root, paths)))(source),
+          (options.install ?? ((root) => setupService(root, paths)))(
+            join(source, "dist/marketplace/plugins/codex/fast-jira"),
+          ),
       );
       job.phase = "complete";
       job.message =

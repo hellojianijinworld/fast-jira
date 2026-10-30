@@ -1,10 +1,12 @@
 import { createInterface } from "node:readline";
+import { assertNodeSupported } from "../cli/config.ts";
 import { loadEnvironment } from "./environment.ts";
 import { createJiraClient } from "./jira-client.ts";
 import { createJiraService } from "./jira-service.ts";
 import { createJiraTools } from "./jira-tools.ts";
 import { createMcpHandler } from "./mcp-handler.ts";
 
+assertNodeSupported();
 const credentials = loadEnvironment();
 const handler = createMcpHandler(
   createJiraClient(credentials),

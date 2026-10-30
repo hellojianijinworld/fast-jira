@@ -24,6 +24,14 @@ test("배포본은 플랫폼별 manifest와 동일한 공통 스킬만 포함하
   });
   assert.equal(result.status, 0, result.stderr);
   const root = resolve("dist/marketplace/plugins");
+  const sourcePkg = JSON.parse(await readFile("package.json", "utf8"));
+  const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
+  assert.equal(
+    (await readFile(".nvmrc", "utf8")).trim(),
+    sourcePkg.engines.node,
+  );
+  assert.equal(lock.version, sourcePkg.version);
+  assert.equal(lock.packages[""].version, sourcePkg.version);
   for (const platform of ["codex", "claude"]) {
     const plugin = join(root, platform, "fast-jira");
     const files = await listFiles(plugin);
@@ -59,6 +67,8 @@ test("배포본은 플랫폼별 manifest와 동일한 공통 스킬만 포함하
       await readFile(join(plugin, `.${platform}-plugin/plugin.json`), "utf8"),
     );
     assert.equal(manifest.version, pkg.version);
+    assert.equal(pkg.version, sourcePkg.version);
+    assert.deepEqual(pkg.engines, sourcePkg.engines);
     assert.equal(pkg.license, "MIT");
     const notices = await readFile(
       join(plugin, "THIRD_PARTY_NOTICES.txt"),

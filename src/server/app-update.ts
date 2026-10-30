@@ -7,6 +7,7 @@ import {
   type UpdateJob,
   updating,
 } from "../domain/app-update.ts";
+import { hasReleaseArtifacts } from "../domain/release-artifact.ts";
 import { record } from "../domain/validation.ts";
 
 export class AppUpdateError extends Error {
@@ -112,6 +113,16 @@ export function createAppUpdater(options: {
             throw new Error("배포 버전 정보를 확인하지 못했어요.");
           const version = data.tag_name.replace(/^v/, "");
           if (compareVersions(version, options.currentVersion) > 0) {
+            if (!hasReleaseArtifacts(data.assets, version)) {
+              state = {
+                ...state,
+                phase: "unavailable",
+                release: null,
+                message: "아직 실행용 배포 파일이 준비되지 않았어요.",
+              };
+              state.checkedAt = now();
+              return status();
+            }
             const pinned = await fetcher(
               `https://api.github.com/repos/${UPDATE_REPOSITORY}/commits/${encodeURIComponent(data.tag_name)}`,
               {
@@ -167,7 +178,7 @@ export function createAppUpdater(options: {
   async function install(input: unknown): Promise<AppUpdateStatus> {
     if (!options.supported)
       throw new AppUpdateError(
-        "설치된 macOS 서비스에서 업데이트할 수 있어요. 소스 실행은 Managing 가이드를 이용해 주세요.",
+        "설치된 Fast Jira 서비스에서 업데이트할 수 있어요. 소스 실행은 Managing 가이드를 이용해 주세요.",
         409,
       );
     if (installing)

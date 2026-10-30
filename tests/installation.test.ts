@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  assertNodeSupported,
   installationPaths,
   nodeSupported,
   parseServiceConfig,
@@ -20,8 +21,12 @@ test("설치 경로는 플랫폼과 무관한 개인 설정을 분리하고 laun
   assert.ok(first.plist.startsWith("/Users/test/Library/LaunchAgents/"));
   assert.notEqual(first.label, second.label);
   assert.equal(nodeSupported("22.11.0"), false);
-  assert.equal(nodeSupported("22.12.0"), true);
-  assert.equal(nodeSupported("24.0.0"), true);
+  assert.equal(nodeSupported("22.12.0"), false);
+  assert.equal(nodeSupported("24.22.1"), false);
+  assert.equal(nodeSupported("24.22.2"), true);
+  assert.equal(nodeSupported("26.3.0"), false);
+  assert.throws(() => assertNodeSupported("24.22.1"), /24\.22\.2/);
+  assert.doesNotThrow(() => assertNodeSupported("24.22.2"));
 });
 
 test("설치 설정과 plist는 잘못된 포트를 거부하고 공백·XML 특수문자가 포함된 경로를 보존한다", () => {

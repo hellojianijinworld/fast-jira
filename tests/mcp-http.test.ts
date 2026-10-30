@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { APP_VERSION } from "../src/domain/product.ts";
 import { createHttpServer } from "../src/server/http.ts";
 import { createJiraService } from "../src/server/jira-service.ts";
 import type { JiraToolDefinition } from "../src/server/jira-tools.ts";
@@ -148,6 +149,7 @@ test("같은 웹 서버의 MCP는 인증을 요구하며 HTTP와 플러그인 �
     });
     try {
       await client.connect(transport);
+      assert.equal(client.getServerVersion()?.version, APP_VERSION);
       assert.ok(
         (await client.listTools()).tools.some(
           (tool) => tool.name === "jira_comment",

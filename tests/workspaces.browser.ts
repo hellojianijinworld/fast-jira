@@ -14,12 +14,15 @@ import "../src/client/styles.css";
 const root = document.querySelector<HTMLElement>("#app"),
   results = document.querySelector<HTMLOListElement>("#results");
 if (!root || !results) throw new Error("검사 화면 누락");
+const preview = new URLSearchParams(location.search);
 const values = new Map<string, string>([
   [
     "fastJira:filters:fixture.atlassian.net:my-account",
     JSON.stringify({ configured: true, projects: ["TEST"], scope: "all" }),
   ],
 ]);
+if (preview.has("setup")) values.clear();
+if (preview.get("theme") === "dark") values.set("fastJira:theme", "dark");
 const storage = {
   getItem: (key: string) => values.get(key) ?? null,
   setItem: (key: string, value: string) => {
@@ -110,6 +113,12 @@ function button(label: string, scope: ParentNode = document) {
       item.getAttribute("aria-label") === label,
   );
   assert(found, `버튼 누락 ${label}`);
+  const menu = found.closest(".app-menu-panel");
+  if (menu && !menu.matches(":popover-open"))
+    found
+      .closest(".app-menu")
+      ?.querySelector<HTMLButtonElement>('[aria-label="메뉴"]')
+      ?.click();
   return found;
 }
 let updateStatus: AppUpdateStatus = {
@@ -134,6 +143,7 @@ const updates = appUpdate(
 let app = await createApp(root, api, storage, undefined, updates);
 let failures = 0;
 async function check(name: string, run: () => Promise<void>) {
+  if (preview.has("preview")) return;
   try {
     await run();
     results?.append(element("li", "", `통과 · ${name}`));
@@ -144,6 +154,142 @@ async function check(name: string, run: () => Promise<void>) {
     );
   }
 }
+await check("자주 쓰지 않는 동작은 메뉴로 모으고 키보드로 닫는다", async () => {
+  const trigger = button("메뉴");
+  assert(
+    !root.querySelector('.nav-tools > [aria-label="프로젝트 선택"]'),
+    "프로젝트 버튼이 상단에 남음",
+  );
+  trigger.click();
+  await wait();
+  const menu = root.querySelector<HTMLElement>(".app-menu-panel");
+  assert(menu, "메뉴 누락");
+  assert(menu.matches(":popover-open"), "메뉴가 열리지 않음");
+  assert(menu.querySelector('[role="menuitem"]'), "메뉴 항목 없음");
+  menu.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  assert(!menu.matches(":popover-open"), "Escape로 메뉴가 닫히지 않음");
+  assert(document.activeElement === trigger, "메뉴 포커스가 복원되지 않음");
+});
+await check(
+  "문의 유형은 GitHub 양식으로 연결하고 Jira·계정 정보는 첨부하지 않는다",
+  async () => {
+    button("메뉴").click();
+    button("의견 보내기").click();
+    await wait();
+    const dialog = root.querySelector<HTMLDialogElement>(
+      'dialog[aria-label="의견 보내기"]',
+    );
+    assert(dialog?.open, "의견 보내기가 열리지 않음");
+    const links = [
+      ...dialog.querySelectorAll<HTMLAnchorElement>(".feedback-options a"),
+    ];
+    assert(links.length === 3, "문의 유형 누락");
+    for (const [i, template] of [
+      "bug.yml",
+      "feature.yml",
+      "question.yml",
+    ].entries()) {
+      const link = links[i];
+      assert(link, "문의 링크 누락");
+      const url = new URL(link.href);
+      assert(
+        url.origin === "https://github.com" &&
+          url.pathname === "/hellojianijinworld/fast-jira/issues/new",
+        "문의 대상 변경",
+      );
+      assert(url.searchParams.get("template") === template, "문의 양식 불일치");
+      assert(
+        [...url.searchParams.keys()].every((k) =>
+          ["template", "version"].includes(k),
+        ),
+        "민감 정보가 문의에 자동 첨부됨",
+      );
+      assert(
+        !url.href.includes("fixture.atlassian.net") &&
+          !url.href.includes("my-account"),
+        "계정 정보 노출",
+      );
+    }
+    button("닫기", dialog).click();
+  },
+);
+await check(
+  "최초 안내는 목록을 막지 않고 프로젝트·선택 설정을 기존 화면으로 연결한다",
+  async () => {
+    const host = element("div");
+    document.body.append(host);
+    const values = new Map<string, string>();
+    const local = {
+      getItem: (k: string) => values.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        values.set(k, v);
+      },
+    };
+    let first = await createApp(host, api, local);
+    try {
+      const guide = host.querySelector<HTMLElement>(".getting-started");
+      assert(guide && !guide.hidden, "최초 안내 누락");
+      assert(!host.querySelector("dialog[open]"), "안내가 목록을 가림");
+      button("프로젝트 선택", guide).click();
+      assert(
+        document.querySelector(".project-panel:popover-open"),
+        "프로젝트 선택 경로 누락",
+      );
+      await wait();
+      const menuTrigger = button("메뉴", host);
+      const projectsPanel = document.querySelector<HTMLElement>(
+        ".project-panel:popover-open",
+      );
+      assert(
+        menuTrigger.getAttribute("aria-controls") === projectsPanel?.id &&
+          menuTrigger.getAttribute("aria-expanded") === "true",
+        "프로젝트 선택의 앵커 상태가 메뉴 닫기로 덮임",
+      );
+      button(
+        "취소",
+        document.querySelector(".project-panel:popover-open") as HTMLElement,
+      ).click();
+      menuTrigger.click();
+      assert(
+        menuTrigger.getAttribute("aria-controls") ===
+          host.querySelector(".app-menu-panel")?.id,
+        "메뉴를 다시 열 때 controls가 복원되지 않음",
+      );
+      host
+        .querySelector<HTMLElement>(".app-menu-panel")
+        ?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+
+      button("화면 표시", guide).click();
+      assert(
+        host.querySelector('dialog[aria-label="설정"][open]'),
+        "화면 설정 연결 누락",
+      );
+      button("닫기", host.querySelector("dialog[open]") as HTMLElement).click();
+      button("시작하기", guide).click();
+      assert(guide.hidden, "시작 안내가 닫히지 않음");
+      first.destroy();
+      first = await createApp(host, api, local);
+      assert(
+        host.querySelector<HTMLElement>(".getting-started")?.hidden,
+        "완료한 최초 안내가 반복됨",
+      );
+      button("메뉴", host).click();
+      button("이용 안내", host).click();
+      button("시작 안내 다시 보기", host).click();
+      assert(
+        host.querySelector<HTMLElement>(".getting-started")?.hidden === false,
+        "시작 안내 재진입 누락",
+      );
+    } finally {
+      first.destroy();
+      host.remove();
+    }
+  },
+);
 await check(
   "유형 조회 실패가 성공한 단계 설정과 카드 색상을 버리지 않는다",
   async () => {
@@ -173,7 +319,7 @@ await check(
     assert(
       Math.abs(before.left - during.left) < 1 &&
         Math.abs(before.top - during.top) < 1,
-      "로딩 중 생성 버튼 위치 변경",
+      `로딩 중 생성 버튼 위치 변경 ${JSON.stringify({ before: { x: before.left, y: before.top }, during: { x: during.left, y: during.top }, scroll: document.scrollingElement?.scrollTop })}`,
     );
     assert(
       spinner.getBoundingClientRect().left >= during.right,
@@ -725,7 +871,7 @@ await check(
       const picker = dialog.querySelector<HTMLElement>(".workspace-icon-panel");
       assert(
         picker && getComputedStyle(picker).display === "none",
-        "선택 후 아이콘 창이 남음",
+        `선택 후 아이콘 창이 남음 ${picker?.matches(":popover-open")} ${picker ? getComputedStyle(picker).display : "없음"}`,
       );
       const name = dialog.querySelector<HTMLInputElement>(
         '[aria-label="뷰 이름"]',
@@ -889,5 +1035,6 @@ await check(
     );
   },
 );
+results.hidden = preview.has("preview");
 results.dataset.failures = String(failures);
 results.dataset.complete = "true";

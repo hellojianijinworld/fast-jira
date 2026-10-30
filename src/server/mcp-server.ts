@@ -9,6 +9,7 @@ import {
 import type { JsonValue } from "../domain/adf.ts";
 import type { ApprovalHandler } from "../domain/assistant-approval.ts";
 import type { AssistantExecution } from "../domain/assistant-execution.ts";
+import { APP_VERSION } from "../domain/product.ts";
 import { isRecord } from "../domain/validation.ts";
 import { callApprovedJiraTool } from "./jira-approvals.ts";
 import type { JiraToolDefinition } from "./jira-tools.ts";
@@ -25,7 +26,7 @@ export function createToolServer(
   approve?: ApprovalHandler,
 ) {
   const server = new Server(
-    { name: "fast-jira", version: "0.2.0" },
+    { name: "fast-jira", version: APP_VERSION },
     { capabilities: { tools: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

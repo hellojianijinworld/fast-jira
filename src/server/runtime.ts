@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { installationPaths } from "../cli/config.ts";
+import { assertNodeSupported, installationPaths } from "../cli/config.ts";
 import type { Credentials } from "../domain/connection.ts";
 import { createAssistantService } from "./assistant-service.ts";
 import { createConnection } from "./connection.ts";
@@ -11,6 +11,7 @@ import { createJiraTools } from "./jira-tools.ts";
 import { createMcpEndpoint } from "./mcp-server.ts";
 import { createRuntimeUpdater } from "./update-runtime.ts";
 export async function startApi() {
+  assertNodeSupported();
   let credentials: Credentials | null = null;
   try {
     credentials = loadEnvironment();

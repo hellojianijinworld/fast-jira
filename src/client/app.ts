@@ -5,6 +5,7 @@ import { sameIssue, updateFavorites } from "../domain/favorites.ts";
 import { branchDefaults } from "../domain/filters.ts";
 import type { Issue } from "../domain/issue.ts";
 import { listCacheKey, type ViewportAnchor } from "../domain/list-snapshot.ts";
+import { PRODUCT_URL } from "../domain/product.ts";
 import { withParticipantHydration } from "../domain/sync.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import {
@@ -16,14 +17,17 @@ import {
   type WorkspaceViews,
 } from "../domain/workspace-views.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
+import { createAppMenu } from "../ui/app-menu.ts";
 import type { AppUpdateUi } from "../ui/app-update.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { createIssueDialog } from "../ui/create-issue.ts";
-import { actionButton, element, iconButton } from "../ui/dom.ts";
+import { actionButton, element, externalLink, iconButton } from "../ui/dom.ts";
 import { favoriteButton, updateFavoriteButton } from "../ui/favorite-button.ts";
+import { feedbackContent } from "../ui/feedback.ts";
 import { createFilterPanel } from "../ui/filter-panel.ts";
+import { gettingStarted } from "../ui/getting-started.ts";
 import { helpContent } from "../ui/help.ts";
 import { issueCard } from "../ui/issue-card.ts";
 import { issueDetail } from "../ui/issue-detail.ts";
@@ -69,10 +73,10 @@ export async function createApp(
     tools = element("div", "nav-tools");
   const searchToggle = iconButton("검색", "search"),
     aiToggle = iconButton("AI 대화", "sparkles"),
-    projects = iconButton("프로젝트 선택", "folder"),
+    projects = actionButton("프로젝트 선택", "folder", { variant: "ghost" }),
     filters = iconButton("필터", "list-filter"),
-    help = iconButton("도움말", "circle-help"),
-    settings = iconButton("설정", "settings"),
+    help = actionButton("이용 안내", "circle-help", { variant: "ghost" }),
+    settings = actionButton("설정", "settings", { variant: "ghost" }),
     selection = iconButton("이슈 선택 모드", "check");
   searchToggle.title = `이슈 검색 (${shortcutLabel(navigator.platform)})`;
   searchToggle.setAttribute("aria-keyshortcuts", "Control+k Meta+k");
@@ -81,16 +85,25 @@ export async function createApp(
     "aria-keyshortcuts",
     shortcutAria(navigator.platform, "ai"),
   );
-  tools.append(
-    searchToggle,
-    aiToggle,
+  const feedback = actionButton("의견 보내기", "message-circle", {
+    variant: "ghost",
+  });
+  const checkUpdate = actionButton("업데이트 확인", "circle-arrow-up", {
+    variant: "ghost",
+  });
+  const github = externalLink(PRODUCT_URL, "GitHub");
+  const appMenu = createAppMenu([
     projects,
-    filters,
-    selection,
-    help,
     settings,
-  );
-  if (updates) tools.insertBefore(updates.trigger, settings);
+    ...(updates ? [checkUpdate] : []),
+    null,
+    help,
+    feedback,
+    github,
+  ]);
+  tools.append(searchToggle, aiToggle, filters, selection);
+  if (updates) tools.append(updates.trigger);
+  tools.append(appMenu.element);
   nav.append(element("h1", "", "Fast Jira"), tools);
   const workspace = element("main", "workspace"),
     browse = element("section", "browse");
@@ -966,14 +979,29 @@ export async function createApp(
   });
   searchToggle.addEventListener("click", () => commands.open("search"));
   aiToggle.addEventListener("click", () => commands.open("ai"));
-  projects.addEventListener("click", () => projectPanel.open(projects));
+  projects.addEventListener("click", () => projectPanel.open(appMenu.trigger));
   filters.addEventListener("click", () => panel.open(filters));
-  let firstSetup = !saved.configured;
+  const guide = gettingStarted({
+    projects: () => projectPanel.open(appMenu.trigger),
+    filters: () => panel.open(filters),
+    display: () => showSettings(),
+    finish: () => {
+      store.saveFilters(list.filters, true);
+      guide.hidden = true;
+    },
+  });
+  guide.hidden = saved.configured;
+  browseContent.prepend(guide);
+  const showGuide = () => {
+    if (popup.open) popup.close();
+    guide.hidden = false;
+    guide.scrollIntoView({ block: "nearest" });
+    guide
+      .querySelector<HTMLButtonElement>("button")
+      ?.focus({ preventScroll: true });
+  };
   popup.addEventListener("close", () => {
     if (!destroyed && !popup.open) placeDetail();
-    if (!firstSetup) return;
-    firstSetup = false;
-    store.saveFilters(list.filters, true);
   });
   function showSettings(management = false) {
     const content = settingsContent(
@@ -984,13 +1012,13 @@ export async function createApp(
         applyPreferences();
         render();
       },
-      firstSetup ? () => popup.close() : undefined,
+      undefined,
       connectionForm(api, () => location.reload()),
       updates?.element,
       management ? "관리" : undefined,
     );
     showModal(popup, {
-      title: firstSetup ? "처음 설정" : "설정",
+      title: "설정",
       content: content.element,
       actions: content.actions,
     });
@@ -998,8 +1026,15 @@ export async function createApp(
   settings.addEventListener("click", () => showSettings());
   const showUpdates = () => showSettings(true);
   updates?.trigger.addEventListener("click", showUpdates);
+  checkUpdate.addEventListener("click", showUpdates);
+  feedback.addEventListener("click", () =>
+    showModal(popup, { title: "의견 보내기", content: feedbackContent() }),
+  );
   help.addEventListener("click", () => {
-    showModal(popup, { title: "Fast Jira 이용 안내", content: helpContent() });
+    showModal(popup, {
+      title: "Fast Jira 이용 안내",
+      content: helpContent({ start: showGuide }),
+    });
   });
   mobile.addEventListener("cancel", (event) => {
     event.preventDefault();
@@ -1111,7 +1146,6 @@ export async function createApp(
       activity.check(list.filters.projects),
     ]);
   };
-  if (firstSetup) showSettings();
   render();
   let metadataRevision = 0;
   async function refreshCatalog(projects: readonly string[], force = false) {
@@ -1191,6 +1225,7 @@ export async function createApp(
       window.removeEventListener("popstate", popstate);
       panel.destroy();
       projectPanel.destroy();
+      appMenu.destroy();
       workspaceNavigation?.destroy();
       updates?.trigger.removeEventListener("click", showUpdates);
       treeContext.destroy();

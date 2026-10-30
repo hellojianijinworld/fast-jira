@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import packageInfo from "../../package.json" with { type: "json" };
 
 export interface ServiceConfig {
   version: 1;
@@ -10,9 +11,16 @@ export interface ServiceConfig {
   publicUrl?: string;
 }
 
+export const REQUIRED_NODE_VERSION = packageInfo.engines.node;
+
 export function nodeSupported(version: string): boolean {
-  const [major = 0, minor = 0] = version.split(".").map(Number);
-  return major > 22 || (major === 22 && minor >= 12);
+  return version === REQUIRED_NODE_VERSION;
+}
+export function assertNodeSupported(version = process.versions.node): void {
+  if (!nodeSupported(version))
+    throw new Error(
+      `Node.js ${REQUIRED_NODE_VERSION} 버전으로 다시 실행해 주세요. 현재 ${version}입니다.`,
+    );
 }
 
 export function defaultHome() {

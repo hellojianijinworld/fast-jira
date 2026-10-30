@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import type { AdfDocument } from "../src/domain/adf.ts";
 import { adfMarkdown } from "../src/domain/adf-markdown.ts";
+import { APP_VERSION } from "../src/domain/product.ts";
 import { record } from "../src/domain/validation.ts";
 import { createJiraClient } from "../src/server/jira-client.ts";
 import { createMcpHandler } from "../src/server/mcp-handler.ts";
@@ -127,6 +128,7 @@ test("MCP 초기화·목록·오류·알림 처리는 조회 없이 동작한다
   );
   assert.ok(init);
   assert.equal(record(init.result).protocolVersion, "2025-06-18");
+  assert.equal(record(record(init.result).serverInfo).version, APP_VERSION);
   const list = await handler.handleLine(
     JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
   );

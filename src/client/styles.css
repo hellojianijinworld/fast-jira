@@ -541,7 +541,7 @@ dialog::backdrop {
   font-size: var(--font-size-12);
   white-space: nowrap;
 }
-@container (max-width: 560px) {
+@container (max-width: 700px) {
   .bulk-head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -1854,4 +1854,124 @@ dialog::backdrop {
   justify-content: flex-end;
   padding-top: var(--density-space-3);
   border-top: 1px solid var(--border);
+}
+
+/* 앱 메뉴와 GitHub 문의 */
+.app-menu {
+  display: flex;
+}
+.app-menu-panel {
+  padding: var(--space-2);
+}
+.app-menu-panel > button,
+.app-menu-panel > a {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--button-height);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-13);
+  text-decoration: none;
+}
+.app-menu-panel > :is(button, a):hover,
+.app-menu-panel > :is(button, a):focus-visible {
+  background: var(--hover);
+}
+.app-menu-panel hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: var(--space-2) 0;
+}
+.feedback-content {
+  display: grid;
+  gap: var(--space-4);
+}
+.feedback-content > p {
+  margin: 0;
+}
+.feedback-options {
+  display: grid;
+  gap: var(--space-2);
+}
+.feedback-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: var(--text);
+  text-decoration: none;
+}
+.feedback-option:hover {
+  background: var(--hover);
+}
+.feedback-option > span {
+  flex: 1;
+  min-width: 0;
+}
+.feedback-option strong,
+.feedback-option small {
+  display: block;
+}
+.feedback-option small {
+  color: var(--muted);
+  font-size: var(--font-size-12);
+  margin-top: var(--space-1);
+}
+
+.getting-started {
+  padding: var(--density-space-4);
+  margin-bottom: var(--density-space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.getting-started-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.getting-started-head h2 {
+  margin: 0;
+  font-size: var(--font-size-14);
+}
+.getting-started-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: setup;
+}
+.getting-started-step {
+  min-width: 0;
+  counter-increment: setup;
+}
+.getting-started-step::before {
+  content: counter(setup);
+  color: var(--muted);
+  font-size: var(--font-size-12);
+  margin-right: var(--space-2);
+}
+.getting-started-steps small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--font-size-12);
+  margin-top: var(--space-2);
+}
+@media (max-width: 900px) {
+  .getting-started-steps {
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
+  }
 }

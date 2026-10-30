@@ -402,6 +402,11 @@ const checks: [string, () => void | Promise<void>][] = [];
 history.replaceState(null, "", location.pathname);
 const app = await createApp(root, api, storage);
 function button(label: string): HTMLButtonElement {
+  if (
+    ["프로젝트 선택", "설정", "이용 안내"].includes(label) &&
+    !root?.querySelector(".app-menu-panel:popover-open")
+  )
+    root?.querySelector<HTMLButtonElement>('[aria-label="메뉴"]')?.click();
   const node = Array.from(
     document.querySelectorAll<HTMLButtonElement>("button"),
   ).find(
@@ -675,15 +680,15 @@ checks.push([
   "글로벌 검색은 기존 목록 필터를 변경하지 않는다",
   async () => {
     button("검색").click();
-    const dialog = root.querySelector<HTMLDialogElement>(".command-modal");
-    const input = dialog?.querySelector<HTMLTextAreaElement>("textarea");
+    const dialog = root.querySelector<HTMLDialogElement>(".search-modal");
+    const input = dialog?.querySelector<HTMLInputElement>("input[type=search]");
     assert(input && dialog?.open, "글로벌 검색창 누락");
     input.value = "없음";
     dialog.querySelector<HTMLFormElement>("form")?.requestSubmit();
     await tick();
     assert(app.list.filters.q === "", "글로벌 검색이 왼쪽 필터를 변경했다");
     assert(
-      !root.querySelector(".search-form"),
+      !root.querySelector(".browse-pane .search-form"),
       "이전 인라인 검색창이 남아 있다",
     );
     dialog.close();
@@ -705,8 +710,8 @@ checks.push([
       "목록 상위 경로 재사용 누락",
     );
     assert(
-      root.querySelector(".reported-at") instanceof HTMLTimeElement,
-      "공통 상대 시각 누락",
+      root.querySelector(".history-footer time") instanceof HTMLTimeElement,
+      "변경 기록의 보고 시점 누락",
     );
     assert(
       root.querySelector(".dashboard .list-item .key")?.textContent ===
@@ -756,7 +761,7 @@ checks.push([
   () => {
     button("설정").click();
     const checks = root.querySelectorAll<HTMLInputElement>(
-      ".settings-modal input[type=radio]",
+      ":scope > .settings-modal input[type=radio]",
     );
     assert(checks.length === 7, "화면 표시 선택 카드 누락");
     for (const label of ["테마 · 다크", "제목 표시 · 한 줄로"]) {
@@ -767,11 +772,11 @@ checks.push([
       check.click();
     }
     assert(
-      !root.querySelector(".settings-modal .modal-footer"),
+      !root.querySelector(":scope > .settings-modal .modal-footer"),
       "설정 저장 푸터가 남는다",
     );
     assert(
-      root.querySelector<HTMLDialogElement>(".settings-modal")?.open,
+      root.querySelector<HTMLDialogElement>(":scope > .settings-modal")?.open,
       "변경할 때 설정이 닫힌다",
     );
     assert(
@@ -792,7 +797,9 @@ checks.push([
   "설정 탭은 크기·연결 입력을 유지하고 키보드로 이동하며 도움말을 연결한다",
   () => {
     button("설정").click();
-    const modal = root.querySelector<HTMLDialogElement>(".settings-modal");
+    const modal = root.querySelector<HTMLDialogElement>(
+      ":scope > .settings-modal",
+    );
     assert(modal, "설정 모달 누락");
     const tabs = [...modal.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
     assert(
@@ -895,12 +902,17 @@ checks.push([
       String(app.list.items.get("TEST-3")?.status) === "완료",
       "되돌리기 미반영",
     );
+    button("상태").click();
+    await tick();
+    root
+      .querySelector<HTMLElement>(".detail-fields .select-options:popover-open")
+      ?.hidePopover();
     const before = calls.filter(
       (call) =>
         call.pathname === "/api/options" ||
         call.pathname === "/api/transitions",
     ).length;
-    button("담당자").click();
+    button("상태").click();
     await tick();
     assert(
       calls.filter(
@@ -908,7 +920,7 @@ checks.push([
           call.pathname === "/api/options" ||
           call.pathname === "/api/transitions",
       ).length === before,
-      "담당자 캐시 재조회",
+      "상태 캐시 재조회",
     );
     root
       .querySelector<HTMLElement>(".detail-fields .select-options:popover-open")
@@ -957,26 +969,8 @@ checks.push([
   },
 ]);
 checks.push([
-  "나에게 할당과 우선순위·마감일 편집은 동일한 저장 경로를 쓴다",
+  "우선순위·마감일 편집은 저장과 되돌리기를 지원한다",
   async () => {
-    button("담당자").click();
-    await tick();
-    root
-      .querySelector<HTMLButtonElement>(
-        ".detail-fields .select-options:popover-open .select-option",
-      )
-      ?.click();
-    await tick();
-    assert(
-      app.list.items.get("TEST-3")?.assigneeId === "",
-      "미지정 선택 미반영",
-    );
-    button("나에게 할당").click();
-    await tick();
-    assert(
-      app.list.items.get("TEST-3")?.assigneeId === "my-account",
-      "나에게 할당 누락",
-    );
     button("우선순위").click();
     await tick();
     const priority = [
@@ -1236,7 +1230,7 @@ checks.push([
       "작성자 편집 권한 불일치",
     );
     root
-      .querySelector<HTMLButtonElement>(
+      ?.querySelector<HTMLButtonElement>(
         '#comment-1 > .comment-head > .comment-toolbar [aria-label="내 댓글 편집"]',
       )
       ?.click();
@@ -1252,7 +1246,7 @@ checks.push([
       "댓글 편집 미반영",
     );
     root
-      .querySelector<HTMLButtonElement>(
+      ?.querySelector<HTMLButtonElement>(
         '#comment-2 > .comment-head > .comment-toolbar [aria-label="답글 작성"]',
       )
       ?.click();
@@ -1429,7 +1423,7 @@ checks.push([
       const buttons = [...header.querySelectorAll("button")].filter(
         (button) => button.getClientRects().length,
       );
-      if (header.getBoundingClientRect().width > 560) {
+      if (getComputedStyle(header).display === "flex") {
         assert(
           buttons.every(
             (button) =>
@@ -1961,27 +1955,23 @@ checks.push([
   },
 ]);
 checks.push([
-  "도움말은 시작·편집·일괄 변경·멘션 안내를 그룹별로 제공한다",
+  "이용 안내는 기능·저장 범위와 시작 안내 재진입을 제공한다",
   () => {
     app.closeDetail();
-    button("도움말").click();
+    button("이용 안내").click();
+    const content = root.querySelector(".help-content");
+    assert(content, "이용 안내 누락");
     assert(
-      root.querySelectorAll(".help-section").length === 3,
-      "도움말 그룹 누락",
+      content.textContent?.includes("선택한 AI 서비스"),
+      "AI 전달 범위 누락",
     );
-    const text =
-      root.querySelector(".help-section:last-child")?.textContent ?? "";
-    assert(
-      text.includes("일괄 변경") &&
-        text.includes("@이름") &&
-        text.includes("좋아요"),
-      "주요 기능·지원 범위 안내 누락",
-    );
+    assert(content.textContent.includes("이 컴퓨터"), "보관 범위 누락");
+    assert(button("시작 안내 다시 보기"), "시작 안내 경로 누락");
     button("닫기").click();
   },
 ]);
 checks.push([
-  "새 브라우저의 첫 설정은 닫을 수 있고 목록 조회를 막지 않는다",
+  "새 브라우저의 첫 안내는 목록을 막지 않고 완료한 상태를 기억한다",
   async () => {
     const host = element("div"),
       localValues = new Map<string, string>();
@@ -1995,51 +1985,27 @@ checks.push([
     const before = calls.filter(
       (call) => call.pathname === "/api/issues",
     ).length;
-    const pending = createApp(host, api, localStore);
-    await tick();
-    const popup = host.querySelector<HTMLDialogElement>(".settings-modal");
+    const fresh = await createApp(host, api, localStore);
     try {
-      assert(
-        popup?.open && popup.textContent?.includes("처음 설정"),
-        "첫 설정 누락",
-      );
-      const close = popup.querySelector<HTMLButtonElement>(
-        '[aria-label="닫기"]',
-      );
-      assert(close && !close.hidden, "첫 설정 닫기가 숨겨져 있다");
-      assert(
-        popup.dispatchEvent(new Event("cancel", { cancelable: true })),
-        "Escape를 차단한다",
-      );
+      const guide = host.querySelector<HTMLElement>(".getting-started");
+      assert(guide && !guide.hidden, "최초 안내 누락");
+      assert(!host.querySelector("dialog[open]"), "안내가 목록을 가림");
       assert(
         calls.filter((call) => call.pathname === "/api/issues").length > before,
-        "설정이 목록 조회를 막는다",
+        "안내가 목록 조회를 막음",
       );
-      close.click();
-      await tick();
-      assert(!popup.open, "첫 설정이 닫히지 않는다");
+      [...guide.querySelectorAll<HTMLButtonElement>("button")]
+        .find((b) => b.textContent === "시작하기")
+        ?.click();
+      assert(guide.hidden, "시작 안내가 닫히지 않음");
       assert(
         localStore
           .getItem("fastJira:filters:fixture.atlassian.net:my-account")
           ?.includes('"configured":true'),
-        "닫은 첫 설정을 기억하지 않는다",
+        "시작한 상태를 기억하지 않음",
       );
-      const fresh = await pending;
-      host.querySelector<HTMLButtonElement>('[aria-label="설정"]')?.click();
-      assert(
-        popup.open && !popup.querySelector(".modal-footer"),
-        "일반 설정에도 시작 푸터가 남는다",
-      );
-      popup.close();
-      fresh.destroy();
     } finally {
-      // 실패한 이전 구현의 초기화 대기도 해제해 검사 자원을 정리한다.
-      [...host.querySelectorAll<HTMLButtonElement>("button")]
-        .find((button) => button.textContent === "시작하기")
-        ?.click();
-      const fresh = await pending;
       fresh.destroy();
-      popup?.close();
       host.remove();
       document.documentElement.dataset.theme = "dark";
     }
@@ -3057,7 +3023,7 @@ checks.push([
 ]);
 
 checks.push([
-  "상세 상위 경로는 전체 폭을 쓰고 긴 내용을 내려도 닫기 행이 보인다",
+  "상세 상위 경로는 닫기 행과 함께 유지되고 우측 동작과 겹치지 않는다",
   async () => {
     await app.select("TEST-3");
     const article = root.querySelector<HTMLElement>(".issue-detail");
@@ -3077,10 +3043,9 @@ checks.push([
     const before = scroller.scrollTop;
     try {
       assert(
-        !head.contains(path) &&
-          path.getBoundingClientRect().width >=
-            head.getBoundingClientRect().width - 1,
-        "상위 경로가 동작 버튼과 좁은 폭을 공유함",
+        head.querySelector(".detail-identity")?.contains(path) &&
+          head.querySelector(".detail-head-actions"),
+        "경로와 우측 동작이 같은 헤더에서 구분되지 않음",
       );
       article.append(...fillers);
       scroller.scrollTop = scroller.scrollHeight;
@@ -3146,7 +3111,8 @@ checks.push([
     const controls = [
       ...root.querySelectorAll<HTMLElement>(".detail-field .select-trigger"),
     ];
-    assert(controls.length === 3, "상세 선택기 누락");
+    assert(controls.length === 2, "상태·우선순위 선택기 누락");
+    assert(root.querySelector(".participant-summary"), "작업참여자 필드 누락");
     for (const control of controls) {
       const height = control.getBoundingClientRect().height;
       assert(
@@ -3219,7 +3185,9 @@ checks.push([
   async () => {
     const small = innerWidth <= 900;
     function spacing(selector: string, property: string, expected: number) {
-      const node = document.querySelector<HTMLElement>(selector);
+      const node = selector.startsWith(":scope")
+        ? root?.querySelector<HTMLElement>(selector)
+        : document.querySelector<HTMLElement>(selector);
       assert(node, `간격 검사 대상 누락: ${selector}`);
       const actual = Number.parseFloat(
         getComputedStyle(node).getPropertyValue(property),
@@ -3245,7 +3213,7 @@ checks.push([
     spacing(".activity-row", "padding-top", small ? 8 : 12);
     button("설정").click();
     try {
-      spacing(".settings-modal", "padding-top", small ? 10 : 20);
+      spacing(":scope > .settings-modal", "padding-top", small ? 10 : 20);
       spacing(".settings-tabs", "margin-top", small ? 8 : 12);
       spacing(".settings-panels", "padding-top", small ? 6 : 8);
       const content = root.querySelector<HTMLElement>(".settings-content");
@@ -3274,7 +3242,9 @@ checks.push([
   async () => {
     app.closeDetail();
     button("설정").click();
-    const popup = root.querySelector<HTMLDialogElement>(".settings-modal");
+    const popup = root.querySelector<HTMLDialogElement>(
+      ":scope > .settings-modal",
+    );
     const detail = root.querySelector<HTMLDialogElement>(".detail-modal");
     assert(popup && detail, "모달 누락");
     try {

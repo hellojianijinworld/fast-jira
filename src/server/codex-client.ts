@@ -3,6 +3,7 @@ import { access, mkdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { createInterface } from "node:readline";
+import { APP_VERSION } from "../domain/product.ts";
 import { isRecord, record } from "../domain/validation.ts";
 
 export type CodexMessage = Record<string, unknown>;
@@ -171,7 +172,7 @@ export async function startCodex(
   };
   try {
     await client.request("initialize", {
-      clientInfo: { name: "fast_jira", version: "0.2.0" },
+      clientInfo: { name: "fast_jira", version: APP_VERSION },
       capabilities: { experimentalApi: true },
     });
     send({ method: "initialized", params: {} });

@@ -10,6 +10,11 @@ const release = {
   body: "목록과 검색 개선",
   draft: false,
   prerelease: false,
+  assets: [
+    "fast-jira-0.1.1.zip",
+    "fast-jira-0.1.1.json",
+    "fast-jira-download.mjs",
+  ].map((name) => ({ name, state: "uploaded", size: 1 })),
 };
 
 test("정식 버전을 숫자로 비교하고 잘못된 버전은 거부한다", () => {
@@ -201,4 +206,40 @@ test("업데이트 HTTP 경로는 Jira 인증 없이 동작하고 외부 Origin�
     200,
   );
   assert.equal(starts, 1);
+});
+
+test("0.2.0 설치본은 재출발용 0.1.0 릴리스를 자동 다운그레이드하지 않는다", async () => {
+  let starts = 0;
+  const updater = createAppUpdater({
+    currentVersion: "0.2.0",
+    supported: true,
+    readJob: async () => null,
+    start: async () => {
+      starts++;
+      throw new Error("다운그레이드 금지");
+    },
+    fetcher: async () => Response.json({ ...release, tag_name: "v0.1.0" }),
+  });
+  const state = await updater.check();
+  assert.equal(state.phase, "current");
+  assert.equal(state.release, null);
+  await assert.rejects(updater.install({ version: "0.1.0", commit }));
+  assert.equal(starts, 0);
+});
+
+test("실행용 ZIP과 검증 정보가 없는 릴리스는 업데이트로 안내하지 않는다", async () => {
+  const updater = createAppUpdater({
+    currentVersion: "0.1.0",
+    supported: true,
+    readJob: async () => null,
+    start: async () => {
+      throw new Error("설치 금지");
+    },
+    fetcher: async (input) =>
+      String(input).endsWith("/releases/latest")
+        ? Response.json({ ...release, assets: [] })
+        : Response.json({ sha: commit }),
+  });
+  assert.equal((await updater.check()).phase, "unavailable");
+  assert.equal((await updater.status()).release, null);
 });

@@ -126,6 +126,12 @@ export function projectIcon(project: ProjectOption): HTMLImageElement | null {
   const icon = element("img", "project-icon");
   icon.src = `/api/type-icon?url=${encodeURIComponent(url)}`;
   icon.alt = "";
-  icon.addEventListener("error", () => icon.remove(), { once: true });
+  icon.addEventListener(
+    "error",
+    () => {
+      icon.src = "/assets/project-fallback.svg";
+    },
+    { once: true },
+  );
   return icon;
 }

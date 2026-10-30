@@ -85,6 +85,7 @@ try {
           name: pkg.name,
           version: pkg.version,
           license: pkg.license,
+          engines: pkg.engines,
           type: "module",
         },
         null,

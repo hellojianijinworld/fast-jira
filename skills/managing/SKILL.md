@@ -10,8 +10,8 @@ Read the management section in [INSTALL.md](../../INSTALL.md). Resolve the plugi
 - Inspect status before acting. Report installed, registered, and running separately. Use the service's real URL, not an assumed default port.
 - Map the requested operation to start, stop, open, status, update, or remove. A working service is not restarted for a status/open request. Preserve a custom home on every command.
 - Update only when requested, using the newly built/installed plugin's manager, then verify health. The manager replaces execution assets and preserves `config/connection.env`; it attempts rollback on failure. Do not claim the AI plugin itself was updated just because the app service was.
-- The app’s Settings → Management → Update flow updates the service and installed user-scope Codex/Claude Fast Jira plugins together. New AI sessions load the refreshed skills. Do not confuse this coordinated flow with the service-only CLI `update`.
-- When a new package is needed, follow INSTALL.md and the current platform's official update commands. Do not reset a dirty source checkout or alter global instruction files.
+- The app’s Menu → Check for updates flow updates the service and installed user-scope Codex/Claude Fast Jira plugins together. New AI sessions load the refreshed skills. Do not confuse this coordinated flow with the service-only CLI `update`.
+- When a new package is needed, use the same prebuilt Release ZIP and verified helper in INSTALL.md; do not clone/build with Git/npm. If the pinned Node requirement changes, prepare that Node and explicitly reinstall while preserving config. Follow the current platform's official update commands. Do not reset a dirty source checkout or alter global instruction files.
 - Remove only the requested scope: stopping, removing the service, and uninstalling an AI plugin are distinct operations. `remove` keeps authentication and logs; deleting personal data needs explicit authorization.
 - Never print `.env`, `config/connection.env`, `config/mcp-token`, credentials, or raw private logs. Do not change Jira issues or comments to verify service health.
 
