@@ -1,7 +1,7 @@
 name: 검증
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 permissions:
   contents: read
@@ -34,3 +34,26 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node --import tsx --test tests/domain-setup.test.ts tests/windows-domain.test.ts
       - run: node --import tsx scripts/check-windows-domain.ts
+  bootstrap-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: 전역 Node 없는 설치 진입점과 공식 런타임 확인
+        run: node --import tsx --test tests/bootstrap-runtime.test.ts
+        env:
+          FAST_JIRA_BOOTSTRAP_RUNTIME_TEST: "1"
+      - run: npm run build
+      - name: 현재 빌드 ZIP의 통합 설치와 연결 복구 확인
+        run: node --import tsx --test tests/setup.test.ts tests/installation-repair.test.ts

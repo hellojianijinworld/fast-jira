@@ -35,8 +35,32 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
           retention-days: 7
-  publish:
+  windows-installation:
     needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fast-jira-release
+          path: dist/release
+      - run: npm ci --ignore-scripts
+      - name: 전역 Node 없는 Windows 설치 진입점 확인
+        run: node --import tsx --test tests/bootstrap-runtime.test.ts
+        env:
+          FAST_JIRA_BOOTSTRAP_RUNTIME_TEST: "1"
+      - run: npm run smoke:release
+        env:
+          RELEASE_COMMIT: ${{ github.sha }}
+  publish:
+    needs: [build, windows-installation]
     if: github.repository == 'hellojianijinworld/fast-jira' && github.actor == github.repository_owner && github.triggering_actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 10
