@@ -15,7 +15,11 @@ export function helpContent(options: { start?: () => void } = {}): HTMLElement {
   for (const [icon, title, description] of [
     ["list-filter", "작업 살펴보기", "뷰와 필터로 필요한 이슈를 모아봐요."],
     ["check", "한 번에 변경하기", "여러 이슈를 선택해 함께 수정해요."],
-    ["sparkles", "AI와 함께 정리하기", "질문하거나 작업 변경을 요청해요."],
+    [
+      "sparkles",
+      "AI와 함께 정리하기",
+      "연결한 AI에게 질문하거나 작업 변경을 요청해요. 연결은 설정 > 관리에서 확인해요.",
+    ],
   ] as const) {
     const item = element("div", "help-feature"),
       copy = element("div");
