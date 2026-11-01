@@ -1,92 +1,83 @@
 # Fast Jira AI 설치 가이드
 
-이 문서는 사용자를 대신해 로컬 설치, 연결 확인을 수행하는 Codex와 Claude Code를 위한 진입점입니다. 제품 저장소는 https://github.com/hellojianijinworld/fast-jira 입니다. 사람에게 이 문서를 읽거나 명령을 하나씩 실행하도록 요구하지 마세요. 권한 승인, 로그인과 토큰 입력은 사용자가 직접 합니다.
+Codex와 Claude Code가 사용자를 대신해 설치·연결을 진행하는 단일 절차입니다. 저장소는 https://github.com/hellojianijinworld/fast-jira 입니다. 사용자에게 명령 실행이나 설정 파일 편집을 맡기지 마세요. 시스템 동의·계정 로그인·Jira 토큰 입력만 사용자가 직접 합니다.
 
-## 완료 기준과 지원 범위
+## 1. 설치 대상과 동의 확인
 
-`v0.1.1`부터 Windows 로컬 도메인 자동 설정을 포함합니다. 도메인 설정을 건너뛰거나 실패하면 localhost로 완료합니다. Windows 앱 전체 설치와 대화형 승인창의 검증 범위는 아래에 따로 정리했습니다.
+- 현재 요청을 수행하는 **Codex 또는 Claude Code만** 등록합니다. 둘 다 요청한 경우에만 각각 등록하며 웹 서버와 개인 설정은 공유합니다.
+- 간편 주소 `https://fast-jira.local` 사용에 동의했는지 확인합니다. 이미 명시한 선택은 다시 묻지 않습니다. 동의가 없으면 `--domain no`로 설치하고 나중에 설정에서 연결할 수 있습니다.
+- OS와 아키텍처, 현재 서비스의 실행 여부를 확인합니다. Windows와 WSL의 실행 파일·개인 폴더를 섞지 않습니다. 기존 4173 서비스나 다른 프로그램을 임의로 종료하지 않습니다.
+- 개인 폴더는 macOS `~/Library/Application Support/Fast Jira`, Windows `%LOCALAPPDATA%/Fast Jira`, Linux `$XDG_DATA_HOME/fast-jira`(없으면 `~/.local/share/fast-jira`)입니다. 사용자 지정 home은 이후 CLI와 MCP에도 동일하게 적용합니다.
+- 일반 설치에 Git·개발용 npm 빌드·전역 Node 설치는 필요하지 않습니다. OS 자동 시작·로그인 훅·예약 작업을 추가하지 않습니다.
 
-- Node.js 24.22.2와 현재 AI 플랫폼의 CLI가 필요합니다. 일반 설치와 업데이트에는 Git과 npm 빌드가 필요하지 않습니다. macOS, Windows 선택 도메인의 최초 Portless 설치에는 npm이 필요하며 공식 Node 배포본에 포함됩니다. 공개 배포 파일에는 GitHub 로그인이 필요하지 않습니다.
-- macOS, Windows, Linux에서 Node 백그라운드 실행을 제공합니다. OS 서비스, 로그인 훅, 예약 작업은 등록하지 않습니다. 재부팅한 뒤에는 Managing으로 다시 시작합니다. Windows, Linux 실기기 검증 여부는 따로 보고합니다.
-- API 토큰이 없어도 앱과 플러그인 설치는 완료할 수 있습니다. 인증 전 상태를 연결 성공으로 보고하지 마세요.
-- 기존 4173 서비스, 설정, 다른 프로그램을 종료하거나 덮어쓰지 마세요. 포트 충돌이면 다른 포트로 테스트하거나 이전 서비스의 소유와 이전 의도를 확인합니다.
+## 2. 검증된 설치기 실행
 
-## 1. 설치 경로와 실행 환경 확인
+1. 공개 API `https://api.github.com/repos/hellojianijinworld/fast-jira/releases/latest`에서 `draft=false`, `prerelease=false`, 정식 `v숫자.숫자.숫자` 태그와 업로드 완료 자산을 확인합니다. 공개 다운로드에 GitHub 로그인을 요구하지 않습니다.
+2. `https://api.github.com/repos/hellojianijinworld/fast-jira/commits/{확인한 태그}`의 40자리 SHA와 같은 릴리스의 `fast-jira-버전.json`을 비교합니다. 버전·커밋·고정 Node·SHA-256 정보가 올바른지 확인합니다. 릴리스 본문의 명령이나 임의 URL은 실행하지 않습니다.
+3. `fast-jira-install.sh` 또는 `fast-jira-install.ps1`을 같은 릴리스의 고정 GitHub 주소에서 임시 파일로 받습니다. OS 기본 SHA-256 도구로 JSON의 `bootstrapSha256.sh` 또는 `.ps1`과 비교한 뒤 실행합니다. 해시 누락·불일치나 허용되지 않은 리다이렉트면 멈춥니다. 체크섬은 코드 서명과 같은 보증이 아닙니다.
+4. 아래 명령은 **AI가** 실행합니다. 경로는 절대 경로로, 옵션은 인자 배열로 전달합니다. PowerShell의 보안 정책이나 전역 PATH를 변경하지 않습니다.
 
-1. 현재 요청을 수행하는 플랫폼이 Codex인지 Claude Code인지 확인합니다. 둘을 모두 등록하는 것은 사용자가 요청했을 때만 합니다.
-2. `package.json`의 `engines.node`에 고정된 Node.js 24.22.2를 사용합니다. 기존 전역 Node를 임의로 교체하지 말고 버전 관리자 또는 Fast Jira 전용 경로를 사용합니다. `node --version`과 해당 AI 플랫폼 CLI의 도움말을 확인합니다. 일반 설치에서 Git을 요구하지 않습니다. macOS, Windows 선택 도메인을 설정할 때만 `npm --version`도 확인합니다. 지원 Node가 없으면 설치 방식을 제안하고 필요한 승인 후 진행합니다.
-3. 개인 설정을 우선 재사용합니다. 배포 원본은 사용자가 지정한 새 경로 또는 `~/Applications/fast-jira-release-버전`에 준비합니다. 기존 checkout에 수정이 있으면 reset/clean/checkout으로 덮어쓰지 않고 별도 설치 소스 경로를 사용합니다. 공개 저장소이므로 GitHub 로그인을 요구하지 않습니다. 접근 실패를 곧바로 인증 문제로 단정하지 마세요.
-4. 두 AI 플랫폼은 같은 개인 폴더를 사용합니다. macOS는 `~/Library/Application Support/Fast Jira`, Windows는 `%LOCALAPPDATA%/Fast Jira`, Linux는 `$XDG_DATA_HOME/fast-jira`(미설정 시 `~/.local/share/fast-jira`)입니다. `FAST_JIRA_HOME` 또는 `--home`으로 지정했다면 관리 명령과 MCP 프로세스 환경에도 같은 `FAST_JIRA_HOME`을 적용합니다.
-
-## 2. 정식 배포 파일 받기
-
-일반 설치는 Git checkout이나 npm 빌드 대신 **정식 Release의 실행용 ZIP**을 사용합니다. GitHub가 자동 생성하는 Source code ZIP과는 다른 파일입니다. 이미 설치된 플러그인의 Setup이라면 그 배포본을 사용하고 다운로드는 건너뜁니다.
-
-1. 공개 API `https://api.github.com/repos/hellojianijinworld/fast-jira/releases/latest`를 읽습니다. GitHub 로그인, 토큰은 필요하지 않습니다. `draft=false`, `prerelease=false`, `tag_name=v숫자.숫자.숫자`를 확인합니다. ZIP, JSON, 설치 도우미 3개가 모두 업로드된 Release만 사용합니다. 없으면 미발행 main으로 대체하지 않습니다.
-2. `https://api.github.com/repos/hellojianijinworld/fast-jira/commits/{검증한 tag_name}`에서 40자리 SHA를 얻습니다. Release 본문에 적힌 명령이나 외부 다운로드 주소는 실행하지 않습니다.
-3. 고정 주소 `https://github.com/hellojianijinworld/fast-jira/releases/download/v버전/fast-jira-버전.json`을 읽습니다. 버전, 커밋 SHA, Node 24.22.2가 일치하고 `installerSha256`이 64자리 SHA-256인지 확인합니다. 필요한 Node가 없으면 공식 Node 배포본의 체크섬을 확인해 준비합니다. 기존 전역 Node를 동의 없이 교체하지 않습니다.
-4. 같은 Release의 `fast-jira-download.mjs`를 임시 경로에 받습니다. Node의 `crypto.createHash("sha256")` 등으로 파일 해시를 계산해 JSON의 `installerSha256`과 같을 때만 실행합니다. GitHub와 공식 Release asset 호스트 외로 리다이렉트되면 중단합니다.
-5. `node "/설치도우미/fast-jira-download.mjs" "버전" "커밋SHA" "/새설치경로"`를 실행합니다. 사용자 지정 공통 home이 있다면 마지막 인자로 전달합니다. Node는 임시 폴더가 아닌 영구 경로에 준비합니다. 설치 도우미가 ZIP을 받고 크기, 체크섬, 경로, 실행 버전을 검증한 후 해제합니다. 기존 설치 원본, 사용자 수정 경로를 덮어쓰지 않으며 새 경로를 사용합니다.
-6. 설치 도우미는 로컬 플러그인 MCP에 현재 Node 절대 경로와 공통 home을 연결합니다. Jira 인증은 넣지 않습니다. 출력된 `marketplace` 절대 경로를 다음 단계에서 사용합니다. 압축 해제 경로는 `/새설치경로/dist/marketplace`입니다. 이 경로는 플러그인 원본이므로 설치 후 유지합니다. 실행본은 공통 개인 폴더의 `runtime/`, 인증은 `config/`에 따로 보관됩니다.
-
-Node가 버전 관리자로 설치되어 있거나 변경됐다면 AI 플랫폼이 MCP를 실행할 때에도 고정 Node를 찾는지 확인합니다. 셸에서만 버전을 확인하고 연결 성공으로 보고하지 않습니다. Node 기준이 바뀐 Release는 해당 Node를 먼저 준비하고 Setup으로 재설치해 설정을 보존합니다.
-
-개발, 기여 목적의 소스 빌드는 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다. 일반 설치를 개발 환경 준비로 우회하지 않습니다.
-
-## 3. 현재 AI에 플러그인 등록
-
-아래 `MARKETPLACE`는 배포 ZIP에서 해제한 `dist/marketplace`의 절대 경로입니다. 명령은 현재 설치된 CLI의 도움말에 맞게 실행하며, 전역 AGENTS.md, CLAUDE.md를 수정해 등록하지 않습니다.
-
-### Codex
+macOS·Linux:
 
 ```sh
-codex plugin marketplace add "$MARKETPLACE"
-codex plugin add fast-jira@fast-jira-local
-codex plugin list
+/bin/sh "/검증한/fast-jira-install.sh" --platform codex --domain no
 ```
 
-Codex가 설치 결과로 반환하는 플러그인 경로를 읽으세요. 등록 즉시 현재 대화에 스킬이 추가된다고 가정하지 않습니다. 앱에서 새로운 채팅이나 다시 열기가 필요하면 그 마지막 동작만 안내하고, 현재 설치는 계속 완료합니다.
+Windows PowerShell 5 이상(검증한 파일만 읽어 실행):
 
-### Claude Code
+```powershell
+& ([scriptblock]::Create([IO.File]::ReadAllText("C:\검증한\fast-jira-install.ps1"))) -Platform codex -Domain no
+```
+
+Node·Python 등 중간 프로세스에서 Windows PowerShell 5를 시작한다면 자식 환경의 `PSModulePath`만 제외해 해당 버전의 기본 모듈 경로를 다시 구성합니다. PowerShell 7의 모듈 경로를 그대로 넘기면 `Get-FileHash` 같은 기본 명령도 로드되지 않을 수 있습니다. 전역 환경은 변경하지 않습니다. [Microsoft 안내](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psmodulepath?view=powershell-7.3)
+
+현재 플랫폼이 Claude Code면 `claude`, 도메인 동의가 있으면 `yes`를 전달합니다. 사용자 지정 home은 Shell의 `--home`, PowerShell의 `-HomeDirectory`로 전달합니다. 격리 검증에는 `--no-open`/`-NoOpen`을 사용합니다.
+
+설치기는 공식 Node 배포본의 고정 버전·아키텍처·체크섬을 확인해 개인 home의 `tools/`에 준비합니다. 전역 Node가 없어도 바로 공통 CLI로 이어집니다. 검증한 다운로드 도우미가 실행용 ZIP을 받고 버전·커밋·해시·경로를 검사한 뒤 웹 → 현재 플랫폼 등록 → 로컬 MCP → 선택 도메인을 처리합니다. 원본은 `releases/`, 실행본은 `runtime/`, 개인 설정은 `config/`에 남습니다.
+
+이 진입점이 없는 구버전 릴리스에서는 해당 **태그의 INSTALL.md**에 있는 검증된 Node·다운로드 도우미 절차를 AI가 수행합니다. 없는 설치기 파일을 있다고 가정하거나 미발행 main을 빌드해 대체하지 않습니다. 소스 개발은 명시적 요청이 있을 때만 CONTRIBUTING.md를 따릅니다.
+
+이미 설치된 플러그인에서 Setup을 실행한다면 다운로드를 반복하지 않고 그 배포본의 CLI를 사용합니다.
 
 ```sh
-claude plugin validate "$MARKETPLACE"
-claude plugin marketplace add "$MARKETPLACE"
-claude plugin install fast-jira@fast-jira-local --scope user
-claude plugin list
+"/영구경로/node" "/플러그인/dist/cli/main.js" setup --platform codex --domain no
 ```
 
-스킬 반영에 새 세션이 필요할 수 있습니다. `fast-jira:setup`, `fast-jira:managing`, `fast-jira:contribute`를 확인하세요. 설치 승인이나 재시작이 UI에서 요구되면 사용자에게 그 동작만 안내합니다.
+필요한 경우 `--home`, `--port`, `--marketplace`를 추가합니다. 포트 충돌을 피하려는 격리 설치는 사용자 지정 home과 사용 가능한 포트를 함께 지정하고 `--no-open`으로 인증 화면을 열지 않습니다. 정상 서비스에 단순 상태 확인만 필요하면 재설치하지 않습니다.
 
-## 4. 공통 로컬 서비스 설치
+## 3. 부분 완료와 연결 확인
 
-`PLUGIN_ROOT`는 현재 플랫폼 배포본 또는 설치된 플러그인의 절대 경로입니다. 배포 ZIP에서는 `dist/marketplace/plugins/codex/fast-jira` 또는 `dist/marketplace/plugins/claude/fast-jira`를 사용합니다. 경로를 항상 따옴표로 감싸세요.
+설치 결과 JSON의 `runtime`, `web`, `plugin`, `mcp`, `domain`, `assistant`, `jira`를 따로 확인합니다. `state`와 `code`가 기준이며 오류 문구를 파싱하지 않습니다.
 
-```sh
-node "$PLUGIN_ROOT/dist/cli/main.js" doctor
-node "$PLUGIN_ROOT/dist/cli/main.js" status
-node "$PLUGIN_ROOT/dist/cli/main.js" setup --domain yes
-node "$PLUGIN_ROOT/dist/cli/main.js" status
-node "$PLUGIN_ROOT/dist/cli/main.js" open
-```
+- 종료 코드 0은 요청한 설치 흐름 완료, 1은 기본 앱 실패, 2는 웹은 정상이나 요청한 플러그인/MCP 설치에 실패한 부분 완료입니다. 0이라고 Jira 로그인이나 현재 대화의 도구 발견까지 보장하지 않습니다.
+- `appReady`는 런타임과 웹 범위입니다. 실제 `url`과 `/api/health`를 확인하고 그 주소를 사용합니다.
+- `mcp_host_pending`은 로컬 MCP 연결 성공이며 현재 AI 호스트의 도구 발견은 미확인입니다. 도구 목록을 확인할 수 없다면 대기로 보고합니다. Jira 토큰을 MCP 설정이나 명령 인자에 넣지 않습니다.
+- 플러그인 등록 실패는 웹을 내리지 않습니다. 다른 플랫폼으로 몰래 바꾸거나 정상 항목까지 재설치하지 않습니다. 현재 플랫폼의 공식 설치/로그인 흐름이 필요하면 사용자에게 안내합니다.
+- AI 상태 확인에는 계정·모델·로컬 MCP만 사용합니다. 유료 대화나 Jira 쓰기 테스트를 하지 않습니다. 미연결 AI 기능은 일반 화면에서 숨기며 **설정 > 관리**에서 연결 확인·공식 로그인·플러그인 연결 확인을 제공합니다.
+- 도메인 동의 후 필요한 OS 창은 사용자가 직접 승인합니다. macOS는 pinned Portless와 현재 사용자 인증서 신뢰, Windows는 hosts용 UAC와 현재 사용자 인증서 등록을 사용합니다. Windows OpenSSL이 없거나 승인·연결에 실패하면 localhost를 독립 확인해 엽니다. Linux는 localhost를 사용합니다.
+- 인증 화면은 최종 주소를 확정한 뒤 엽니다. 기존 사용자의 도메인 재시도는 현재 탭을 강제로 이동시키지 않습니다. localhost와 도메인은 브라우저 저장소가 다르므로 뷰·대화를 자동 이전했다고 주장하지 않습니다.
 
-실행 전에 도메인 설정 동의를 확인합니다. 동의하면 `--domain yes`, 거부하면 `--domain no`로 실행합니다. Portless 0.15.11은 개인 폴더에 설치합니다.
+### OS별 조건과 복구 경계
 
-- macOS는 시스템 인증창으로 hosts 연결과 HTTPS 프록시 설정을 승인받습니다. 인증서 신뢰는 임시 GUI 앱이 별도 OS 창으로 요청합니다. 현재 사용자의 `fast-jira.local` 서버 인증서만 등록하고, OS 신뢰와 실제 HTTPS 응답을 확인합니다. 보조 앱은 실행 후 제거합니다.
-- Windows 구현은 UAC로 hosts 연결을 승인받고, 프록시와 도메인 전용 서버 인증서는 현재 사용자 권한으로 처리합니다. OpenSSL을 PATH와 Git, OpenSSL의 기본 설치 경로에서 찾습니다. 없으면 localhost로 유지하며 AI가 공식 설치 방법을 안내합니다.
-- Windows CI는 일회성 관리자 환경의 컴퓨터 인증서 저장소로 도메인, HTTPS, 재실행을 확인했습니다. 일반 설치에서 쓰는 사용자 인증서 저장소와 대화형 UAC, 인증서 승인창, 실제 브라우저 동작을 검증한 것은 아닙니다.
-- `v0.1.1`의 macOS와 Windows는 선택 도메인 설정을 시도합니다. Linux는 localhost를 사용합니다.
-- 승인 취소나 연결 실패는 localhost 복귀로 처리합니다. 사용자에게 터미널 열기나 `sudo` 실행을 요구하지 않습니다. 암호는 OS 창에서만 입력하며 AI가 받거나 대신 입력하지 않습니다. OS 자동 시작이나 LAN 공유는 등록하지 않습니다.
+[Node 24 공식 지원표](https://github.com/nodejs/node/blob/v24.x/BUILDING.md#platform-list)의 실행 조건은 Windows x64/arm64가 Windows 10 이상, macOS x64/arm64가 13.5 이상입니다. 이 표의 하한과 별개로 OS 공급자의 지원이 종료된 버전은 Node 지원 대상이 아닙니다. Windows 11 등 지원 중인 OS를 권장하며 Windows 10은 해당 에디션의 연장 지원 여부까지 확인합니다. Linux 공식 x64/arm64 배포본은 kernel 4.18·glibc 2.28 이상이 기준이며 musl/Alpine을 같은 환경으로 간주하지 않습니다. Node를 직접 컴파일하는 도구 목록은 Fast Jira 일반 설치 의존성이 아닙니다.
 
-### 실행 파일과 개인 설정
+| 상황 | 처리 |
+| --- | --- |
+| Windows에 Node·Git·npm이 없음 | 기본 웹/MCP에는 검증된 Node ZIP만 준비. Git과 빌드 도구는 설치하지 않음 |
+| 공백·한글 경로 또는 오래된 PATH | 절대 경로와 인자 배열 사용. 전역 PATH나 다른 Node를 수정하지 않음 |
+| 4173 포트 사용 중 | 기존 Fast Jira 소유면 재사용. 다른 프로그램이면 종료하지 않고 다른 포트 선택 |
+| 보호 폴더/읽기 전용 경로 | Program Files 대신 사용자 전용 home 사용. 회사 정책에 의해 차단되면 IT 확인이 필요함 |
+| Windows 도메인용 OpenSSL 없음 | 앱은 localhost로 완료. 도메인을 계속 원할 때만 별도 공식 설치를 제안. Node 내부 OpenSSL과 외부 `openssl.exe`는 다름 |
+| UAC 취소·관리자 자격 없음·인증서 등록 거부 | 도메인만 포기하고 localhost HTTP를 재확인. 서비스 전체를 관리자 권한으로 띄우지 않음 |
+| 회사 App Control·PowerShell 제한·TLS 가로채기 | 오류 종류만 정리하고 정책 우회·보안 도구 해제·인증서 검증 해제 금지. localhost도 차단되면 앱 설치 실패로 보고 |
+| 443 점유·VPN/프록시·도메인 신뢰 실패 | 도메인 주소를 성공으로 표시하지 않음. localhost 응답을 독립 확인하고 실제로 열리는 주소 안내 |
+| 다운로드 실패·프록시 인증 필요 | URL·단계·오류 종류만 정리. 회사 설정을 임의 변경하거나 인증정보를 채팅에 요청하지 않음 |
 
-- `setup`은 실행 파일을 개인 폴더의 `runtime/`에 복사하고 Node를 독립 백그라운드 프로세스로 실행합니다. 터미널과 AI를 닫아도 유지되며 재부팅 후 자동 시작하지 않습니다. 이후 Managing의 `start`로 시작합니다.
-- `config/service.json`은 실행 설정, `config/connection.env`는 웹과 MCP가 공유하는 Jira 인증입니다. `config/mcp-token`은 로컬 MCP 연결 전용이며 Jira 토큰과 별개입니다. 플러그인 캐시 안에 인증을 저장하지 않습니다.
-- 재설치, 업데이트는 인증 파일을 보존합니다. `--port`는 최초, 재설치 `setup`에만 사용합니다. 예: `setup --port 4174`.
-- 로컬 테스트를 격리하려면 `setup --home "/개인/테스트경로" --port 4174`를 사용합니다. 이후 `status`, `stop`, `start`, `open`, `remove`에도 같은 `--home`을 전달합니다.
-- 기존 소스의 `.env`는 자동으로 이전하지 않습니다. 사용자가 기존 연결 이전을 명시하면 본인 파일임을 확인하고 실행 서비스가 없는 대상의 `config/connection.env`로 권한 0600을 유지해 복사합니다. 기존 개인 서비스의 이전 `service.json`, `.env`는 Setup에서 새 config 경로로 이전하고 새 값을 덮어쓰지 않습니다. 내용은 출력하지 않습니다.
+Windows 도메인은 불가능한 기능이 아닙니다. [UAC](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/how-it-works)로 hosts 변경만 상승 권한을 얻고 [현재 사용자 인증서 저장소](https://learn.microsoft.com/en-us/powershell/module/pki/import-certificate)로 HTTPS 신뢰를 등록합니다. 표준 사용자는 UAC에서 관리자 자격이 필요할 수 있습니다. [그룹 정책은 PowerShell 실행 정책보다 우선](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_execution_policies)하며 [App Control](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/)은 실행 파일과 스크립트 자체를 제한할 수 있습니다. AI가 모든 PC에서 이를 자동 해결할 수 있다고 약속하지 않습니다.
 
-## 5. Jira 연결은 사용자에게 맡기기
+설치 결과는 **앱 / 플러그인·MCP / 선택 도메인 / Jira 연결**을 각각 성공·실패·대기로 보고합니다. 이슈로 문의할 때는 OS·아키텍처·Node 버전·설치 버전·실패 단계·비식별화한 오류만 정리합니다. 환경변수 전체, 인증 파일, 토큰, 원본 로그를 수집하지 않습니다.
+
+## 4. Jira 연결은 사용자에게 맡기기
 
 1. 인증을 넘기기 전에 `/api/health`와 서비스 URL을 확인합니다. 이 요청은 Jira를 조회하지 않습니다. 이미 설정된 연결을 재사용한다면 이 시점에 읽기 전용 `/api/projects`의 HTTP 상태만 확인할 수 있습니다. 본문은 출력하지 않습니다.
 2. 앱의 **Jira 연결하기** 화면을 열고 사용자에게 입력을 맡깁니다. 사이트(`your-site.atlassian.net`), Atlassian 이메일과 토큰을 한 화면에서 입력합니다. **토큰 발급** 링크로 이동해 복사한 뒤 돌아와 붙여넣고 **연결하고 시작하기**를 누릅니다. 상단 진행도는 기본 정보, 토큰 입력, 연결 확인 상태만 표시하며 입력 영역을 숨기지 않습니다.
