@@ -10,7 +10,7 @@ export async function validateRuntime(source: string): Promise<void> {
   ]) {
     await access(join(source, name)).catch(() => {
       throw new Error(
-        "빌드된 실행 파일이 없습니다. 소스 저장소에서 npm ci와 npm run package:plugin을 실행하세요.",
+        "실행 파일이 없습니다. 일반 설치는 정식 Release ZIP을 다시 받아 설치하세요. 소스 개발인 경우에만 npm ci와 npm run package:plugin을 실행하세요.",
       );
     });
   }

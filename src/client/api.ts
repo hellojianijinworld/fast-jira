@@ -12,6 +12,11 @@ import type { ConnectionSettings, Credentials } from "../domain/connection.ts";
 import { createMetadata, type IssueDraft } from "../domain/create-issue.ts";
 import type { Filters } from "../domain/filters.ts";
 import { filterParameters, selectionParameter } from "../domain/filters.ts";
+import {
+  decodeInstallationManagement,
+  decodeRepairJob,
+  type RepairRequest,
+} from "../domain/installation-management.ts";
 import type { BranchDefaults, EditableField } from "../domain/issue.ts";
 import type { ParticipantChange } from "../domain/participants.ts";
 import { decodeSync, type KnownIssue } from "../domain/sync.ts";
@@ -107,6 +112,14 @@ export function createApi(fetcher: typeof fetch = fetch) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
+      }),
+    installationStatus: () =>
+      request("/api/installation/status", decodeInstallationManagement),
+    repairInstallation: (input: RepairRequest) =>
+      request("/api/installation/repair", decodeRepairJob, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
       }),
     assistantStatus: () => request("/api/assistant/status", assistantStatus),
     assistantApprovals: (requestId: string, signal?: AbortSignal) =>

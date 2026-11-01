@@ -20,10 +20,12 @@ export const commands = [
   },
 ] as const;
 export type CommandId = (typeof commands)[number]["id"];
-export function matchingCommands(query: string) {
+export function matchingCommands(query: string, aiAvailable = true) {
   const term = query.trim().toLocaleLowerCase().replace(/^>\s*/, "");
-  return commands.filter((item) =>
-    `${item.label} ${item.keywords}`.toLocaleLowerCase().includes(term),
+  return commands.filter(
+    (item) =>
+      (item.id !== "ai" || aiAvailable) &&
+      `${item.label} ${item.keywords}`.toLocaleLowerCase().includes(term),
   );
 }
 export type ShortcutCommand = Exclude<CommandId, "create"> | "palette";

@@ -1360,6 +1360,51 @@ dialog::backdrop {
   color: var(--blue);
 }
 
+.installation-status,
+.installation-rows {
+  display: grid;
+  gap: var(--density-space-4);
+}
+.installation-heading,
+.installation-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--density-space-3);
+}
+.installation-heading h3,
+.installation-status p {
+  margin: 0;
+}
+.installation-copy {
+  display: grid;
+  flex: 1 1 180px;
+  gap: var(--density-space-1);
+}
+.installation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--density-space-2);
+}
+.installation-status button[aria-busy="true"] .ui-icon {
+  display: none;
+}
+.installation-status button[aria-busy="true"]::before {
+  content: "";
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: field-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .installation-status button[aria-busy="true"]::before {
+    animation: none;
+  }
+}
+
 .app-update-content {
   display: grid;
   gap: 12px;

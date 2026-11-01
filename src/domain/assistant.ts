@@ -10,12 +10,24 @@ export interface AssistantModel {
   name: string;
   isDefault: boolean;
 }
+export type AssistantAvailability = "ready" | "unavailable" | "unknown";
+
+export type AssistantUnavailableReason =
+  | "missing_cli"
+  | "login_required"
+  | "unsupported";
+
 export interface AssistantProviderStatus {
+  reason?: AssistantUnavailableReason;
   id: "codex" | "claude";
+  availability?: AssistantAvailability;
   ready: boolean;
   error: string;
 }
 export interface AssistantStatus {
+  reason?: AssistantUnavailableReason;
+  availability?: AssistantAvailability;
+  voice?: { ready: boolean };
   ready: boolean;
   models: AssistantModel[];
   error: string;
@@ -48,6 +60,19 @@ export function assistantStatus(value: unknown): AssistantStatus {
     typeof data.error !== "string"
   )
     throw new Error("AI 연결 응답이 올바르지 않습니다.");
+  const availability = data.availability;
+  if (
+    availability !== undefined &&
+    !["ready", "unavailable", "unknown"].includes(String(availability))
+  )
+    throw new Error("AI 연결 상태가 올바르지 않습니다.");
+  let voice: AssistantStatus["voice"];
+  if (data.voice !== undefined) {
+    const value = record(data.voice);
+    if (typeof value.ready !== "boolean")
+      throw new Error("음성 연결 상태가 올바르지 않습니다.");
+    voice = { ready: value.ready };
+  }
   let providers: AssistantProviderStatus[] | undefined;
   if (data.providers !== undefined) {
     if (!Array.isArray(data.providers))
@@ -60,12 +85,40 @@ export function assistantStatus(value: unknown): AssistantStatus {
         typeof provider.error !== "string"
       )
         throw new Error("AI 제공자 정보가 올바르지 않습니다.");
-      return { id: provider.id, ready: provider.ready, error: provider.error };
+      if (
+        provider.availability !== undefined &&
+        !["ready", "unavailable", "unknown"].includes(
+          String(provider.availability),
+        )
+      )
+        throw new Error("AI 제공자 연결 상태가 올바르지 않습니다.");
+      if (
+        provider.reason !== undefined &&
+        !["missing_cli", "login_required", "unsupported"].includes(
+          String(provider.reason),
+        )
+      )
+        throw new Error("AI 연결 사유가 올바르지 않습니다.");
+      return {
+        ...(provider.reason
+          ? { reason: provider.reason as AssistantUnavailableReason }
+          : {}),
+        id: provider.id,
+        ready: provider.ready,
+        error: provider.error,
+        ...(provider.availability
+          ? { availability: provider.availability as AssistantAvailability }
+          : {}),
+      };
     });
   }
   return {
     ready: data.ready,
     error: data.error,
+    ...(availability
+      ? { availability: availability as AssistantAvailability }
+      : {}),
+    ...(voice ? { voice } : {}),
     ...(providers ? { providers } : {}),
     models: data.models.map((value) => {
       const model = record(value);
@@ -129,4 +182,15 @@ export function assistantContext(value: unknown): AssistantContext {
       ? {}
       : { creation: issueDraft(data.creation) }),
   };
+}
+
+export function assistantFeatures(
+  status: AssistantStatus,
+  previous = { chat: false, voice: false },
+) {
+  if (status.ready && status.models.length > 0)
+    return { chat: true, voice: status.voice?.ready === true };
+  if (status.availability === "unavailable" || status.availability === "ready")
+    return { chat: false, voice: false };
+  return { chat: previous.chat, voice: previous.voice };
 }

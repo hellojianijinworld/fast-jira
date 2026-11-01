@@ -162,6 +162,13 @@ const api = createApi(async (input, init) => {
   )
     await pendingRead;
   switch (url.pathname) {
+    case "/api/assistant/status":
+      return Response.json({
+        ready: false,
+        models: [],
+        availability: "unavailable",
+        voice: { ready: false },
+      });
     case "/api/activity":
       return activityFailed
         ? Response.json({ error: "모의 활동 조회 실패" }, { status: 503 })
@@ -503,6 +510,17 @@ checks.push([
       !root.querySelector(".browse .card-view-button"),
       "전체 뷰 상속 카드의 뷰 버튼이 표시됨",
     );
+  },
+]);
+checks.push([
+  "AI 미연결은 내비게이션과 명령에서 숨기고 검색은 유지한다",
+  async () => {
+    await tick();
+    const ai = root.querySelector<HTMLButtonElement>(
+      'button[aria-label="AI 대화"]',
+    );
+    assert(ai?.hidden, "미연결 AI 버튼 노출");
+    assert(button("검색"), "검색 진입 누락");
   },
 ]);
 checks.push([

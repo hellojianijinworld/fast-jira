@@ -10,6 +10,10 @@ import type { AssistantExecution } from "../domain/assistant-execution.ts";
 import type { ChatMessage } from "../domain/conversation.ts";
 import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { record } from "../domain/validation.ts";
+import {
+  AssistantUnavailableError,
+  assistantFailure,
+} from "./assistant-errors.ts";
 import { assistantHistoryNotice } from "./assistant-instructions.ts";
 import { createAssistantMcp } from "./assistant-mcp.ts";
 import { type ClaudeCommand, runClaudeCommand } from "./claude-client.ts";
@@ -60,11 +64,13 @@ export function createClaudeAssistant(
           auth.apiProvider !== "firstParty" ||
           !["claude.ai", "oauth_token"].includes(String(auth.authMethod))
         )
-          throw new Error(
+          throw new AssistantUnavailableError(
+            "login_required",
             "Claude Code에서 claude auth login으로 로그인해 주세요.",
           );
         return {
           ready: true,
+          availability: "ready",
           error: "",
           models: aliases.map((alias) => ({
             id: `claude:${alias}`,
@@ -76,10 +82,7 @@ export function createClaudeAssistant(
         return {
           ready: false,
           models: [],
-          error:
-            error instanceof Error
-              ? error.message
-              : "Claude 연결을 확인하지 못했어요.",
+          ...assistantFailure(error),
         };
       } finally {
         active.delete(controller);

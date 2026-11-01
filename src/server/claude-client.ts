@@ -1,7 +1,9 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { access, mkdir, stat } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { platformCommand } from "../cli/platform-command.ts";
+import { AssistantUnavailableError } from "./assistant-errors.ts";
 
 export interface ClaudeCommand {
   args: string[];
@@ -24,25 +26,10 @@ export function claudeEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 async function findClaude() {
-  const binary = process.platform === "win32" ? "claude.exe" : "claude";
-  const paths = [
-    ...(process.env.FAST_JIRA_CLAUDE_BIN
-      ? [process.env.FAST_JIRA_CLAUDE_BIN]
-      : []),
-    ...[...new Set((process.env.PATH ?? "").split(delimiter))].map((path) =>
-      join(path, binary),
-    ),
-    join(homedir(), ".local/bin", binary),
-  ];
-  for (const path of paths) {
-    try {
-      await access(path);
-      if ((await stat(path)).isFile()) return path;
-    } catch {
-      /* 다음 설치 위치 확인 */
-    }
-  }
-  throw new Error(
+  const target = await platformCommand("claude");
+  if (target) return target.prefix[0] ?? target.command;
+  throw new AssistantUnavailableError(
+    "missing_cli",
     "Claude Code를 설치하고 claude auth login으로 로그인해 주세요.",
   );
 }
@@ -59,11 +46,18 @@ export async function runClaudeCommand(
   return new Promise((resolve, reject) => {
     const child = launch
       ? launch()
-      : spawn(binary, command.args, {
-          cwd,
-          env: claudeEnvironment(),
-          stdio: "pipe",
-        });
+      : spawn(
+          /\.(mjs|cjs|js)$/.test(binary) ? process.execPath : binary,
+          [
+            ...(/\.(mjs|cjs|js)$/.test(binary) ? [binary] : []),
+            ...command.args,
+          ],
+          {
+            cwd,
+            env: claudeEnvironment(),
+            stdio: "pipe",
+          },
+        );
     let output = "",
       ended = false;
     let failure: Error | undefined;

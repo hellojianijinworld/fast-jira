@@ -193,6 +193,7 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
       throw new Error("Codex 미설치");
     },
     claude,
+    async () => false,
   );
   try {
     const status = assistantStatus(await assistant.status());

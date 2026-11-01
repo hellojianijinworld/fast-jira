@@ -7,6 +7,7 @@ import { createAssistantService } from "./assistant-service.ts";
 import { createConnection } from "./connection.ts";
 import { loadEnvironment, serverPort } from "./environment.ts";
 import { createHttpServer } from "./http.ts";
+import { createRuntimeInstallationManager } from "./installation-manager.ts";
 import { createJiraTools } from "./jira-tools.ts";
 import { createMcpEndpoint } from "./mcp-server.ts";
 import { createRuntimeUpdater } from "./update-runtime.ts";
@@ -68,6 +69,7 @@ export async function startApi() {
         ? { origin: process.env.FAST_JIRA_ORIGIN }
         : {}),
     },
+    await createRuntimeInstallationManager(),
   );
   server.once("close", () => {
     assistant.dispose();

@@ -12,6 +12,7 @@ import { record } from "../domain/validation.ts";
 import { AppUpdateError, type AppUpdater } from "./app-update.ts";
 import type { AssistantService } from "./assistant-service.ts";
 import type { Connection } from "./connection.ts";
+import type { InstallationManager } from "./installation-manager.ts";
 import { JiraError } from "./jira-client.ts";
 import type { BrowseOptions } from "./jira-query.ts";
 import type { JiraService } from "./jira-service.ts";
@@ -81,6 +82,7 @@ export function createHttpServer(
   assistant?: AssistantService,
   updates?: AppUpdater,
   local?: { mcp: ReturnType<typeof createMcpEndpoint>; origin?: string },
+  installation?: InstallationManager,
 ) {
   const getService = () => (typeof source === "function" ? source() : source);
   const key = (value: unknown) => {
@@ -219,6 +221,8 @@ export function createHttpServer(
     }
     if (path === "/api/app-update/install" && updates)
       return updates.install(input);
+    if (path === "/api/installation/repair" && installation)
+      return installation.repair(input);
     const service = getService();
     const string = (name: string) => inputString(input[name], name);
     const keys = () => {
@@ -294,6 +298,14 @@ export function createHttpServer(
         throw new JiraError("허용되지 않은 로컬 주소입니다.", 403);
       if (url.pathname === "/mcp" && local) {
         await local.mcp.handle(req, res);
+        return;
+      }
+      if (
+        req.method === "GET" &&
+        url.pathname === "/api/installation/status" &&
+        installation
+      ) {
+        json(res, await installation.status());
         return;
       }
       if (

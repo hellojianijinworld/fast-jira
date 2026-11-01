@@ -281,7 +281,7 @@ const noticeHost = element("div");
 host.append(noticeHost);
 const notice = createNotice(noticeHost);
 let selected = "";
-function makePalette() {
+function makePalette(availability?: { chat: boolean; voice: boolean }) {
   return createCommandPalette({
     storage,
     scope: "fixture:account",
@@ -312,6 +312,12 @@ function makePalette() {
     notice: notice.show,
     noticeHost,
     voice: mockVoice,
+    ...(availability
+      ? {
+          aiAvailable: () => availability.chat,
+          voiceAvailable: () => availability.voice,
+        }
+      : {}),
   });
 }
 let palette = makePalette();
@@ -1377,6 +1383,49 @@ await check("destroy는 단축키와 명령창을 해제한다", async () => {
     new KeyboardEvent("keydown", { key: "k", metaKey: true }),
   );
   assert(!host?.querySelector("dialog"), "해제 후 명령창 잔존");
+});
+await check("AI 미연결 진입점·음성 지원·열린 대화 보존", async () => {
+  const available = { chat: false, voice: false };
+  palette = makePalette(available);
+  palette.open("ai");
+  assert(!host?.querySelector(".ai-modal[open]"), "미연결 AI 열림");
+  palette.openCommands();
+  assert(
+    ![...(host?.querySelectorAll(".command-menu button") ?? [])].some(
+      (button) => button.textContent?.includes("AI 대화"),
+    ),
+    "AI 명령 잔존",
+  );
+  assert(
+    [...(host?.querySelectorAll(".command-menu button") ?? [])].some((button) =>
+      button.textContent?.includes("검색"),
+    ),
+    "검색 명령 누락",
+  );
+  available.chat = true;
+  palette.refreshAvailability();
+  palette.open("ai");
+  await tick();
+  input().value = "작성 중인 내용 유지";
+  const mic = dialog().querySelector<HTMLButtonElement>(
+    'button[aria-label="음성 입력"]',
+  );
+  assert(mic?.hidden, "미지원 음성 노출");
+  available.voice = true;
+  palette.refreshAvailability();
+  await tick();
+  assert(mic && !mic.hidden, "지원 음성 숨김");
+  const selected = dialog().querySelector<HTMLSelectElement>(".command-model");
+  if (!selected || !mic) throw new Error("모델 또는 마이크 누락");
+  selected.value = "claude:sonnet";
+  selected.dispatchEvent(new Event("change", { bubbles: true }));
+  assert(!mic.disabled, "대화 모델 때문에 별도 음성 연결이 차단됨");
+  available.chat = false;
+  available.voice = false;
+  palette.refreshAvailability();
+  assert(dialog().open, "연결 실패로 대화 닫힘");
+  assert(input().value === "작성 중인 내용 유지", "작성문 유실");
+  palette.destroy();
 });
 document.body.dataset.result = failures ? "failed" : "passed";
 results.append(

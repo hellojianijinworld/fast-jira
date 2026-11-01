@@ -182,3 +182,35 @@ test("설치한 Node와 공통 home을 플러그인 MCP에 연결하고 인증�
     assert.deepEqual(data.mcpServers.fast_jira.args, [bridgePath]);
   }
 });
+
+test("설치 진입점 체크섬은 기존 배포 형식과 호환되며 손상되면 거부한다", async (t) => {
+  const { decodeReleaseManifest } = await import(
+    "../src/domain/release-artifact.ts"
+  );
+  const f = await fixture(t);
+  const { manifest } = await packRelease(
+    f.market,
+    "0.1.0",
+    commit,
+    new Uint8Array([1]),
+  );
+  const bootstrapSha256 = { sh: "d".repeat(64), ps1: "e".repeat(64) };
+  assert.deepEqual(
+    decodeReleaseManifest(
+      { ...manifest, bootstrapSha256 },
+      { version: "0.1.0", commit },
+    ).bootstrapSha256,
+    bootstrapSha256,
+  );
+  assert.equal(
+    decodeReleaseManifest(manifest, { version: "0.1.0", commit })
+      .bootstrapSha256,
+    undefined,
+  );
+  assert.throws(() =>
+    decodeReleaseManifest(
+      { ...manifest, bootstrapSha256: { sh: "broken", ps1: "e".repeat(64) } },
+      { version: "0.1.0", commit },
+    ),
+  );
+});

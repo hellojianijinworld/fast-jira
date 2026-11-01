@@ -107,3 +107,19 @@ test("음성은 API 키 계정을 사용하지 않고 구형 CLI 오류와 잘�
   assert.equal(invalid.calls.length, 0);
   invalid.voice.dispose();
 });
+
+test("음성 지원 확인은 로그인 유형만 읽고 전사 세션을 만들지 않는다", async () => {
+  for (const type of ["chatgpt", "apiKey"]) {
+    const f = fixture(type);
+    try {
+      assert.equal(await f.voice.available(), type === "chatgpt");
+      assert.deepEqual(
+        f.calls.map((call) => call.method),
+        ["account/read"],
+      );
+      assert.equal(f.closed, true);
+    } finally {
+      f.voice.dispose();
+    }
+  }
+});

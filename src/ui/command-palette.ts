@@ -83,6 +83,8 @@ export function createCommandPalette(config: {
   noticeHost?: HTMLElement;
   restoreNotice?: () => void;
   voice?: (callbacks: VoiceCallbacks) => VoiceInput;
+  aiAvailable?: () => boolean;
+  voiceAvailable?: () => boolean;
   storage?: LocalStore;
   scope?: string;
   unread?: (value: boolean) => void;
@@ -454,6 +456,9 @@ export function createCommandPalette(config: {
       : `Enter 줄바꿈 · ${sendShortcut} 보내기 · 변경은 확인 후 적용`;
   }
   function sync() {
+    microphone.hidden = config.voiceAvailable
+      ? !config.voiceAvailable() && !recording
+      : false;
     input.rows = 3;
     input.placeholder = "예: 내 진행 중 이슈를 찾아 담당자를 변경해 줘";
     model.disabled = busy || loadingModels || applying || recording;
@@ -473,11 +478,14 @@ export function createCommandPalette(config: {
     ]
       .filter(Boolean)
       .join("\n");
-    microphone.disabled = busy || applying || isClaude;
+    const voiceUnavailable = config.voiceAvailable
+      ? !config.voiceAvailable()
+      : isClaude;
+    microphone.disabled = busy || applying || voiceUnavailable;
     microphone.title = recording
       ? "음성 입력 중지"
-      : isClaude
-        ? "Claude 대화에서는 음성 입력을 지원하지 않아요."
+      : voiceUnavailable
+        ? "음성 입력 연결을 확인해 주세요."
         : "Codex 로그인으로 음성 입력";
     form.setAttribute("aria-busy", String(busy));
     welcome.hidden = aiResults.childElementCount > 0;
@@ -978,7 +986,11 @@ export function createCommandPalette(config: {
     }
   }
   function open(next: Mode = "search") {
-    if (!alive) return;
+    if (
+      !alive ||
+      (next === "ai" && config.aiAvailable?.() === false && !dialog.open)
+    )
+      return;
     pickerDialog.close();
     if (next === "search") {
       voice.stop();
@@ -1002,9 +1014,10 @@ export function createCommandPalette(config: {
     ai: () => open("ai"),
   };
   function renderCommands() {
-    const items = matchingCommands(commandQuery.value).filter(
-      (item) => item.id !== "create" || config.create,
-    );
+    const items = matchingCommands(
+      commandQuery.value,
+      config.aiAvailable?.() ?? true,
+    ).filter((item) => item.id !== "create" || config.create);
     commandMenu.replaceChildren(
       ...items.map((item) => {
         const button = actionButton(item.label, item.icon);
@@ -1085,6 +1098,7 @@ export function createCommandPalette(config: {
   });
   microphone.addEventListener("click", () => {
     if (!recording) voicePrefix = input.value.trimEnd();
+    if (config.voiceAvailable?.() === false) return;
     voice.start();
   });
   cancel.addEventListener("click", () => {
@@ -1130,7 +1144,8 @@ export function createCommandPalette(config: {
     });
   const shortcut = (event: KeyboardEvent) => {
     const command = commandForShortcut(event, navigator.platform);
-    if (!command) return;
+    if (!command || (command === "ai" && config.aiAvailable?.() === false))
+      return;
     event.preventDefault();
     if (command === "palette") openCommands();
     else open(command);
@@ -1141,6 +1156,16 @@ export function createCommandPalette(config: {
   return {
     open,
     openCommands,
+    get busy() {
+      return busy || applying || recording;
+    },
+    refreshAvailability() {
+      ready = false;
+      if (config.aiAvailable?.() === false) voice.stop();
+      else if (dialog.open) void loadModels();
+      if (pickerDialog.open) renderCommands();
+      sync();
+    },
     destroy() {
       alive = false;
       request?.abort();

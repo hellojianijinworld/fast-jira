@@ -12,6 +12,7 @@ export function settingsContent(
   initialTab: "Jira 연결" | "화면 표시" | "관리" = start
     ? "Jira 연결"
     : "화면 표시",
+  onManagement?: () => void,
 ) {
   const root = element("section", "settings-content"),
     draft = { ...current },
@@ -62,6 +63,7 @@ export function settingsContent(
       panel.hidden = current !== index;
     });
     body.scrollTop = 0;
+    if (categories[index]?.name === "관리") onManagement?.();
   }
   if (connection) categories[0].panel.append(connection);
   const accountState = element("section", "settings-account");

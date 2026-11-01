@@ -1,9 +1,11 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { cp, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { promisify } from "node:util";
 import { record } from "../domain/validation.ts";
+import { platformCommand } from "./platform-command.ts";
 
 const selector = "fast-jira@fast-jira-local";
 type Platform = "codex" | "claude";
@@ -13,21 +15,28 @@ export type PluginCommand = (
   env: NodeJS.ProcessEnv,
 ) => Promise<string | null>;
 export class PluginUpdateError extends Error {}
-const command: PluginCommand = async (platform, args, env) => {
-  const result = spawnSync(platform, args, {
-    env,
-    cwd: env.HOME,
-    encoding: "utf8",
-    timeout: 60000,
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  if (result.error && "code" in result.error && result.error.code === "ENOENT")
-    return null;
-  if (result.status !== 0)
+const execute = promisify(execFile);
+export const runPluginCommand: PluginCommand = async (platform, args, env) => {
+  const safeEnv = { ...env };
+  for (const key of Object.keys(safeEnv))
+    if (key.startsWith("JIRA_") || key === "NODE_OPTIONS") delete safeEnv[key];
+  try {
+    const target = await platformCommand(platform, safeEnv);
+    if (!target) return null;
+    const result = await execute(target.command, [...target.prefix, ...args], {
+      env: safeEnv,
+      cwd: env.HOME,
+      timeout: 60000,
+      maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true,
+    });
+    return result.stdout;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw new PluginUpdateError(
       `${platform} 플러그인 명령을 완료하지 못했어요.`,
     );
-  return result.stdout;
+  }
 };
 function entries(value: unknown): Record<string, unknown>[] {
   if (!Array.isArray(value))
@@ -40,9 +49,13 @@ interface InstalledPlugin {
   version: string;
   enabled: boolean;
 }
-async function discover(run: PluginCommand, env: NodeJS.ProcessEnv) {
+export async function discoverPlugins(
+  run: PluginCommand,
+  env: NodeJS.ProcessEnv,
+  platforms: readonly Platform[] = ["codex", "claude"],
+) {
   const plugins: InstalledPlugin[] = [];
-  for (const platform of ["codex", "claude"] as const) {
+  for (const platform of platforms) {
     const output = await run(
       platform,
       [
@@ -125,9 +138,9 @@ async function updatePlugins(
   version: string,
   env: NodeJS.ProcessEnv,
   install: () => Promise<void>,
-  run: PluginCommand = command,
+  run: PluginCommand = runPluginCommand,
 ) {
-  const plugins = await discover(run, env);
+  const plugins = await discoverPlugins(run, env);
   const changed: { plugin: InstalledPlugin; path: string; backup: string }[] =
     [];
   async function refresh(plugin: InstalledPlugin, expected: string) {
@@ -139,7 +152,7 @@ async function updatePlugins(
       throw new PluginUpdateError(
         `${plugin.platform} 실행 파일을 찾지 못했어요.`,
       );
-    const state = (await discover(run, env)).find(
+    const state = (await discoverPlugins(run, env)).find(
       (item) => item.platform === plugin.platform,
     );
     if (state?.version !== expected || state.enabled !== plugin.enabled)
@@ -210,7 +223,7 @@ export async function withPluginUpdates(
   version: string,
   env: NodeJS.ProcessEnv,
   install: () => Promise<void>,
-  run: PluginCommand = command,
+  run: PluginCommand = runPluginCommand,
 ) {
   // 앱의 --home이 달라도 사용자 AI 플러그인은 공유되므로 함께 잠근다.
   const directory = join(env.HOME ?? homedir(), ".cache", "fast-jira");

@@ -1,10 +1,12 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { access, mkdir, stat } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { platformCommand } from "../cli/platform-command.ts";
 import { APP_VERSION } from "../domain/product.ts";
 import { isRecord, record } from "../domain/validation.ts";
+import { AssistantUnavailableError } from "./assistant-errors.ts";
 
 export type CodexMessage = Record<string, unknown>;
 export interface CodexClient {
@@ -14,26 +16,12 @@ export interface CodexClient {
   close(): void;
 }
 export async function findCodex(): Promise<string> {
-  const binary = process.platform === "win32" ? "codex.exe" : "codex";
-  const candidates = [
-    ...(process.env.FAST_JIRA_CODEX_BIN
-      ? [process.env.FAST_JIRA_CODEX_BIN]
-      : []),
-    ...[...new Set((process.env.PATH ?? "").split(delimiter))].map((path) =>
-      join(path, binary),
-    ),
-    join(homedir(), ".local/bin", binary),
-    "/Applications/Codex.app/Contents/Resources/codex",
-  ];
-  for (const path of candidates) {
-    try {
-      await access(path);
-      if ((await stat(path)).isFile()) return path;
-    } catch {
-      /* 다음 설치 위치를 확인한다. */
-    }
-  }
-  throw new Error("Codex CLI를 설치하고 codex login으로 로그인해 주세요.");
+  const target = await platformCommand("codex");
+  if (target) return target.prefix[0] ?? target.command;
+  throw new AssistantUnavailableError(
+    "missing_cli",
+    "Codex CLI를 설치하고 codex login으로 로그인해 주세요.",
+  );
 }
 /** stdio 프로토콜만 담당한다. Jira·화면 상태는 이 연결에 넣지 않는다. */
 export async function startCodex(
@@ -49,11 +37,14 @@ export async function startCodex(
     delete env.OPENAI_API_KEY;
     delete env.CODEX_API_KEY;
   }
+  const binary = launch ? "" : (options.binary ?? (await findCodex()));
+  const script = /\.(mjs|cjs|js)$/.test(binary);
   const child = launch
     ? launch()
     : spawn(
-        options.binary ?? (await findCodex()),
+        script ? process.execPath : binary,
         [
+          ...(script ? [binary] : []),
           "--enable",
           "apps",
           ...(options.chatgpt ? ["-c", 'forced_login_method="chatgpt"'] : []),

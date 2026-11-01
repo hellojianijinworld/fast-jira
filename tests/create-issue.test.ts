@@ -344,6 +344,7 @@ test("수동 생성 폼의 AI 채우기는 Codex와 Claude 모두 초안만 반�
       },
       dispose() {},
     },
+    async () => false,
   );
   const reply = await assistant.run({
     prompt: "작업 만들어줘",

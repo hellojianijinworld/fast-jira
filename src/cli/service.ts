@@ -13,10 +13,13 @@ import { get } from "node:http";
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
+import { installationResult } from "../domain/installation.ts";
 import {
   assertNodeSupported,
   type InstallationPaths,
+  nodeSupported,
   parseServiceConfig,
+  REQUIRED_NODE_VERSION,
   type ServiceConfig,
 } from "./config.ts";
 import {
@@ -232,9 +235,21 @@ export async function startService(
 export async function setupDomain(
   paths: InstallationPaths,
   consented: boolean,
+  configure = configureLocalDomain,
 ) {
   const config = await readServiceConfig(paths);
   if (!config) throw new Error("먼저 설치를 완료하세요.");
+  if (!consented && !config.publicUrl)
+    return {
+      url: `http://localhost:${config.port}`,
+      message: "localhost로 사용할 수 있어요.",
+    };
+  if (
+    consented &&
+    config.publicUrl === LOCAL_DOMAIN &&
+    (await verifyAddress(join(paths.home, "config/portless"), config.instance))
+  )
+    return { url: LOCAL_DOMAIN, message: "간편 주소가 이미 연결돼 있어요." };
   const { publicUrl: _previous, ...rest } = config;
   // 연결 검증 전에 새 Host/Origin을 허용하고 프록시 설정은 한 번만 실행한다.
   await stopService(paths);
@@ -250,12 +265,15 @@ export async function setupDomain(
     ),
   );
   await startService(paths, false);
-  const result = await configureLocalDomain(
+  const result = await configure(
     paths.home,
     config.port,
     consented,
     config.instance,
-  );
+  ).catch(() => ({
+    url: `http://localhost:${config.port}`,
+    message: "간편 주소를 연결하지 못해 localhost로 사용해요.",
+  }));
   if (consented && result.url !== LOCAL_DOMAIN) {
     await stopService(paths);
     await atomicWrite(paths.config, JSON.stringify(rest, null, 2));
@@ -314,7 +332,7 @@ export async function stopService(paths: InstallationPaths): Promise<void> {
   }
 }
 
-async function atomicWrite(path: string, text: string) {
+export async function atomicWrite(path: string, text: string) {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
     await writeFile(temporary, text, { mode: 0o600, flag: "wx" });
@@ -412,12 +430,52 @@ export async function withServiceLock<T>(
 }
 
 export async function doctor(source: string) {
-  await validateRuntime(source);
-  assertNodeSupported();
+  const checks = [
+    {
+      id: "node",
+      ok: nodeSupported(process.versions.node),
+      action: `공식 Node.js ${REQUIRED_NODE_VERSION} 배포본을 전용 영구 경로에 준비하고 그 node 절대 경로로 다시 실행하세요. 전역 Node는 바꾸지 마세요.`,
+    },
+    {
+      id: "platform",
+      ok:
+        ["darwin", "win32", "linux"].includes(process.platform) &&
+        ["x64", "arm64"].includes(process.arch),
+      action:
+        "macOS·Windows·Linux의 x64 또는 arm64 Node 실행 환경을 사용하세요. OS 최소 버전과 지원 수명은 INSTALL.md에서 확인하세요.",
+    },
+  ];
+  try {
+    await validateRuntime(source);
+    checks.push({ id: "runtime", ok: true, action: "" });
+  } catch {
+    checks.push({
+      id: "runtime",
+      ok: false,
+      action:
+        "최신 정식 Release ZIP을 검증해 새 경로에 다시 풀고 배포본의 CLI를 실행하세요. Source code ZIP이나 소스 빌드로 우회하지 마세요.",
+    });
+  }
+  const ready = checks.every((check) => check.ok);
+  const result = installationResult(undefined, {
+    runtime: ready
+      ? "runtime_ready"
+      : !checks[0]?.ok
+        ? "runtime_node_required"
+        : !checks[1]?.ok
+          ? "runtime_unsupported"
+          : "runtime_invalid",
+  });
   return {
+    result,
     platform: process.platform,
+    architecture: process.arch,
     node: process.versions.node,
-    ready: true,
+    nodePath: process.execPath,
+    ready,
+    scope:
+      "실행 환경과 배포 파일만 확인합니다. 서비스 HTTP·도메인·플러그인·Jira 연결 성공은 각각 따로 확인하세요.",
+    checks,
     source,
   };
 }

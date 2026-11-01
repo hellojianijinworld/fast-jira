@@ -203,6 +203,22 @@ export function createVoiceService(
     return active;
   }
   return {
+    async available() {
+      if (disposed) return false;
+      let native: CodexClient | undefined;
+      const current = active?.client;
+      try {
+        native = current ?? (await connect());
+        const account = record(
+          await native.request("account/read", { refreshToken: false }),
+        );
+        return record(account.account).type === "chatgpt";
+      } catch {
+        return false;
+      } finally {
+        if (native && native !== current) native.close();
+      }
+    },
     start,
     subscribe(id: string, listener: (event: VoiceEvent) => void) {
       const current = session(id);

@@ -29,6 +29,7 @@ import { feedbackContent } from "../ui/feedback.ts";
 import { createFilterPanel } from "../ui/filter-panel.ts";
 import { gettingStarted } from "../ui/getting-started.ts";
 import { helpContent } from "../ui/help.ts";
+import { installationStatus } from "../ui/installation-status.ts";
 import { issueCard } from "../ui/issue-card.ts";
 import { issueDetail } from "../ui/issue-detail.ts";
 import { keyedContent } from "../ui/keyed-content.ts";
@@ -47,6 +48,7 @@ import {
 import { createWorkspaceNavigation } from "../ui/workspace-views.ts";
 import { createActivityController } from "./activity-controller.ts";
 import { type Api, ApiError } from "./api.ts";
+import { createAssistantConnection } from "./assistant-connection.ts";
 import { applyColorTheme } from "./color-theme.ts";
 import type { CachedList, ListCache } from "./list-cache.ts";
 import { createListController } from "./list-controller.ts";
@@ -69,6 +71,7 @@ export async function createApp(
   cache?: ListCache,
   updates?: AppUpdateUi,
 ) {
+  const assistantConnection = createAssistantConnection(api.assistantStatus);
   const nav = element("header", "top-nav"),
     tools = element("div", "nav-tools");
   const searchToggle = iconButton("검색", "search"),
@@ -78,6 +81,7 @@ export async function createApp(
     help = actionButton("이용 안내", "circle-help", { variant: "ghost" }),
     settings = actionButton("설정", "settings", { variant: "ghost" }),
     selection = iconButton("이슈 선택 모드", "check");
+  aiToggle.hidden = true;
   searchToggle.title = `이슈 검색 (${shortcutLabel(navigator.platform)})`;
   searchToggle.setAttribute("aria-keyshortcuts", "Control+k Meta+k");
   aiToggle.title = `AI 대화 (${shortcutLabel(navigator.platform, "ai")})`;
@@ -934,7 +938,9 @@ export async function createApp(
       void creator.open(draft ? { draft } : {});
     },
     host: root,
-    api,
+    api: { ...api, assistantStatus: () => assistantConnection.refresh() },
+    aiAvailable: () => assistantConnection.snapshot.chat,
+    voiceAvailable: () => assistantConnection.snapshot.voice,
     site: bootstrap.site,
     currentUserId: bootstrap.me.accountId,
     storage,
@@ -977,6 +983,11 @@ export async function createApp(
     noticeHost,
     restoreNotice: placeDetail,
   });
+  assistantConnection.subscribe((state) => {
+    aiToggle.hidden = !state.chat;
+    if (!state.checking) commands.refreshAvailability();
+  });
+  void assistantConnection.refresh();
   searchToggle.addEventListener("click", () => commands.open("search"));
   aiToggle.addEventListener("click", () => commands.open("ai"));
   projects.addEventListener("click", () => projectPanel.open(appMenu.trigger));
@@ -1003,6 +1014,15 @@ export async function createApp(
   popup.addEventListener("close", () => {
     if (!destroyed && !popup.open) placeDetail();
   });
+  const installation = installationStatus({
+    api,
+    assistant: assistantConnection,
+    canManage: () => !bulk.busy && !commands.busy,
+    notice: notice.show,
+  });
+  const managementContent = element("div");
+  managementContent.append(installation.element);
+  if (updates) managementContent.append(updates.element);
   function showSettings(management = false) {
     const content = settingsContent(
       preferences,
@@ -1014,8 +1034,11 @@ export async function createApp(
       },
       undefined,
       connectionForm(api, () => location.reload()),
-      updates?.element,
+      managementContent,
       management ? "관리" : undefined,
+      () => {
+        void installation.refresh();
+      },
     );
     showModal(popup, {
       title: "설정",
@@ -1190,7 +1213,10 @@ export async function createApp(
     failed: () => notice.showBackground("변경 확인이 지연되고 있어요."),
   });
   const resume = () => {
-    if (active()) refreshRelativeTimes(root);
+    if (active()) {
+      refreshRelativeTimes(root);
+      void assistantConnection.refresh();
+    }
     polling.update();
   };
   document.addEventListener("visibilitychange", resume);
@@ -1213,6 +1239,8 @@ export async function createApp(
       detailView?.destroy();
       bulk.destroy();
       commands.destroy();
+      installation.destroy();
+      assistantConnection.destroy();
       creator.destroy();
       detailRevision++;
       polling.destroy();

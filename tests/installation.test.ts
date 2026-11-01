@@ -11,7 +11,7 @@ import {
   servicePlist,
 } from "../src/cli/config.ts";
 import { stageRuntime } from "../src/cli/runtime.ts";
-import { removeService } from "../src/cli/service.ts";
+import { doctor, removeService } from "../src/cli/service.ts";
 
 test("설치 경로는 플랫폼과 무관한 개인 설정을 분리하고 launchd 레이블은 경로마다 구분한다", () => {
   const first = installationPaths("/tmp/fast jira", "/Users/test");
@@ -69,6 +69,12 @@ test("실행본 준비는 개인 파일을 제외하고 잘못된 배포본은 �
   );
   await writeFile(join(source, "LICENSE"), "MIT License");
   await writeFile(join(source, ".env"), "DO_NOT_COPY=secret");
+  const report = await doctor(source);
+  assert.equal(report.ready, true);
+  assert.equal(report.result.runtime.state, "ready");
+  assert.equal(report.result.web.state, "waiting");
+  assert.equal(report.result.appReady, false);
+  assert(report.checks.every((check) => check.ok));
   const staged = await stageRuntime(source, home);
   assert.equal(
     await readFile(join(staged, "dist/client/index.html"), "utf8"),
@@ -91,4 +97,18 @@ test("서비스 설치 기록이 없는 경로의 runtime은 제거하지 않는
     await readFile(join(paths.runtime, "unrelated"), "utf8"),
     "keep",
   );
+});
+
+test("doctor는 배포본 누락을 진단하고 복구 방향을 반환한다", async () => {
+  const report = await doctor("/missing-fast-jira-release");
+  assert.equal(report.ready, false);
+  assert.equal(
+    report.checks.find((check) => check.id === "runtime")?.ok,
+    false,
+  );
+  assert.match(
+    report.checks.find((check) => check.id === "runtime")?.action ?? "",
+    /Release ZIP/,
+  );
+  assert.equal(report.nodePath, process.execPath);
 });

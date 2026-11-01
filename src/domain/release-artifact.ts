@@ -12,7 +12,13 @@ export interface ReleaseManifest {
   sha256: string;
   bytes: number;
   installerSha256: string;
+  bootstrapSha256?: { sh: string; ps1: string };
 }
+export const BOOTSTRAP_FILES = {
+  sh: "fast-jira-install.sh",
+  ps1: "fast-jira-install.ps1",
+} as const;
+
 export function artifactNames(version: string) {
   versionParts(version);
   return {
@@ -47,6 +53,18 @@ export function decodeReleaseManifest(
   expected: { version: string; commit: string },
 ): ReleaseManifest {
   const data = record(value);
+  let bootstrapSha256: ReleaseManifest["bootstrapSha256"];
+  if (data.bootstrapSha256 !== undefined) {
+    const checksums = record(data.bootstrapSha256);
+    if (
+      typeof checksums.sh !== "string" ||
+      !/^[a-f0-9]{64}$/.test(checksums.sh) ||
+      typeof checksums.ps1 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(checksums.ps1)
+    )
+      throw new Error("설치 진입점 체크섬을 확인하지 못했어요.");
+    bootstrapSha256 = { sh: checksums.sh, ps1: checksums.ps1 };
+  }
   if (
     data.format !== 1 ||
     data.version !== expected.version ||
@@ -75,6 +93,7 @@ export function decodeReleaseManifest(
     sha256: data.sha256,
     bytes: data.bytes,
     installerSha256: data.installerSha256,
+    ...(bootstrapSha256 ? { bootstrapSha256 } : {}),
   };
 }
 export function releaseContext(

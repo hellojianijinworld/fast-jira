@@ -15,6 +15,10 @@ import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import { createAssistantApprovals } from "./assistant-approvals.ts";
 import {
+  AssistantUnavailableError,
+  assistantFailure,
+} from "./assistant-errors.ts";
+import {
   assistantHistoryNotice,
   assistantInstructions as instructions,
 } from "./assistant-instructions.ts";
@@ -43,6 +47,7 @@ export function createAssistantService(
   getService: () => JiraService,
   connect: () => Promise<CodexClient> = startCodex,
   claude: ClaudeAssistant = createClaudeAssistant(getService, instructions),
+  checkVoice?: () => Promise<boolean>,
 ) {
   const voice = createVoiceService();
   const approvals = createAssistantApprovals();
@@ -90,37 +95,56 @@ export function createAssistantService(
         native.request("model/list", { includeHidden: false }),
       ]);
       if (!isRecord(record(account).account))
-        throw new Error("Codex CLI에서 codex login을 먼저 실행해 주세요.");
+        throw new AssistantUnavailableError(
+          "login_required",
+          "Codex에서 로그인해 주세요.",
+        );
       const models = record(catalog).data;
       if (!Array.isArray(models))
         throw new Error("Codex 모델 목록을 읽지 못했어요.");
+      const available = models.flatMap((value) => {
+        const model = record(value);
+        return typeof model.model === "string" && model.model.trim()
+          ? [
+              {
+                id: model.model,
+                name:
+                  typeof model.displayName === "string"
+                    ? model.displayName
+                    : model.model,
+                isDefault: model.isDefault === true,
+              },
+            ]
+          : [];
+      });
       return {
-        ready: true,
-        error: "",
-        models: models.flatMap((value) => {
-          const model = record(value);
-          return typeof model.model === "string"
-            ? [
-                {
-                  id: model.model,
-                  name:
-                    typeof model.displayName === "string"
-                      ? model.displayName
-                      : model.model,
-                  isDefault: model.isDefault === true,
-                },
-              ]
-            : [];
-        }),
+        ready: available.length > 0,
+        availability: available.length > 0 ? "ready" : "unavailable",
+        error:
+          available.length > 0 ? "" : "사용 가능한 Codex 모델을 찾지 못했어요.",
+        models: available,
       };
     } catch (error) {
-      return { ready: false, models: [], error: messageOf(error) };
+      return { ready: false, models: [], ...assistantFailure(error) };
     }
   }
   async function status(): Promise<AssistantStatus> {
     const [codex, other] = await Promise.all([codexStatus(), claude.status()]);
+    const ready = codex.ready || other.ready;
+    const availability = ready
+      ? "ready"
+      : [codex, other].every(
+            (provider) => provider.availability === "unavailable",
+          )
+        ? "unavailable"
+        : "unknown";
+    const voiceReady = ready
+      ? await (checkVoice ?? voice.available)().catch(() => false)
+      : false;
     return {
-      ready: codex.ready || other.ready,
+      availability,
+      voice: { ready: voiceReady },
+      ready,
       models: [
         ...codex.models.map((model) => ({
           ...model,
@@ -136,8 +160,22 @@ export function createAssistantService(
           ? ""
           : [codex.error, other.error].filter(Boolean).join(" · "),
       providers: [
-        { id: "codex", ready: codex.ready, error: codex.error },
-        { id: "claude", ready: other.ready, error: other.error },
+        {
+          id: "codex",
+          ...(codex.reason ? { reason: codex.reason } : {}),
+          ready: codex.ready,
+          error: codex.error,
+          availability:
+            codex.availability ?? (codex.ready ? "ready" : "unknown"),
+        },
+        {
+          id: "claude",
+          ...(other.reason ? { reason: other.reason } : {}),
+          ready: other.ready,
+          error: other.error,
+          availability:
+            other.availability ?? (other.ready ? "ready" : "unknown"),
+        },
       ],
     };
   }

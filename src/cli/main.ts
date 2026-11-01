@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  type InstallationPlatform,
+  installationPlatform,
+} from "../domain/installation.ts";
 import { installationPaths } from "./config.ts";
 import {
   doctor,
@@ -12,22 +16,35 @@ import {
   stopService,
   withServiceLock,
 } from "./service.ts";
+import { setupInstallation } from "./setup.ts";
 
 try {
   const [command = "help", ...args] = process.argv.slice(2);
   if (command === "help" || command === "--help") {
     console.log(
-      "Fast Jira: doctor | setup | start | stop | status | open | update | remove\n선택: --home 개인폴더, setup --port 포트, setup --domain yes|no\nOS 자동 시작 등록 없이 백그라운드로 실행합니다. remove는 개인 인증·설정을 보존합니다.",
+      "Fast Jira: doctor | setup | start | stop | status | open | update | remove\n선택: --home 개인폴더, setup --port 포트, setup --domain yes|no, setup --platform codex|claude [--no-open]\nOS 자동 시작 등록 없이 백그라운드로 실행합니다. remove는 개인 인증·설정을 보존합니다.",
     );
   } else {
     let home: string | undefined;
+    let platform: InstallationPlatform | undefined;
+    let marketplace: string | undefined;
+    let shouldOpen = true;
     let port: number | undefined;
     let domain: boolean | undefined;
     for (let index = 0; index < args.length; index += 2) {
+      if (args[index] === "--no-open" && command === "setup") {
+        shouldOpen = false;
+        index -= 1;
+        continue;
+      }
       const value = args[index + 1];
       if (!value || value.startsWith("--"))
         throw new Error("옵션 값을 입력하세요.");
       if (args[index] === "--home") home = resolve(value);
+      else if (args[index] === "--platform" && command === "setup")
+        platform = installationPlatform(value);
+      else if (args[index] === "--marketplace" && command === "setup")
+        marketplace = resolve(value);
       else if (args[index] === "--port" && command === "setup")
         port = Number(value);
       else if (
@@ -40,8 +57,28 @@ try {
     }
     const paths = installationPaths(home);
     const source = fileURLToPath(new URL("../../", import.meta.url));
-    if (command === "doctor") console.log(JSON.stringify(await doctor(source)));
-    else {
+    if (command === "doctor") {
+      const report = await doctor(source);
+      console.log(JSON.stringify(report));
+      if (!report.ready) process.exitCode = 1;
+    } else if (command === "setup" && platform) {
+      const result = await setupInstallation({
+        platform,
+        source,
+        home: paths.home,
+        domainConsent: domain ?? false,
+        open: shouldOpen,
+        ...(port !== undefined ? { port } : {}),
+        ...(marketplace ? { marketplace } : {}),
+      });
+      console.log(JSON.stringify(result));
+      if (!result.appReady) process.exitCode = 1;
+      else if (
+        result.plugin.state === "failed" ||
+        result.mcp.state === "failed"
+      )
+        process.exitCode = 2;
+    } else {
       if (command === "status")
         console.log(JSON.stringify(await serviceStatus(paths)));
       else if (command === "open") {

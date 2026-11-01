@@ -94,6 +94,7 @@ function fixture() {
       },
       dispose() {},
     },
+    async () => false,
   );
   const waitTurn = async () => {
     for (let i = 0; i < 30 && !turns; i++)
@@ -783,6 +784,52 @@ test("한 작업을 실행한 뒤 남은 작업의 필수 질문도 함께 반�
     assert.equal(created(), 1);
     assert.equal(reply.execution?.[0]?.status, "applied");
     assert.match(reply.answer, /Alpha.*Beta/);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+test("로그인 안 됨과 일시적 모델 조회 오류를 서로 다른 가용성으로 보고한다", async () => {
+  const f = fixture();
+  const request = f.client.request;
+  f.client.request = async (method, params) =>
+    method === "account/read" ? { account: null } : request(method, params);
+  try {
+    const state = await f.assistant.status();
+    assert.equal(
+      state.providers?.find((provider) => provider.id === "codex")
+        ?.availability,
+      "unavailable",
+    );
+    f.client.request = async () => {
+      throw new Error("temporary network error");
+    };
+    const temporary = await f.assistant.status();
+    assert.equal(
+      temporary.providers?.find((provider) => provider.id === "codex")
+        ?.availability,
+      "unknown",
+    );
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+test("사용할 수 없는 모델 행만 반환되면 대화 연결 완료로 표시하지 않는다", async () => {
+  const f = fixture();
+  const request = f.client.request;
+  f.client.request = async (method, params) =>
+    method === "model/list"
+      ? { data: [{ id: "not-a-model" }, { model: "" }] }
+      : request(method, params);
+  try {
+    const state = await f.assistant.status();
+    assert.equal(state.ready, false);
+    assert.equal(state.models.length, 0);
+    assert.equal(
+      state.providers?.find((provider) => provider.id === "codex")?.ready,
+      false,
+    );
   } finally {
     f.assistant.dispose();
   }

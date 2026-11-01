@@ -1,9 +1,11 @@
 import { appUpdate } from "../ui/app-update.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { actionButton, element } from "../ui/dom.ts";
+import { installationStatus } from "../ui/installation-status.ts";
 import { startTooltips } from "../ui/tooltip.ts";
 import { createApi } from "./api.ts";
 import { createApp } from "./app.ts";
+import { createAssistantConnection } from "./assistant-connection.ts";
 import { applyColorTheme, updateSystemTheme } from "./color-theme.ts";
 import { createListCache } from "./list-cache.ts";
 import { type LocalStore, readPreferences } from "./preferences.ts";
@@ -22,7 +24,10 @@ systemTheme.addEventListener("change", (event) =>
   updateSystemTheme(event.matches),
 );
 const updates = appUpdate(createApi());
+let clearSetup: (() => void) | undefined;
 async function start(root: HTMLElement) {
+  clearSetup?.();
+  clearSetup = undefined;
   const api = createApi();
   let failure: unknown;
   try {
@@ -65,7 +70,20 @@ async function start(root: HTMLElement) {
     setup.append(retry);
   }
   const updateSettings = element("details", "connection-update-settings");
-  updateSettings.append(element("summary", "", "업데이트"), updates.element);
+  const assistant = createAssistantConnection(api.assistantStatus);
+  const installation = installationStatus({ api, assistant });
+  updateSettings.append(
+    element("summary", "", "연결 관리 및 업데이트"),
+    installation.element,
+    updates.element,
+  );
+  updateSettings.addEventListener("toggle", () => {
+    if (updateSettings.open) void installation.refresh();
+  });
+  clearSetup = () => {
+    installation.destroy();
+    assistant.destroy();
+  };
   setup.append(updateSettings);
   root.replaceChildren(setup);
 }
