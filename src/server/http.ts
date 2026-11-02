@@ -123,6 +123,13 @@ export function createHttpServer(
           params.get("q") ?? "",
           params.get("pageToken") ?? "",
         );
+      case "/api/identity": {
+        const me = await service.currentUser(true);
+        return {
+          site: service.site,
+          me: { accountId: me.accountId, displayName: me.displayName },
+        };
+      }
       case "/api/projects": {
         const [projects, me, priorities] = await Promise.all([
           service.projects(),

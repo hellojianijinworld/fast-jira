@@ -29,6 +29,7 @@ import {
   decodeCommentPage,
   decodeDetails,
   decodeHistory,
+  decodeIdentity,
   decodeIssue,
   decodeIssuePage,
   decodeListPage,
@@ -374,6 +375,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
           known,
         }),
       }),
+    identity: () => request("/api/identity", decodeIdentity),
     bootstrap: () => request("/api/projects", decodeBootstrap),
     statuses: (projects: readonly string[]) =>
       request(

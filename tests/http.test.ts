@@ -512,3 +512,16 @@ test("이모지 데이터는 JSON으로 제공하고 HEAD 캐시 검증에는 �
   assert.match(head.headers.get("cache-control") ?? "", /immutable/);
   assert.equal(await head.text(), "");
 });
+
+test("초기 계정 확인은 프로젝트·우선순위 조회 없이 캐시의 계정 범위를 확인한다", async (t) => {
+  const app = await setup();
+  t.after(app.close);
+  const before = app.count();
+  const response = await fetch(app.base + "/api/identity");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    site: "example.atlassian.net",
+    me: { accountId: "my-account", displayName: "나" },
+  });
+  assert.equal(app.count() - before, 1);
+});

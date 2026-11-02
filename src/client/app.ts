@@ -146,8 +146,17 @@ export async function createApp(
   const checking = element("p", "empty", "Jira 연결을 확인하는 중…");
   checking.setAttribute("role", "status");
   listHost.append(checking);
-  const bootstrap = await api.bootstrap(),
-    store = createAccountStore(storage, bootstrap.site, bootstrap.me.accountId);
+  const identity = await api.identity(),
+    store = createAccountStore(storage, identity.site, identity.me.accountId);
+  const freshBootstrap = api.bootstrap();
+  // 캐시를 복원하는 동안 실패한 응답도 화면 준비 후에 처리한다.
+  void freshBootstrap.catch(() => {});
+  const bootstrap = store.bootstrap() ?? (await freshBootstrap);
+  if (
+    bootstrap.site !== identity.site ||
+    bootstrap.me.accountId !== identity.me.accountId
+  )
+    throw new Error("연결 계정이 바뀌었어요. 새로고침해 주세요.");
   let preferences = readPreferences(storage),
     selectedKey = "",
     detailRevision = 0,
@@ -1189,12 +1198,35 @@ export async function createApp(
         );
     }
   }
-  const metadata = refreshCatalog(list.filters.projects, true);
-  await Promise.all([
-    list.load(),
-    metadata,
-    activity.check(list.filters.projects),
-  ]);
+  void freshBootstrap
+    .then((next) => {
+      if (destroyed) return;
+      if (
+        next.site !== identity.site ||
+        next.me.accountId !== identity.me.accountId
+      )
+        throw new Error("연결 계정이 바뀌었어요. 새로고침해 주세요.");
+      store.saveBootstrap(next);
+      // 탭 편집기도 같은 프로젝트 배열을 참조한다.
+      bootstrap.projects.splice(0, bootstrap.projects.length, ...next.projects);
+      bootstrap.priorities.splice(
+        0,
+        bootstrap.priorities.length,
+        ...next.priorities,
+      );
+      render();
+    })
+    .catch((reason) => {
+      if (!destroyed)
+        notice.show(
+          reason instanceof Error
+            ? reason.message
+            : "프로젝트 정보를 확인하지 못했어요.",
+        );
+    });
+  void refreshCatalog(list.filters.projects, true);
+  void activity.check(list.filters.projects);
+  const initialList = list.load();
   const initialKey = new URL(location.href).searchParams.get("issue");
   if (initialKey) {
     try {
@@ -1203,6 +1235,7 @@ export async function createApp(
       notice.show("이슈 키를 확인하세요.");
     }
   }
+  await initialList;
   const active = () => !destroyed && !document.hidden && document.hasFocus();
   const polling = createRefreshLoop({
     active,

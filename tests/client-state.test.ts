@@ -881,3 +881,30 @@ test("AI 연결 실패는 대기 시간과 저장 여부 확인을 안내하고 
     (error: unknown) => error === cancelled,
   );
 });
+
+test("초기 메타정보 캐시는 계정별로 구분하고 만료·손상된 정보는 사용하지 않는다", () => {
+  const local = storage();
+  const mine = createAccountStore(local, "example.atlassian.net", "first");
+  const bootstrap = {
+    site: "example.atlassian.net",
+    me: { accountId: "first", displayName: "나" },
+    projects: [{ key: "TEST", name: "프로젝트", avatar: "" }],
+    priorities: [],
+  };
+  mine.saveBootstrap(bootstrap);
+  assert.deepEqual(mine.bootstrap(), bootstrap);
+  assert.equal(
+    createAccountStore(local, "example.atlassian.net", "second").bootstrap(),
+    null,
+  );
+  local.setItem(
+    `fastJira:bootstrap:${mine.scope}`,
+    JSON.stringify({ savedAt: 0, data: bootstrap }),
+  );
+  assert.equal(mine.bootstrap(), null);
+  local.setItem(
+    `fastJira:bootstrap:${mine.scope}`,
+    JSON.stringify({ savedAt: Date.now(), data: { bad: true } }),
+  );
+  assert.equal(mine.bootstrap(), null);
+});

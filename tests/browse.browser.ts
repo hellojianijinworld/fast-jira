@@ -318,6 +318,7 @@ const api = createApi(async (input, init) => {
       return Response.json({ statuses: ["완료", "대기", "진행 중"] });
     case "/api/priority-options":
       return Response.json([{ id: "high", name: "높음", icon: "" }]);
+    case "/api/identity":
     case "/api/projects":
       return Response.json({
         site: "fixture.atlassian.net",
@@ -3277,6 +3278,131 @@ checks.push([
     } finally {
       app.closeDetail();
       if (popup.open) popup.close();
+    }
+  },
+]);
+
+checks.push([
+  "새로고침은 검증한 계정의 캐시를 프로젝트·활동 응답보다 먼저 표시한다",
+  async () => {
+    const host = element("div");
+    document.body.append(host);
+    const bootstrap = await api.bootstrap();
+    const localValues = new Map<string, string>([
+      [
+        "fastJira:bootstrap:fixture.atlassian.net:my-account",
+        JSON.stringify({ savedAt: Date.now(), data: bootstrap }),
+      ],
+    ]);
+    const localStore = {
+      getItem: (key: string) => localValues.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        localValues.set(key, value);
+      },
+    };
+    let authorize!: () => void;
+    const identityReady = new Promise<void>((resolve) => {
+      authorize = resolve;
+    });
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const issue = {
+      ...emptyIssue("TEST-999", "즉시 표시할 캐시 제목"),
+      project: "TEST",
+    };
+    const pending = createApp(
+      host,
+      {
+        ...api,
+        identity: async () => {
+          await identityReady;
+          return { site: bootstrap.site, me: bootstrap.me };
+        },
+        bootstrap: async () => {
+          await waiting;
+          return bootstrap;
+        },
+        issues: async (...args) => {
+          await waiting;
+          return api.issues(...args);
+        },
+        activity: async () => {
+          await waiting;
+          return [];
+        },
+      },
+      localStore,
+      {
+        read: async () => ({
+          data: {
+            items: [issue],
+            matched: [issue.key],
+            direct: [issue.key],
+            complete: true,
+            pages: [],
+          },
+          catalog: { statuses: [], types: [] },
+        }),
+        write: async () => {},
+        remove: async () => {},
+      },
+    );
+    try {
+      await tick();
+      assert(
+        !host.textContent?.includes("즉시 표시할 캐시 제목"),
+        "계정 확인 전에 캐시를 표시했다",
+      );
+      authorize();
+      await tick();
+      await tick();
+      assert(
+        host.textContent?.includes("즉시 표시할 캐시 제목"),
+        "느린 프로젝트 조회가 캐시 표시를 막았다",
+      );
+    } finally {
+      authorize();
+      release();
+      (await pending).destroy();
+      host.remove();
+    }
+  },
+]);
+checks.push([
+  "이슈 링크의 상세는 느린 최근 활동 응답을 기다리지 않고 열린다",
+  async () => {
+    const host = element("div");
+    document.body.append(host);
+    history.replaceState(null, "", location.pathname + "?issue=TEST-3");
+    let release!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pending = createApp(
+      host,
+      {
+        ...api,
+        activity: async () => {
+          await waiting;
+          return [];
+        },
+      },
+      storage,
+    );
+    try {
+      for (let i = 0; i < 15 && !host.querySelector(".detail-title"); i++)
+        await tick();
+      assert(
+        host.querySelector(".detail-title"),
+        "최근 활동이 상세 표시를 막았다",
+      );
+    } finally {
+      release();
+      (await pending).destroy();
+      host.remove();
+      history.replaceState(null, "", location.pathname);
     }
   },
 ]);

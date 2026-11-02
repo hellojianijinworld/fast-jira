@@ -12,9 +12,15 @@ import {
 import { rememberParticipant } from "../domain/participants.ts";
 import { validSort } from "../domain/sort.ts";
 import type { CollapseState } from "../domain/tree.ts";
-import { isRecord } from "../domain/validation.ts";
+import { isRecord, record } from "../domain/validation.ts";
 import { decodeViews, migrateViews, type ViewState } from "../domain/views.ts";
-import { decodeIssue, decodeUsers, emptyIssue } from "../domain/wire.ts";
+import {
+  type Bootstrap,
+  decodeBootstrap,
+  decodeIssue,
+  decodeUsers,
+  emptyIssue,
+} from "../domain/wire.ts";
 import {
   decodeWorkspaces,
   initialWorkspaces,
@@ -254,6 +260,25 @@ export function createAccountStore(
   }
   return {
     scope,
+    bootstrap(): Bootstrap | null {
+      try {
+        const saved = record(read("bootstrap"));
+        if (
+          typeof saved.savedAt !== "number" ||
+          saved.savedAt > Date.now() ||
+          Date.now() - saved.savedAt > 7 * 86400000
+        )
+          return null;
+        const data = decodeBootstrap(saved.data);
+        return data.site === site && data.me.accountId === accountId
+          ? data
+          : null;
+      } catch {
+        return null;
+      }
+    },
+    saveBootstrap: (data: Bootstrap) =>
+      write("bootstrap", { savedAt: Date.now(), data: decodeBootstrap(data) }),
     people: {
       recent: recentPeople,
       remember: (user: UserOption) =>

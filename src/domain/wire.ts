@@ -155,7 +155,7 @@ export interface Bootstrap {
   projects: ProjectOption[];
   priorities: PriorityOption[];
 }
-export function decodeBootstrap(value: unknown): Bootstrap {
+export function decodeIdentity(value: unknown): Pick<Bootstrap, "site" | "me"> {
   const data = record(value),
     me = record(data.me);
   return {
@@ -164,6 +164,12 @@ export function decodeBootstrap(value: unknown): Bootstrap {
       accountId: wireString(me.accountId),
       displayName: wireString(me.displayName),
     },
+  };
+}
+export function decodeBootstrap(value: unknown): Bootstrap {
+  const data = record(value);
+  return {
+    ...decodeIdentity(data),
     projects: wireArray(data.projects, (value) => {
       const project = record(value);
       return {
