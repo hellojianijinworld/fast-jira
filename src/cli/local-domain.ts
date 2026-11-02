@@ -10,6 +10,7 @@ import {
   verifyLocalCertificate,
 } from "./certificate-trust.ts";
 
+import { domainHostsScript } from "./domain-hosts.ts";
 import { startWindowsDomain, windowsTool } from "./windows-domain.ts";
 
 export const LOCAL_DOMAIN = "https://fast-jira.local";
@@ -141,6 +142,16 @@ export async function configureLocalDomain(
         env,
       );
     }
+    let hostsReady = true;
+    try {
+      await run(
+        process.execPath,
+        ["-e", domainHostsScript, "--", "--check"],
+        env,
+      );
+    } catch {
+      hostsReady = false;
+    }
     if (platform === "win32") {
       let connected = false;
       if (existsSync(join(state, "proxy.pid"))) {
@@ -155,7 +166,8 @@ export async function configureLocalDomain(
           /* 처음 설정하거나 hosts 연결을 복구할 때만 승인을 요청한다. */
         }
       }
-      if (!connected) await startWindowsDomain(cli, port, env, run);
+      if (!connected || !hostsReady)
+        await startWindowsDomain(cli, port, env, run);
       if (!(await (options.verify ?? verifyAddress)(state, instance)))
         throw new Error("접속 검증에 실패했어요.");
       await (
@@ -204,17 +216,17 @@ export async function configureLocalDomain(
       PORTLESS_SYNC_HOSTS: "1",
     };
     const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
-    const command = (args: string[]) =>
+    const privileged = (args: string[]) =>
       `/usr/bin/env -i ${[
         ...Object.entries(privilegedEnv).map(
           ([key, value]) => `${key}=${value}`,
         ),
         process.execPath,
-        cli,
         ...args,
       ]
         .map(quote)
         .join(" ")}`;
+    const command = (args: string[]) => privileged([cli, ...args]);
     let connected = false;
     if (existsSync(join(state, "proxy.pid"))) {
       try {
@@ -228,13 +240,16 @@ export async function configureLocalDomain(
         /* 실행 중이지 않으면 시스템 승인 후 시작한다. */
       }
     }
-    if (!connected) {
+    if (!connected || !hostsReady) {
       await run(
         "/usr/bin/osascript",
         [
           "-e",
           "on run argv\n do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges\nend run",
-          `(${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])} || ${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])}) && (${command(["alias", "fast-jira", String(port)])} || { ${command(["proxy", "stop", "--port", "443"])}; exit 1; })`,
+          (connected
+            ? ""
+            : `(${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])} || ${command(["proxy", "start", "--port", "443", "--tld", "local", "--skip-trust"])}) && (${command(["alias", "fast-jira", String(port)])} || { ${command(["proxy", "stop", "--port", "443"])}; exit 1; }) && `) +
+            privileged(["-e", domainHostsScript]),
           "Fast Jira를 fast-jira.local 주소로 사용하도록 허용하시겠어요?\n이 컴퓨터에서 해당 주소로 접속할 수 있도록 설정합니다.",
         ],
         env,

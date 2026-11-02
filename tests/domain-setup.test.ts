@@ -306,3 +306,29 @@ test("Windows UAC 취소 또는 OS 인증서 검증 실패는 localhost로 복�
     assert.equal(result.url, "http://localhost:4173");
   }
 });
+
+test("macOS 도메인 설정은 기존 프록시에서도 IPv6 hosts 누락을 복구한다", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "jira-ipv6-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await mkdir(join(home, "tools/node_modules/portless/dist"), {
+    recursive: true,
+  });
+  await writeFile(join(home, "tools/node_modules/portless/dist/cli.js"), "");
+  await mkdir(join(home, "config/portless"), { recursive: true });
+  await writeFile(join(home, "config/portless/proxy.pid"), "1");
+  let repair = "";
+  const result = await configureLocalDomain(home, 4173, true, "mine", {
+    platform: "darwin",
+    major: 24,
+    verify: async () => true,
+    trust: async () => {},
+    run: async (command, args) => {
+      if (args.includes("--check")) throw new Error("IPv6 mapping missing");
+      if (command === "/usr/bin/osascript") repair = args[2] ?? "";
+    },
+  });
+  assert.equal(result.url, "https://fast-jira.local");
+  assert.match(repair, /::1/);
+  assert.match(repair, /fast-jira\.local/);
+  assert.ok(!repair.includes("'proxy' 'stop'"));
+});

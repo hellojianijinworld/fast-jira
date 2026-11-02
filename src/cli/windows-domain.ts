@@ -1,4 +1,5 @@
 import { win32 } from "node:path";
+import { domainHostsScript } from "./domain-hosts.ts";
 
 type Run = (
   command: string,
@@ -43,6 +44,8 @@ Get-ChildItem Env: | Where-Object { $_.Name -like 'JIRA_*' -or $_.Name -eq 'NODE
 ${settings}
 & ${quote(node)} ${quote(cli)} alias fast-jira ${port}
 if ($LASTEXITCODE -ne 0) { exit 1 }
+& ${quote(node)} -e ${quote(domainHostsScript)}
+exit $LASTEXITCODE
 `;
   const encoded = Buffer.from(child, "utf16le").toString("base64");
   return `$ErrorActionPreference='Stop'

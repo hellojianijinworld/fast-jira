@@ -249,7 +249,7 @@ export async function setupDomain(
     config.publicUrl === LOCAL_DOMAIN &&
     (await verifyAddress(join(paths.home, "config/portless"), config.instance))
   )
-    return { url: LOCAL_DOMAIN, message: "간편 주소가 이미 연결돼 있어요." };
+    return configure(paths.home, config.port, true, config.instance);
   const { publicUrl: _previous, ...rest } = config;
   // 연결 검증 전에 새 Host/Origin을 허용하고 프록시 설정은 한 번만 실행한다.
   await stopService(paths);
