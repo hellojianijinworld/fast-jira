@@ -16,15 +16,14 @@ export function providerGuidance(
       return {
         state: "login_required",
         label: "로그인 필요",
-        detail:
-          "로그인이 필요해요. 아래 로그인 버튼으로 브라우저에서 계정을 연결해 주세요.",
+        detail: "로그인 버튼을 눌러 계정을 연결해 주세요.",
       };
     case "missing_cli":
       return {
         state: "missing_cli",
-        label: "실행 파일 확인 필요",
+        label: "설치 확인 필요",
         detail:
-          "실행 파일을 찾지 못했어요. 사용 중인 AI에게 Fast Jira의 AI 연결을 요청해 주세요. 이미 설치했다면 실행 경로를 확인해야 해요.",
+          "실행 파일을 찾지 못했어요. 사용 중인 AI에게 설치와 Fast Jira 연결 점검을 요청해 주세요.",
       };
     case "unsupported":
       return {
@@ -48,8 +47,8 @@ export function providerGuidance(
     };
   return {
     state: "unknown",
-    label: "상태 확인 실패",
+    label: "확인 못함",
     detail:
-      "설치·로그인 여부를 확인하지 못했어요. 상태를 새로고침해도 같으면 사용 중인 AI에게 Fast Jira 연결 점검을 요청해 주세요.",
+      "설치·로그인 여부를 확인하지 못했어요. 다시 확인해도 같으면 사용 중인 AI에게 Fast Jira 연결 점검을 요청해 주세요.",
   };
 }

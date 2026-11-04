@@ -90,7 +90,19 @@ export function startTooltips() {
   document.addEventListener("focusin", enter, { signal });
   document.addEventListener("pointerout", leave, { signal });
   document.addEventListener("focusout", leave, { signal });
-  document.addEventListener("click", hide, { signal, capture: true });
+  document.addEventListener(
+    "click",
+    (event) => {
+      const trigger =
+        event.target instanceof Element
+          ? event.target.closest("[data-tooltip-click]")
+          : null;
+      const wasOpen = trigger === target && tip.matches(":popover-open");
+      hide();
+      if (trigger && !wasOpen) enter(event);
+    },
+    { signal, capture: true },
+  );
   document.addEventListener("scroll", hide, { signal, capture: true });
   document.addEventListener(
     "keydown",

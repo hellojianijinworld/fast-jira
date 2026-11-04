@@ -5,3 +5,9 @@ export interface ButtonOptions {
   size?: ComponentSize;
   variant?: ButtonVariant;
 }
+
+export interface ButtonGroupOptions {
+  size?: ComponentSize;
+  compact?: boolean;
+  wrap?: boolean;
+}

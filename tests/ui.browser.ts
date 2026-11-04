@@ -74,19 +74,23 @@ await check(
   () => {
     const initial = readPreferences({ getItem: () => null, setItem: () => {} });
     let saved = initial;
-    const content = settingsContent(initial, "검사 계정", (next) => {
-      saved = next;
-    });
+    const content = settingsContent(
+      initial,
+      { name: "검사 계정", site: "fixture.atlassian.net" },
+      (next) => {
+        saved = next;
+      },
+    );
     fixture.append(content.element);
     try {
       const groups = content.element.querySelectorAll(".setting-group");
-      assert(groups.length === 3, "화면 표시 그룹 수 불일치");
+      assert(groups.length === 4, "화면 표시 그룹 수 불일치");
       const radios = [
         ...content.element.querySelectorAll<HTMLInputElement>(
           'input[type="radio"]',
         ),
       ];
-      assert(radios.length === 7, "선택 카드 누락");
+      assert(radios.length === 9, "선택 카드 누락");
       const themeTitle = content.element.querySelector(
         ".setting-theme-options .setting-option-title",
       );
@@ -106,11 +110,11 @@ await check(
         "테마 아이콘 누락",
       );
       assert(
-        content.element.querySelectorAll(".setting-group").length === 3,
+        content.element.querySelectorAll(".setting-group").length === 4,
         "완료 작업 설정이 분리됨",
       );
       assert(
-        content.element.querySelectorAll("input:checked").length === 3,
+        content.element.querySelectorAll("input:checked").length === 4,
         "그룹별 선택 누락",
       );
       for (const input of radios.filter(
@@ -136,6 +140,8 @@ await check(
       select("테마 · 다크");
       select("제목 표시 · 한 줄로");
       select("완료된 작업 · 목록");
+      select("뷰 표시 · 이름도 표시");
+      assert(saved.viewNamesExpanded, "뷰 이름 표시 즉시 저장 누락");
       assert(
         String(saved.theme) === "dark" &&
           saved.compactView &&
@@ -143,7 +149,7 @@ await check(
         "선택 즉시 적용 또는 다른 그룹 보존 실패",
       );
       assert(
-        content.element.querySelectorAll("input:checked").length === 3,
+        content.element.querySelectorAll("input:checked").length === 4,
         "그룹 간 라디오 선택 충돌",
       );
       assert(
@@ -185,8 +191,16 @@ await check(
         getItem: () => null,
         setItem: () => {},
       });
-      const first = settingsContent(preferences, "검사 계정", () => {});
-      const second = settingsContent(preferences, "다른 설정", () => {});
+      const first = settingsContent(
+        preferences,
+        { name: "검사 계정", site: "fixture.atlassian.net" },
+        () => {},
+      );
+      const second = settingsContent(
+        preferences,
+        { name: "다른 설정", site: "fixture.atlassian.net" },
+        () => {},
+      );
       host.append(first.element, second.element);
       const tabs = [
         ...host.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
@@ -604,7 +618,7 @@ await check(
     );
     const content = settingsContent(
       readPreferences({ getItem: () => null, setItem: () => {} }),
-      "검사 계정",
+      { name: "검사 계정", site: "fixture.atlassian.net" },
       () => {},
       () => {},
       connection,
@@ -613,6 +627,7 @@ await check(
     try {
       showModal(modal, {
         title: "처음 설정",
+        headerContent: content.navigation,
         content: content.element,
         actions: content.actions,
       });

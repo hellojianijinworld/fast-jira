@@ -48,7 +48,7 @@ function mount(feature: ReturnType<typeof appUpdate>) {
   const modal = element("dialog", "settings-modal");
   const settings = settingsContent(
     readPreferences({ getItem: () => null, setItem: () => {} }),
-    "연결된 계정",
+    { name: "연결된 계정", site: "fixture.atlassian.net" },
     () => {},
     undefined,
     undefined,
@@ -56,7 +56,11 @@ function mount(feature: ReturnType<typeof appUpdate>) {
   );
   if (!feature.trigger.isConnected) fixture?.append(feature.trigger);
   fixture?.append(modal);
-  showModal(modal, { title: "설정", content: settings.element });
+  showModal(modal, {
+    title: "설정",
+    headerContent: settings.navigation,
+    content: settings.element,
+  });
   [...modal.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     .find((button) => button.textContent === "관리")
     ?.click();
@@ -148,10 +152,7 @@ await check(
     );
     const modal = mount(feature);
     try {
-      await until(
-        () =>
-          feature.element.textContent?.includes("새 버전이 있어요") === true,
-      );
+      await until(() => !feature.trigger.hidden);
       assert(!feature.trigger.hidden, "새 버전의 업데이트 아이콘 누락");
       assert(
         favicon.getAttribute("href") !== originalFavicon,
@@ -174,8 +175,7 @@ await check(
       await until(() => !check.disabled);
       assert(forces.includes(true), "직접 확인이 강제 확인으로 전달되지 않음");
       assert(
-        installs === 0 &&
-          feature.element.textContent?.includes("새 버전이 있어요") === true,
+        installs === 0 && !feature.trigger.hidden,
         "업데이트 확인이 설치를 시작하거나 새 버전 표시 누락",
       );
       assert(

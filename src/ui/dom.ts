@@ -1,4 +1,8 @@
-import type { ButtonOptions, ButtonVariant } from "./theme.ts";
+import type {
+  ButtonGroupOptions,
+  ButtonOptions,
+  ButtonVariant,
+} from "./theme.ts";
 
 let nextElementId = 0;
 
@@ -68,6 +72,18 @@ export function iconButton(
   button.setAttribute("aria-label", label);
   button.append(uiIcon(icon));
   return button;
+}
+
+/** 배치만 공유하고 nav·tablist·footer 등 호출자의 의미와 동작은 보존한다. */
+export function buttonGroup<T extends HTMLElement>(
+  root: T,
+  options: ButtonGroupOptions = {},
+): T {
+  root.classList.add("button-group");
+  root.dataset.size = options.size ?? "auto";
+  root.dataset.groupCompact = String(options.compact ?? false);
+  root.dataset.groupWrap = String(options.wrap ?? true);
+  return root;
 }
 
 export function externalLink(

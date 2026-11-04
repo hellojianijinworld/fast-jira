@@ -11,8 +11,15 @@ import type {
   WorkspaceView,
   WorkspaceViews,
 } from "../domain/workspace-views.ts";
-import { actionButton, element, elementId, iconButton, uiIcon } from "./dom.ts";
-import { popoverPosition } from "./geometry.ts";
+import {
+  actionButton,
+  buttonGroup,
+  element,
+  elementId,
+  iconButton,
+  uiIcon,
+} from "./dom.ts";
+import { createMenu } from "./menu.ts";
 import { showModal } from "./modal.ts";
 import { projectChecklist } from "./project-checklist.ts";
 import { createViewEditor } from "./view-editor.ts";
@@ -21,6 +28,8 @@ import { workspaceIcon, workspaceIconPicker } from "./workspace-icons.ts";
 /** 탭의 표현과 편집 초안만 담당한다. 저장·조회 전환은 앱에서 수행한다. */
 export function createWorkspaceNavigation(options: {
   state: () => WorkspaceViews;
+  namesExpanded?: () => boolean;
+  setNamesExpanded?: (expanded: boolean) => void;
   projects: readonly ProjectOption[];
   me: { accountId: string; displayName: string };
   load: (projects: readonly string[]) => Promise<ViewOptions>;
@@ -29,31 +38,41 @@ export function createWorkspaceNavigation(options: {
   remove: (id: string) => void;
   error: (message: string) => void;
 }) {
-  const root = element("nav", "workspace-views"),
-    tabs = element("div", "workspace-tabs"),
+  const root = buttonGroup(element("nav", "workspace-views"), {
+      compact: true,
+      wrap: false,
+    }),
+    tabs = buttonGroup(element("div", "workspace-tabs"), {
+      compact: true,
+      wrap: false,
+    }),
     add = iconButton("뷰 만들기", "plus"),
-    menu = element("div", "select-options workspace-tab-menu"),
+    menuController = createMenu({
+      label: "뷰 메뉴",
+      className: "workspace-tab-menu",
+      maxHeight: 300,
+    }),
+    menu = menuController.element,
     dialog = element("dialog", "settings-modal workspace-view-modal");
   root.setAttribute("aria-label", "작업 뷰");
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", "작업 뷰");
   root.append(tabs, add);
-  menu.popover = "auto";
-  menu.setAttribute("role", "menu");
-  menu.setAttribute("aria-label", "뷰 메뉴");
   document.body.append(dialog, menu);
   const switcher = iconButton("뷰 전환", "layers", { size: "sm" });
   switcher.classList.add("workspace-switcher");
   switcher.setAttribute("aria-haspopup", "menu");
   switcher.setAttribute("aria-expanded", "false");
-  const switchMenu = element("div", "select-options workspace-switch-menu");
-  switchMenu.popover = "auto";
-  switchMenu.setAttribute("role", "menu");
-  switchMenu.setAttribute("aria-label", "뷰 전환");
+  const switchController = createMenu({
+    label: "뷰 전환",
+    className: "workspace-switch-menu",
+    width: 260,
+    maxHeight: 360,
+  });
+  const switchMenu = switchController.element;
   document.body.append(switchMenu);
   function closeSwitcher() {
-    if (switchMenu.matches(":popover-open")) switchMenu.hidePopover();
-    switcher.setAttribute("aria-expanded", "false");
+    switchController.close(false);
   }
   switcher.addEventListener("click", () => {
     if (switchMenu.matches(":popover-open")) return closeSwitcher();
@@ -97,104 +116,64 @@ export function createWorkspaceNavigation(options: {
         "선택하면 그 뷰의 읽던 위치로 돌아가요.",
       ),
     );
-    Object.assign(
-      switchMenu.style,
-      popoverPosition(switcher.getBoundingClientRect(), {
-        width: 260,
-        maxHeight: 360,
-        viewportWidth: innerWidth,
-        viewportHeight: innerHeight,
-      }),
-    );
-    switchMenu.showPopover();
-    switcher.setAttribute("aria-expanded", "true");
-    switchMenu
-      .querySelector<HTMLButtonElement>('[aria-checked="true"]')
-      ?.focus();
-  });
-  switchMenu.addEventListener("toggle", () => {
-    switcher.setAttribute(
-      "aria-expanded",
-      String(switchMenu.matches(":popover-open")),
-    );
-  });
-  switchMenu.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeSwitcher();
-      switcher.focus();
-      return;
-    }
-    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-    event.preventDefault();
-    const buttons = [
-      ...switchMenu.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitemradio"]',
+    switchController.open(switcher, {
+      focus: switchMenu.querySelector<HTMLButtonElement>(
+        '[aria-checked="true"]',
       ),
-    ];
-    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? buttons.length - 1
-          : (index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) %
-            buttons.length;
-    buttons[next]?.focus();
+    });
   });
-  const dismissSwitcher = (event: Event) => {
-    if (!switchMenu.contains(event.target as Node)) closeSwitcher();
-  };
-  window.addEventListener("resize", dismissSwitcher);
-  document.addEventListener("scroll", dismissSwitcher, true);
   let menuTarget = "",
     menuAnchor: HTMLElement | undefined;
   const edit = actionButton("뷰 편집", "square-pen", { size: "sm" });
   const duplicate = actionButton("뷰 복제", "copy", { size: "sm" });
   edit.setAttribute("role", "menuitem");
   duplicate.setAttribute("role", "menuitem");
-  menu.append(edit, duplicate);
+  const menuSeparator = element("hr");
+  menuSeparator.setAttribute("role", "separator");
+  const displayNames = actionButton("모든 뷰 이름 표시", "check", {
+    size: "sm",
+  });
+  displayNames.setAttribute("role", "menuitemcheckbox");
+  displayNames.addEventListener("click", () => {
+    const anchor = menuAnchor;
+    closeMenu();
+    options.setNamesExpanded?.(!options.namesExpanded?.());
+    const focusTarget =
+      anchor === root
+        ? tabs.querySelector<HTMLButtonElement>('[aria-selected="true"]')
+        : tabs.querySelector<HTMLButtonElement>(
+            `#${CSS.escape(anchor?.id ?? "")}`,
+          );
+    focusTarget?.focus();
+  });
+  menu.append(edit, duplicate, menuSeparator, displayNames);
+  root.addEventListener("contextmenu", (event) => {
+    if (!options.setNamesExpanded) return;
+    event.preventDefault();
+    showMenu("", root, event.clientX, event.clientY);
+  });
   function closeMenu() {
-    if (menu.matches(":popover-open")) menu.hidePopover();
-    menuAnchor?.setAttribute("aria-expanded", "false");
+    menuController.close(false);
   }
   function showMenu(id: string, anchor: HTMLElement, x?: number, y?: number) {
     closeMenu();
+    edit.hidden = duplicate.hidden = !id;
+    displayNames.hidden = !options.setNamesExpanded;
+    menuSeparator.hidden = !id || displayNames.hidden;
+    displayNames.setAttribute(
+      "aria-checked",
+      String(!!options.namesExpanded?.()),
+    );
     menuTarget = id;
     menuAnchor = anchor;
     menu.setAttribute(
       "aria-label",
-      `${options.state().tabs.find((tab) => tab.id === id)?.name ?? ""} 뷰 메뉴`,
+      id
+        ? `${options.state().tabs.find((tab) => tab.id === id)?.name ?? ""} 뷰 메뉴`
+        : "뷰 표시",
     );
-    Object.assign(
-      menu.style,
-      popoverPosition(
-        x === undefined
-          ? anchor.getBoundingClientRect()
-          : { left: x, top: y ?? 0, bottom: y ?? 0, width: 0 },
-        {
-          width: 180,
-          maxHeight: 120,
-          viewportWidth: innerWidth,
-          viewportHeight: innerHeight,
-        },
-      ),
-    );
-    menu.showPopover();
-    anchor.setAttribute("aria-expanded", "true");
-    edit.focus();
+    menuController.open(anchor, x === undefined ? {} : { x, y: y ?? 0 });
   }
-  menu.addEventListener("toggle", () => {
-    if (!menu.matches(":popover-open"))
-      menuAnchor?.setAttribute("aria-expanded", "false");
-  });
-  menu.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      closeMenu();
-      menuAnchor?.focus();
-    }
-  });
   let editor: ReturnType<typeof createViewEditor> | undefined,
     iconPicker: ReturnType<typeof workspaceIconPicker> | undefined,
     revision = 0;
@@ -217,6 +196,7 @@ export function createWorkspaceNavigation(options: {
   const resize = new ResizeObserver(revealActive);
   resize.observe(tabs);
   function render() {
+    root.dataset.expanded = String(!!options.namesExpanded?.());
     const focused = tabs.contains(document.activeElement);
     closeMenu();
     const state = options.state();
@@ -235,11 +215,13 @@ export function createWorkspaceNavigation(options: {
           button = element("button", "workspace-tab");
         button.append(tab.icon ? workspaceIcon(tab.icon) : uiIcon("layers"));
         button.append(element("span", "workspace-tab-label", tab.name));
+        if (!options.namesExpanded?.()) button.title = tab.name;
         item.setAttribute("role", "presentation");
         button.setAttribute("aria-haspopup", "menu");
         button.setAttribute("aria-expanded", "false");
         button.addEventListener("contextmenu", (event) => {
           event.preventDefault();
+          event.stopPropagation();
           showMenu(tab.id, button, event.clientX, event.clientY);
         });
         button.type = "button";
@@ -478,15 +460,13 @@ export function createWorkspaceNavigation(options: {
     destroy() {
       revision++;
       resize.disconnect();
-      window.removeEventListener("resize", dismissSwitcher);
-      document.removeEventListener("scroll", dismissSwitcher, true);
       closeSwitcher();
-      switchMenu.remove();
+      switchController.destroy();
       switcher.remove();
       editor?.destroy();
       iconPicker?.destroy();
       closeMenu();
-      menu.remove();
+      menuController.destroy();
       dialog.remove();
       root.remove();
     },

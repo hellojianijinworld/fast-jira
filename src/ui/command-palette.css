@@ -35,14 +35,8 @@
   gap: var(--density-space-3);
   flex: none;
 }
-.command-heading .tool-button {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  padding: 4px;
-}
 .command-head h2 {
-  margin: 0;
+  margin: 0 var(--button-group-compact-gap) 0 0;
   font-size: var(--font-size-15);
 }
 .command-modal kbd {
@@ -97,18 +91,15 @@
   box-sizing: border-box;
 }
 .command-controls {
-  display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: var(--density-space-1-5);
-  flex-wrap: wrap;
 }
 .command-model {
   max-width: 190px;
   font-size: var(--font-size-12);
 }
 .command-controls .active {
-  background: var(--blue-soft);
+  border-color: var(--blue);
+  background: var(--selected);
   color: var(--blue);
 }
 .command-hint,
@@ -182,7 +173,7 @@
   background: transparent;
   color: var(--text);
 }
-.command-menu button:hover,
+.command-menu button:hover:where(:not(:disabled):not([aria-disabled="true"])),
 .command-menu button:focus-visible {
   background: var(--blue-soft);
   color: var(--blue);
@@ -225,8 +216,27 @@
   min-width: 0;
   border-radius: var(--radius-8);
 }
+.chat-conversation {
+  border: 1px solid transparent;
+}
+.chat-conversation:hover:where(:not(:disabled):not([aria-disabled="true"])) {
+  background: var(--hover);
+}
 .chat-conversation:has([aria-current="true"]) {
-  background: var(--blue-soft);
+  border-color: var(--blue);
+  background: var(--selected);
+}
+.chat-conversation:has([aria-current="true"]):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+),
+.command-controls
+  .active:hover:where(:not(:disabled):not([aria-disabled="true"])) {
+  background: var(--selected-hover);
+}
+.chat-conversation-open:hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
+  background: transparent;
 }
 .chat-conversation-open {
   display: flex;
@@ -263,7 +273,8 @@
   flex: none;
   color: var(--muted);
 }
-.chat-conversation:hover > .tool-button,
+.chat-conversation:hover:where(:not(:disabled):not([aria-disabled="true"]))
+  > .tool-button,
 .chat-conversation:focus-within > .tool-button {
   visibility: visible;
 }
@@ -536,9 +547,6 @@
     min-height: 58px;
   }
 
-  .chat-main .command-controls {
-    gap: 4px;
-  }
   .command-model {
     max-width: 145px;
   }
@@ -623,12 +631,9 @@
   min-height: 38px;
 }
 
-.command-heading,
 .chat-send-group {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-width: 0;
 }
 
 .select-options.ai-chat-help:popover-open {
@@ -799,13 +804,17 @@
   font: inherit;
   cursor: pointer;
 }
+.chat-queue-text:hover:where(:not(:disabled)) {
+  color: var(--blue);
+  text-decoration: underline;
+}
 .chat-queue-row > .tool-button {
   flex: none;
 }
 
 .chat-input-shortcuts {
   flex: 1;
-  min-width: 0;
+  min-width: min(160px, 100%);
   margin: 0;
   color: var(--muted);
   font-size: var(--font-size-11);

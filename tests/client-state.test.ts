@@ -135,12 +135,14 @@ test("저장소가 차단돼도 화면 설정과 계정 분리는 유지한다",
     theme: "light",
     compactView: false,
     compactDone: true,
+    viewNamesExpanded: false,
   });
   assert.doesNotThrow(() =>
     writePreferences(blocked, {
       theme: "dark",
       compactView: true,
       compactDone: false,
+      viewNamesExpanded: false,
     }),
   );
   const store = createAccountStore(blocked, "example", "me");

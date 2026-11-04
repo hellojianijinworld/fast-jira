@@ -143,6 +143,9 @@ const updates = appUpdate(
   { active: () => false, reload: () => {} },
 );
 let app = await createApp(root, api, storage, undefined, updates);
+// 초기 화면 크기 확정 후 실제 사용자 메뉴 조작을 검사한다.
+await new Promise(requestAnimationFrame);
+await new Promise(requestAnimationFrame);
 let failures = 0;
 async function check(name: string, run: () => Promise<void>) {
   if (preview.has("preview")) return;
@@ -715,6 +718,47 @@ await check("뷰는 탑바 도구 왼쪽에 있고 스크롤해도 함께 유지
     "뷰가 도구 왼쪽에 있지 않음",
   );
   assert(views.getBoundingClientRect().height <= 44, "뷰 영역이 너무 높음");
+  const tools = nav.querySelector<HTMLElement>(".nav-tools");
+  const add = views.querySelector<HTMLButtonElement>(
+    '[aria-label="뷰 만들기"]',
+  );
+  const tabs = [...views.querySelectorAll<HTMLButtonElement>(".workspace-tab")];
+  assert(tools && add && tabs.length, "뷰·도구 그룹 누락");
+  const assertGapCentered = () => {
+    const left = views.getBoundingClientRect(),
+      right = tools.getBoundingClientRect();
+    assert(
+      Math.abs(
+        (left.right + right.left) / 2 -
+          (nav.getBoundingClientRect().left +
+            nav.getBoundingClientRect().width / 2),
+      ) < 1,
+      "뷰·도구 사이 공백이 화면 중앙과 다름",
+    );
+  };
+  assertGapCentered();
+  assert(
+    Math.abs(
+      views.getBoundingClientRect().height -
+        tools.getBoundingClientRect().height,
+    ) < 1,
+    "뷰와 도구 그룹 높이 불일치",
+  );
+  tabs.forEach((tab, index) => {
+    assert(
+      tab.getBoundingClientRect().height === add.getBoundingClientRect().height,
+      "뷰 탭과 추가 버튼 높이 불일치",
+    );
+    const previous = tabs[index - 1];
+    if (previous)
+      assert(
+        tab.getBoundingClientRect().left -
+          previous.getBoundingClientRect().right >=
+          4,
+        "뷰 탭 사이 간격이 없음",
+      );
+  });
+
   const label = views.querySelector<HTMLElement>(".workspace-tab-label");
   assert(label, "뷰 이름 없음");
   assert(
@@ -733,13 +777,49 @@ await check("뷰는 탑바 도구 왼쪽에 있고 스크롤해도 함께 유지
   const toolbarBefore = nav
     .querySelector<HTMLElement>(".nav-tools")!
     .getBoundingClientRect();
-  views.querySelector<HTMLButtonElement>(".workspace-tab")?.focus();
-  for (let n = 0; n < 30 && label.getBoundingClientRect().width === 0; n++)
+  const activeTab = views.querySelector<HTMLButtonElement>(".workspace-tab");
+  assert(activeTab, "뷰 탭 누락");
+  activeTab.focus();
+  await wait();
+  assert(
+    label.getBoundingClientRect().width === 0,
+    "접힌 뷰가 포커스로 펼쳐짐",
+  );
+  assert(activeTab.title.length > 0, "접힌 뷰 이름 툴팁 누락");
+  activeTab.dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, clientX: 200, clientY: 60 }),
+  );
+  const nameToggle = document.querySelector<HTMLButtonElement>(
+    '.workspace-tab-menu [role="menuitemcheckbox"]',
+  );
+  assert(
+    nameToggle?.getAttribute("aria-checked") === "false",
+    "우클릭 표시 설정 누락",
+  );
+  nameToggle.click();
+  for (
+    let n = 0;
+    n < 30 &&
+    views
+      .querySelector<HTMLElement>(".workspace-tab-label")
+      ?.getBoundingClientRect().width === 0;
+    n++
+  )
     await wait();
   assert(
-    label.getBoundingClientRect().width > 0,
-    "키보드 포커스에서 뷰 이름이 펼쳐지지 않음",
+    (views
+      .querySelector<HTMLElement>(".workspace-tab-label")
+      ?.getBoundingClientRect().width ?? 0) > 0,
+    "우클릭 펼침 미적용",
   );
+  const storedSettings = JSON.parse(
+    storage.getItem("fastJira:settings") ?? "null",
+  );
+  assert(
+    storedSettings.display.viewNamesExpanded === true,
+    "우클릭 설정이 글로벌 JSON에 저장되지 않음",
+  );
+  assertGapCentered();
   const toolbarAfter = nav
     .querySelector<HTMLElement>(".nav-tools")!
     .getBoundingClientRect();
@@ -748,6 +828,27 @@ await check("뷰는 탑바 도구 왼쪽에 있고 스크롤해도 함께 유지
       toolbarBefore.width === toolbarAfter.width,
     "뷰 펼침이 툴바를 움직임",
   );
+  button("설정").click();
+  const expandedRadio = document.querySelector<HTMLInputElement>(
+    '[aria-label="뷰 표시 · 이름도 표시"]',
+  );
+  assert(expandedRadio?.checked, "우클릭 선택이 설정 화면에 반영되지 않음");
+  const collapsedRadio = document.querySelector<HTMLInputElement>(
+    '[aria-label="뷰 표시 · 아이콘만"]',
+  );
+  assert(collapsedRadio, "뷰 표시 설정 누락");
+  collapsedRadio.click();
+  const settingsModal = collapsedRadio.closest("dialog");
+  assert(settingsModal, "설정 모달 누락");
+  button("닫기", settingsModal).click();
+  views.dispatchEvent(
+    new MouseEvent("contextmenu", { bubbles: true, clientX: 200, clientY: 60 }),
+  );
+  assert(
+    nameToggle.getAttribute("aria-checked") === "false",
+    "설정 변경이 우클릭 메뉴에 반영되지 않음",
+  );
+  nameToggle.click();
   button("메뉴").focus();
   const scroller = innerWidth <= 600 ? workspace : browse;
   const spacer = element("div");
@@ -1128,6 +1229,13 @@ await check(
         !menu.matches(":popover-open") &&
           document.activeElement === navigation.switcher,
         "Escape 닫기·포커스 복원 실패",
+      );
+      navigation.switcher.click();
+      window.dispatchEvent(new Event("resize"));
+      assert(
+        !menu.matches(":popover-open") &&
+          navigation.switcher.getAttribute("aria-expanded") === "false",
+        "화면 크기 변경 후 전환 메뉴가 닫히지 않음",
       );
     } finally {
       navigation.destroy();

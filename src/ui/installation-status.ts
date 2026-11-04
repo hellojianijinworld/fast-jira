@@ -6,7 +6,13 @@ import {
   type RepairTarget,
   repairing,
 } from "../domain/installation-management.ts";
-import { actionButton, element, externalLink } from "./dom.ts";
+import {
+  actionButton,
+  buttonGroup,
+  element,
+  externalLink,
+  iconButton,
+} from "./dom.ts";
 import { providerGuidance } from "./installation-guidance.ts";
 
 /** 일반 화면에서 숨긴 AI도 설정에서 다시 연결할 수 있게 한다. */
@@ -20,24 +26,17 @@ export function installationStatus(options: {
 }) {
   const root = element("section", "installation-status"),
     heading = element("div", "installation-heading"),
-    check = actionButton("상태 새로고침", "refresh-cw", {
+    check = actionButton("다시 확인", "refresh-cw", {
       size: "sm",
       variant: "outline",
     }),
-    summary = element("p", "installation-summary"),
-    description = element(
-      "p",
-      "setting-help",
-      "Jira 연결과 별도로 AI 대화와 간편 주소의 상태를 확인해요.",
-    ),
     body = element("div", "installation-rows"),
     message = element("p", "setting-help");
   root.setAttribute("aria-label", "앱과 AI 연결");
   check.setAttribute("aria-label", "앱·AI 연결 상태 새로고침");
   message.setAttribute("role", "status");
-  heading.append(element("h3", "", "AI·간편 주소 연결"), check);
-  summary.setAttribute("role", "status");
-  root.append(heading, description, summary, body, message);
+  heading.append(element("h3", "", "연결 관리"), check);
+  root.append(heading, body, message);
   let state: InstallationManagement | undefined,
     checking = false,
     submitting: RepairTarget | undefined,
@@ -53,12 +52,14 @@ export function installationStatus(options: {
     check.setAttribute("aria-busy", String(checking));
     const checkLabel = check.querySelector("span");
     if (checkLabel)
-      checkLabel.textContent = checking ? "확인 중…" : "상태 새로고침";
+      checkLabel.textContent = checking ? "확인 중…" : "다시 확인";
     body.replaceChildren();
     const row = (title: string, text: string, label = "", status = "") => {
       const node = element("div", "installation-row"),
         copy = element("div", "installation-copy"),
-        actions = element("div", "installation-actions");
+        actions = buttonGroup(element("div", "installation-actions"), {
+          size: "sm",
+        });
       const name = element("div", "installation-row-title");
       name.append(element("strong", "", title));
       if (label) {
@@ -66,7 +67,8 @@ export function installationStatus(options: {
         badge.dataset.state = status;
         name.append(badge);
       }
-      copy.append(name, element("small", "setting-help", text));
+      copy.append(name);
+      if (text) copy.append(element("small", "setting-help", text));
       node.append(copy, actions);
       body.append(node);
       return actions;
@@ -75,9 +77,10 @@ export function installationStatus(options: {
       parent: HTMLElement,
       label: string,
       target: RepairTarget,
+      text = label,
     ) => {
       const button = actionButton(
-        label,
+        text,
         target.endsWith("-login") ? "external-link" : "refresh-cw",
         { size: "sm", variant: "outline" },
       );
@@ -92,47 +95,71 @@ export function installationStatus(options: {
       );
       button.addEventListener("click", () => void repair(target));
       parent.append(button);
+      return button;
     };
     row(
       "Fast Jira 앱",
-      state?.supported
-        ? "이 컴퓨터에서 실행 중이에요."
-        : state
-          ? "소스 실행이라 이 화면의 자동 복구를 지원하지 않아요. AI 연결은 실행 환경에서 직접 설정해 주세요."
-          : "앱 관리 정보를 받지 못했어요. 아래 AI 연결 상태와는 별도로 확인해요.",
+      state && !state.supported
+        ? "개발 환경에서는 이 화면의 연결 복구를 사용할 수 없어요."
+        : "이 컴퓨터에서 Fast Jira를 사용하고 있어요.",
+      state ? "실행 중" : checking ? "확인 중" : "확인 못함",
+      state ? "ready" : checking ? "checking" : "unknown",
     );
     const snapshot = options.assistant.snapshot;
-    const summaries: string[] = [];
     for (const id of ["codex", "claude"] as const) {
       const provider = snapshot.status?.providers?.find(
           (item) => item.id === id,
         ),
         title = id === "codex" ? "Codex" : "Claude";
       const guidance = providerGuidance(provider, snapshot);
-      summaries.push(`${title} ${guidance.label}`);
       const actions = row(
         title,
-        guidance.detail,
+        provider?.ready
+          ? "AI 대화에서 작업을 살펴보고 정리할 수 있어요."
+          : guidance.detail,
         guidance.label,
         guidance.state,
       );
       if (provider?.reason === "login_required")
-        action(actions, `${title} 로그인`, `${id}-login`);
-      if (state?.platforms.includes(id))
-        action(actions, `${title} 플러그인 연결 확인`, id);
+        action(actions, `${title} 로그인`, `${id}-login`, "로그인");
+      if (state?.platforms.includes(id)) {
+        const connect = action(actions, `${title} 도구 연결`, id, "도구 연결");
+        connect.title = `${title}에서 Fast Jira 도구가 보이지 않을 때
+연결 정보를 다시 등록해요.`;
+      }
     }
-    summary.textContent = summaries.join(" · ");
+    const domainUrl = "https://fast-jira.local";
+    const usingDomain = location.origin === domainUrl;
     const domain = row(
-      "간편 주소",
-      !state
-        ? "간편 주소의 연결 상태를 아직 확인하지 못했어요."
-        : state.domain
-          ? "간편 주소를 사용할 수 있어요."
-          : "localhost로 사용할 수 있어요. 원하면 간편 주소를 연결해 주세요.",
+      "접속 주소",
+      usingDomain
+        ? "간편 주소로 접속했어요. 다음에도 이 주소로 열면 돼요."
+        : state?.domain
+          ? "간편 주소가 준비됐어요. 이 주소로 접속해 보세요."
+          : state
+            ? "포트 번호 없이 접속하고 싶다면 간편 주소를 설정해 보세요."
+            : checking
+              ? "간편 주소의 설정 정보를 확인하고 있어요."
+              : "간편 주소의 설정 정보를 확인하지 못했어요. 다시 확인해 주세요.",
+      location.host,
+      "unchecked",
     );
-    if (state?.domain)
-      domain.append(externalLink("https://fast-jira.local", "간편 주소 열기"));
-    else if (state) action(domain, "간편 주소 연결", "domain");
+    const domainCopy =
+      domain.parentElement?.querySelector(".installation-copy");
+    const addressHelp = iconButton("간편 주소 안내", "circle-help", {
+      size: "sm",
+    });
+    addressHelp.dataset.tooltipClick = "true";
+    addressHelp.title =
+      "이 컴퓨터에서 fast-jira.local로 접속할 수 있게 설정해요.\n시스템 승인이 필요할 수 있어요.";
+    domainCopy?.querySelector(".installation-row-title")?.append(addressHelp);
+    if (state?.domain && !usingDomain) {
+      domainCopy?.append(element("code", "installation-address", domainUrl));
+      domain.append(externalLink(domainUrl, "간편 주소로 열기"));
+    }
+    if (state && !state.domain && !usingDomain) {
+      action(domain, "간편 주소 설정", "domain");
+    }
     const phase = state?.job?.phase;
     message.textContent =
       error ||
@@ -140,11 +167,9 @@ export function installationStatus(options: {
         ? state?.job?.target.endsWith("-login")
           ? "열린 브라우저에서 로그인을 마쳐 주세요. 이 화면은 그대로 두셔도 돼요."
           : "연결 작업 중이에요. 시스템 승인창이 뜨면 용도를 확인해 주세요."
-        : phase === "complete"
-          ? "연결 작업을 마쳤어요. 현재 연결 상태를 확인해 주세요."
-          : phase === "failed" || phase === "interrupted"
-            ? "연결 작업을 마치지 못했어요. 다시 시도하거나 사용 중인 AI에게 Fast Jira 연결을 요청해 주세요."
-            : "");
+        : phase === "failed" || phase === "interrupted"
+          ? "연결 작업을 마치지 못했어요. 다시 시도하거나 사용 중인 AI에게 Fast Jira 연결을 요청해 주세요."
+          : "");
     message.hidden = !message.textContent;
     message.classList.toggle(
       "error",
@@ -182,11 +207,14 @@ export function installationStatus(options: {
         if (management.status === "fulfilled") {
           state = management.value;
           error = "";
+          if (wasRunning && state.job?.phase === "complete")
+            options.notice?.("연결을 마쳤어요.");
           if (!checkAssistant && wasRunning && !repairing(state.job))
             await options.assistant.refresh(true);
         } else {
+          state = undefined;
           error =
-            "앱·간편 주소의 관리 정보를 불러오지 못했어요. AI 연결 결과는 위에서 따로 확인할 수 있어요. 계속 같으면 사용 중인 AI에게 Fast Jira 연결 점검을 요청해 주세요.";
+            "앱과 접속 주소의 상태를 확인하지 못했어요. 다시 확인해도 같으면 사용 중인 AI에게 Fast Jira 연결 점검을 요청해 주세요.";
         }
       } catch {
         if (alive)

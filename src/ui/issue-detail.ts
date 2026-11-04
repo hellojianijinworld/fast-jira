@@ -16,6 +16,7 @@ import { type DetailChildOptions, detailChildren } from "./detail-children.ts";
 import { documentForm } from "./document-form.ts";
 import {
   actionButton,
+  buttonGroup,
   element,
   externalLink,
   iconButton,
@@ -65,7 +66,10 @@ export function issueDetail(
   root.append(history.panel);
   const dismiss = iconButton("이슈 상세 닫기", "x");
   dismiss.addEventListener("click", close);
-  const actions = element("div", "detail-head-actions");
+  const actions = buttonGroup(element("div", "detail-head-actions"), {
+    compact: true,
+    wrap: false,
+  });
   if (favorite) actions.append(favorite);
   actions.append(history.trigger, dismiss);
   head.append(identity, actions);

@@ -1,6 +1,12 @@
 import type { Api } from "../client/api.ts";
 import { createAppUpdateController } from "../client/app-update-controller.ts";
-import { actionButton, element, externalLink, iconButton } from "./dom.ts";
+import {
+  actionButton,
+  buttonGroup,
+  element,
+  externalLink,
+  iconButton,
+} from "./dom.ts";
 import { createFaviconBadge } from "./favicon.ts";
 import { relativeTime } from "./meta.ts";
 
@@ -19,11 +25,13 @@ export function appUpdate(
   trigger.hidden = true;
   const root = element("section", "app-update-content");
   root.setAttribute("aria-label", "Fast Jira 업데이트");
+  root.dataset.size = "sm";
   const title = element("h3"),
     versions = element("div", "app-update-versions");
-  const current = element("span"),
-    target = element("strong");
-  versions.append(current, target);
+  const current = element("span", "installation-state"),
+    target = element("strong", "installation-state");
+  current.dataset.state = "ready";
+  versions.append(title, current, target);
   const message = element("p", "app-update-message");
   message.setAttribute("role", "status");
   const checked = element("small", "app-update-checked");
@@ -38,23 +46,25 @@ export function appUpdate(
     "작성 중인 내용을 저장한 뒤 진행해 주세요. 앱과 설치된 Fast Jira 플러그인을 함께 업데이트해요.",
   );
   const support = element("small", "app-update-support");
-  const check = actionButton("직접 확인", "search");
+  const check = actionButton("직접 확인", "search", {
+    size: "sm",
+    variant: "outline",
+  });
   check.setAttribute("aria-label", "직접 업데이트 확인");
-  const install = actionButton("업데이트하고 다시 시작", "check", "primary");
+  const install = actionButton("업데이트하고 다시 시작", "check", {
+    size: "sm",
+    variant: "primary",
+  });
   install.setAttribute("aria-label", "업데이트하고 다시 시작");
-  const actions = element("div", "app-update-actions");
+  const actions = buttonGroup(element("div", "app-update-actions"), {
+    size: "sm",
+  });
   actions.append(check, install);
-  root.append(
-    title,
-    versions,
-    message,
-    checked,
-    warning,
-    actions,
-    notes,
-    releaseLink,
-    support,
-  );
+  const heading = element("div", "app-update-heading"),
+    status = element("div", "app-update-status");
+  heading.append(versions, actions);
+  status.append(message, checked);
+  root.append(heading, status, warning, notes, releaseLink, support);
   function render() {
     const state = controller.status;
     const running = controller.running;
@@ -74,13 +84,22 @@ export function appUpdate(
       state.phase !== "available" ||
       !state.release;
     title.textContent = "버전";
-    current.textContent = `현재 ${state?.currentVersion ?? "확인 중"}`;
+    current.textContent = state?.currentVersion ?? "확인 중";
+    current.setAttribute(
+      "aria-label",
+      `현재 버전 ${state?.currentVersion ?? "확인 중"}`,
+    );
+    install.hidden = !available && !running;
+    target.hidden = !state?.release;
     target.textContent = state?.release ? `→ ${state.release.version}` : "";
-    message.textContent = controller.disconnected
-      ? (state?.message ?? "")
-      : (state?.job?.phase !== "complete" && state?.job?.message) ||
-        state?.message ||
-        "업데이트 상태를 불러오고 있어요…";
+    message.textContent =
+      state?.phase === "current" && !controller.disconnected
+        ? "최신 버전이에요."
+        : controller.disconnected
+          ? (state?.message ?? "")
+          : (state?.job?.phase !== "complete" && state?.job?.message) ||
+            state?.message ||
+            "업데이트 상태를 불러오고 있어요…";
     message.classList.toggle(
       "error",
       controller.disconnected ||

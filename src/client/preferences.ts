@@ -34,6 +34,7 @@ export interface Preferences {
   theme: "light" | "dark" | "system";
   compactView: boolean;
   compactDone: boolean;
+  viewNamesExpanded: boolean;
 }
 export function readPreferences(storage: LocalStore): Preferences {
   return readGlobalSettings(storage).display;

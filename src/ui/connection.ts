@@ -85,6 +85,7 @@ export function connectionForm(
     ["token", "API 토큰", "발급한 토큰을 붙여넣으세요", "password"],
   ] as const) {
     const row = element("label", "connection-field");
+    row.dataset.field = key;
     const heading = element("span", "connection-field-label", label);
     const input = fields[key];
     input.type = type;

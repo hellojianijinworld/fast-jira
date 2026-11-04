@@ -41,7 +41,14 @@ import { createAssistantApprovalPanel } from "./assistant-approvals.ts";
 import { chatMessage } from "./chat-message.ts";
 import { createChatSidebar } from "./chat-sidebar.ts";
 import { copyText } from "./clipboard.ts";
-import { actionButton, element, elementId, iconButton, uiIcon } from "./dom.ts";
+import {
+  actionButton,
+  buttonGroup,
+  element,
+  elementId,
+  iconButton,
+  uiIcon,
+} from "./dom.ts";
 import { createFaqDialog } from "./faq.ts";
 import { popoverPosition } from "./geometry.ts";
 import type { CardOptions } from "./issue-card.ts";
@@ -110,7 +117,7 @@ export function createCommandPalette(config: {
     panel = element("section", "command-panel"),
     form = element("form", "command-form"),
     input = element("textarea"),
-    controls = element("div", "command-controls"),
+    controls = buttonGroup(element("div", "command-controls"), { size: "sm" }),
     model = element("select", "command-model"),
     microphone = iconButton("음성 입력", "mic"),
     send = actionButton("보내기", "arrow-up", "primary"),
@@ -130,8 +137,16 @@ export function createCommandPalette(config: {
       "div",
       "select-options ai-chat-help ai-chat-settings",
     ),
-    heading = element("div", "command-heading"),
-    headActions = element("div", "command-heading"),
+    heading = buttonGroup(element("div", "command-heading"), {
+      size: "sm",
+      compact: true,
+      wrap: false,
+    }),
+    headActions = buttonGroup(element("div", "command-heading"), {
+      size: "sm",
+      compact: true,
+      wrap: false,
+    }),
     copyConversation = iconButton("대화 링크 복사", "copy", { size: "sm" }),
     sendGroup = element("div", "chat-send-group"),
     sendModeField = element("fieldset", "setting-group ai-chat-setting-group"),
@@ -142,7 +157,6 @@ export function createCommandPalette(config: {
     policyBody = element("div", "chat-policy-content"),
     status = element("p", "command-status"),
     aiResults = element("div", "command-results");
-  controls.dataset.size = "sm";
   let conversations: Conversation[] = [],
     current: Conversation | undefined,
     storageError = "";

@@ -73,7 +73,7 @@ async function start(root: HTMLElement) {
   const assistant = createAssistantConnection(api.assistantStatus);
   const installation = installationStatus({ api, assistant });
   updateSettings.append(
-    element("summary", "", "AI·간편 주소 및 업데이트"),
+    element("summary", "", "연결 관리 및 업데이트"),
     installation.element,
     updates.element,
   );

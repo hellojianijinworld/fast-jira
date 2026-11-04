@@ -29,6 +29,7 @@ test("기존 표시 설정을 읽고 새 JSON에 Diff와 함께 보존한다", (
     theme: "dark",
     compactView: true,
     compactDone: false,
+    viewNamesExpanded: false,
   });
   const stored = JSON.parse(storage.getItem(GLOBAL_SETTINGS_KEY) ?? "null");
   assert.equal(stored.version, 1);
@@ -53,7 +54,24 @@ test("손상되거나 잘못된 설정은 필드별 기본값으로 복구한다
   );
   assert.deepEqual(readGlobalSettings(storage), {
     version: 1,
-    display: { theme: "dark", compactView: false, compactDone: true },
+    display: {
+      theme: "dark",
+      compactView: false,
+      compactDone: true,
+      viewNamesExpanded: false,
+    },
     history: { diffLayout: "split" },
   });
+});
+
+test("뷰 표시 설정은 전역 저장·복원을 거치며 Diff 설정과 다른 표시값을 보존한다", () => {
+  const storage = store();
+  updateGlobalSettings(storage, {
+    display: { viewNamesExpanded: true },
+    history: { diffLayout: "inline" },
+  });
+  assert.equal(readPreferences(storage).viewNamesExpanded, true);
+  writePreferences(storage, { ...readPreferences(storage), theme: "dark" });
+  assert.equal(readPreferences(storage).viewNamesExpanded, true);
+  assert.equal(readGlobalSettings(storage).history.diffLayout, "inline");
 });

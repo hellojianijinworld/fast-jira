@@ -1,3 +1,19 @@
+.button-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--button-group-gap);
+  min-width: 0;
+}
+.button-group[data-group-compact="true"] {
+  gap: var(--button-group-compact-gap);
+}
+.button-group[data-group-wrap="false"] {
+  flex-wrap: nowrap;
+}
+.button-group > :is(button, .button-link) {
+  flex-shrink: 0;
+}
 button,
 input,
 select,
@@ -40,6 +56,11 @@ summary:focus-visible,
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
+button[data-variant="primary"]:focus-visible,
+button[class=""]:not([data-variant]):focus-visible {
+  outline-color: currentColor;
+  outline-offset: -4px;
+}
 input,
 textarea,
 select {
@@ -64,7 +85,9 @@ a {
   background: transparent;
   color: var(--muted);
 }
-[data-variant="outline"]:hover {
+[data-variant="outline"]:hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
   background: var(--hover);
   color: var(--blue);
 }
@@ -79,10 +102,57 @@ a {
   color: var(--muted);
   background: transparent;
 }
-.tool-button:not([data-variant]):hover,
-[data-variant="ghost"]:hover {
+.tool-button:not([data-variant]):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+),
+[data-variant="ghost"]:hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
   border-color: var(--border-strong);
   background: var(--hover);
+}
+/* Hover previews a target; selected/open states remain persistent. */
+:where(button, .button-link):where(
+  :not(:disabled):not([aria-disabled="true"])
+):hover:where(:not(:disabled):not([aria-disabled="true"])) {
+  background: var(--hover);
+}
+:where(button, .button-link):where(
+  [data-variant="primary"],
+  button:not([data-variant]):not(.secondary):not(.outline):not(.tool-button)
+):where(:not(:disabled)):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
+  background: color-mix(in srgb, var(--button-bg) 86%, var(--text));
+}
+:where(button, .button-link, .list-item, .activity-row, .feedback-option):where(
+  :not(:disabled):not([aria-disabled="true"]):not(.favorite-button)
+):active {
+  box-shadow: var(--pressed-shadow);
+}
+:where(
+  input:not([type="radio"]):not([type="checkbox"]),
+  textarea,
+  select
+):where(:not(:disabled):not([readonly])):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--border-strong));
+}
+summary:hover {
+  background: var(--hover);
+  border-radius: var(--radius-4);
+}
+summary:active {
+  box-shadow: var(--pressed-shadow);
+}
+a[href]:not(.list-item):not(.button-link):hover {
+  color: var(--blue-text);
+  text-decoration: underline;
+}
+a[href]:not(.list-item):not(.button-link):active {
+  color: var(--blue);
+  text-decoration-thickness: 2px;
 }
 .ui-icon {
   flex: none;
@@ -129,9 +199,8 @@ a {
   font-size: var(--card-font-size);
   line-height: var(--card-line-height);
 }
-.list-item:hover,
-.list-item:focus-visible {
-  border-color: var(--blue);
+.list-item:hover:where(:not(:disabled):not([aria-disabled="true"])) {
+  border-color: var(--border-strong);
   background: var(--hover);
 }
 .list-item[aria-current="true"] {
@@ -144,6 +213,11 @@ a {
   --badge-outline-strength: var(--selected-badge-outline-strength);
   border-color: var(--blue);
   background: var(--selected);
+}
+.list-item[aria-current="true"]:hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
+  background: var(--selected-hover);
 }
 .list-main {
   display: inline;
@@ -347,7 +421,7 @@ a {
 .tree-toggle:where([aria-expanded="true"]) .ui-icon {
   transform: rotate(90deg);
 }
-.tree-toggle:hover {
+.tree-toggle:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   color: var(--blue);
   background: var(--blue-soft);
 }
@@ -365,7 +439,8 @@ a {
 }
 .row-action.active {
   color: var(--blue);
-  background: var(--blue-soft);
+  background: var(--selected);
+  border-color: var(--blue);
 }
 .card-view-button {
   display: inline-flex;
@@ -515,9 +590,13 @@ a {
   color: var(--text);
   text-align: left;
 }
-.select-trigger:hover,
+.select-trigger:hover:where(:not(:disabled):not([aria-disabled="true"])) {
+  border-color: var(--border-strong);
+  background: var(--hover);
+}
 .select-trigger[aria-expanded="true"] {
   border-color: var(--blue);
+  background: var(--selected);
 }
 .select-value {
   display: block;
@@ -574,12 +653,19 @@ a {
   color: var(--text);
   text-align: left;
 }
-.select-option:hover,
+.select-option:hover:where(:not(:disabled):not([aria-disabled="true"])),
 .select-option:focus-visible {
   background: var(--hover);
 }
 .select-option[aria-selected="true"] {
   background: var(--selected);
+  border-color: var(--blue);
+  font-weight: var(--font-weight-semibold);
+}
+.select-option[aria-selected="true"]:hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
+  background: var(--selected-hover);
 }
 .select-option .person-pill,
 .select-trigger .person-pill,
@@ -904,8 +990,25 @@ a {
   border-radius: var(--radius-6);
   max-width: 100%;
 }
+.project-checks
+  .status-check:where(:not(:has(input:disabled))):hover:where(
+    :not(:disabled):not([aria-disabled="true"])
+  ) {
+  background: var(--hover);
+}
 .project-checks .status-check:has(:checked) {
-  background: var(--blue-soft);
+  background: var(--selected);
+  border-color: var(--blue);
+}
+.project-checks
+  .status-check:has(:checked):where(:not(:has(input:disabled))):hover:where(
+    :not(:disabled):not([aria-disabled="true"])
+  ) {
+  background: var(--selected-hover);
+}
+.project-checks .status-check:has(:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 .project-checks .project-choice {
   min-width: 0;
@@ -933,8 +1036,8 @@ a {
 .sort-rule .select-menu {
   flex: 1;
 }
-.sort-rule button.secondary,
-[data-variant="secondary"] {
+.sort-rule > button.secondary,
+.sort-rule > [data-variant="secondary"] {
   min-width: 28px;
   padding: 0 var(--density-space-1-5);
 }
@@ -1033,9 +1136,6 @@ a {
   width: 14px;
   height: 14px;
 }
-.completed-grid .list-item:hover {
-  background: var(--hover);
-}
 .completed-grid .list-item[aria-current="true"] {
   background: var(--selected);
 }
@@ -1074,7 +1174,8 @@ a {
 }
 .detail-child-filter.active {
   color: var(--blue);
-  background: var(--blue-soft);
+  background: var(--selected);
+  border-color: var(--blue);
 }
 
 /* 현재 탭의 필터는 하나의 팝오버에서 편집한다. */
@@ -1224,7 +1325,7 @@ a {
   font-size: var(--font-size-12);
   border-radius: var(--radius-4);
 }
-.tree-context a:hover {
+.tree-context a:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   color: var(--blue);
 }
 .tree-context :where(.issue-type-icon, .project-icon, .ui-icon) {
@@ -1286,10 +1387,11 @@ a {
 .tree-section-toggle[aria-expanded="true"] .ui-icon {
   transform: rotate(90deg);
 }
-.tree-section-toggle:hover {
+.tree-section-toggle:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   color: var(--text);
 }
-.tree-section-toggle:hover .tree-section-control {
+.tree-section-toggle:hover:where(:not(:disabled):not([aria-disabled="true"]))
+  .tree-section-control {
   color: var(--blue);
   background: var(--blue-soft);
 }
@@ -1312,7 +1414,8 @@ a {
   gap: var(--card-badge-gap);
 }
 .participant-chip .tool-button,
-.participant-chip .tool-button:hover {
+.participant-chip
+  .tool-button:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   width: 18px;
   min-width: 18px;
   height: 18px;
@@ -1334,11 +1437,11 @@ a {
 }
 .participant-edit-fields {
   display: grid;
-  gap: var(--density-space-5);
+  gap: var(--density-space-3);
 }
 .participant-edit-row + .participant-edit-row {
   border-top: 1px solid var(--border);
-  padding-top: var(--density-space-4);
+  padding-top: var(--density-space-3);
 }
 .participant-field-head {
   min-height: var(--sm-button-height);
@@ -1469,4 +1572,71 @@ a {
   line-height: 1.4;
   overflow-wrap: anywhere;
   pointer-events: none;
+}
+
+.setting-option:has(input:disabled),
+.status-check:has(input:disabled),
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+.setting-option:where(:not(:has(input:disabled))):active,
+.status-check:where(:not(:has(input:disabled))):active {
+  box-shadow: var(--pressed-shadow);
+}
+.select-trigger[aria-expanded="true"]:hover:where(:not(:disabled)) {
+  background: var(--selected-hover);
+}
+.completed-grid .list-item[aria-current="true"]:hover {
+  background: var(--selected-hover);
+}
+
+/* 버튼 메뉴·우클릭 메뉴·뷰 전환의 공통 표시 규칙. */
+.ui-menu {
+  width: fit-content;
+  max-width: calc(100vw - 24px);
+  overflow-wrap: anywhere;
+  padding: var(--space-2);
+}
+.ui-menu
+  :is([role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--button-height);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--font-size-13);
+  text-decoration: none;
+}
+.ui-menu
+  :is([role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]):is(
+    :hover,
+    :focus-visible
+  ):where(:not(:disabled):not([aria-disabled="true"])) {
+  background: var(--hover);
+}
+.ui-menu [role="menuitemcheckbox"][aria-checked="false"] .ui-icon {
+  visibility: hidden;
+}
+.ui-menu hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: var(--space-2) 0;
+}
+
+.ui-menu [aria-checked="true"] {
+  color: var(--blue-text);
+  background: var(--selected);
+  font-weight: var(--font-weight-semibold);
+}
+.ui-menu [aria-checked="true"]:is(:hover, :focus-visible) {
+  background: var(--selected-hover);
 }

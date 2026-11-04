@@ -63,28 +63,24 @@ main {
   display: flex;
   align-items: center;
   justify-self: center;
-  gap: var(--density-space-3);
+  width: 0;
+  min-height: var(--list-header-height);
   min-width: 0;
-  max-width: 100%;
 }
 .nav-center > .workspace-views {
   position: absolute;
-  right: calc(100% + var(--density-space-3));
+  right: calc(var(--density-space-3) / 2);
   width: max-content;
-  max-width: calc(50vw - 50% - var(--nav-brand-space));
+  max-width: calc(50vw - var(--nav-brand-space) - var(--density-space-3) / 2);
 }
 .nav-center .nav-tools {
+  position: absolute;
+  left: calc(var(--density-space-3) / 2);
   flex: none;
-}
-.nav-tools,
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--density-space-2);
 }
 .nav-tools {
   justify-self: center;
-  gap: var(--space-1);
+  min-height: var(--list-header-height);
   padding: var(--space-1);
   border-radius: var(--radius-dialog);
   background: var(--page);
@@ -94,7 +90,8 @@ main {
 }
 .nav-tools .active {
   color: var(--blue);
-  background: var(--blue-soft);
+  background: var(--selected);
+  border-color: var(--blue);
 }
 .workspace {
   display: grid;
@@ -341,10 +338,6 @@ dialog::backdrop {
   .top-nav {
     padding: 8px 12px;
   }
-  .nav-tools,
-  .nav-actions {
-    gap: 4px;
-  }
   .browse {
     padding: 0 var(--pane-gutter) 40px;
   }
@@ -445,7 +438,7 @@ dialog::backdrop {
   font-size: var(--font-size-12);
   text-align: start;
 }
-button.history-change:hover {
+button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
 }
 .history-field {
@@ -680,8 +673,7 @@ button.history-change:hover {
   background: var(--surface);
   overflow-wrap: anywhere;
 }
-.comment-author,
-.comment-toolbar {
+.comment-author {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -735,7 +727,8 @@ button.history-change:hover {
   padding: var(--density-space-2);
 }
 .inline-mention .keyboard-selected {
-  background: var(--blue-soft);
+  border-color: var(--blue);
+  background: var(--selected);
 }
 
 .description-head,
@@ -781,11 +774,10 @@ button.history-change:hover {
   padding: var(--pane-padding) var(--pane-gutter);
   container-type: inline-size;
 }
-.bulk-head,
-.bulk-actions {
+.bulk-head {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--density-space-3);
 }
 .bulk-head > strong {
   margin-right: auto;
@@ -794,7 +786,6 @@ button.history-change:hover {
 }
 .bulk-head button {
   min-height: var(--button-height);
-  padding: 0 var(--density-space-1-5);
   font-size: var(--font-size-12);
   white-space: nowrap;
 }
@@ -818,7 +809,7 @@ button.history-change:hover {
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-    gap: var(--density-space-1-5);
+    gap: var(--button-group-gap);
     min-width: 0;
   }
   .bulk-actions button {
@@ -873,7 +864,10 @@ button.history-change:hover {
   position: absolute;
   inset: 0 -9px 0 0;
 }
-.splitter:hover::before,
+.splitter:hover::before {
+  width: 3px;
+  background: var(--border-strong);
+}
 .splitter:active::before,
 .splitter:focus-visible::before {
   width: 4px;
@@ -952,10 +946,7 @@ button.history-change:hover {
   font-weight: var(--font-weight-medium);
 }
 .modal-footer {
-  display: flex;
   justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: var(--density-space-2);
   margin-top: var(--density-space-5);
 }
 
@@ -1025,7 +1016,7 @@ button.history-change:hover {
     animation: none;
   }
 }
-.card-copy:hover {
+.card-copy:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: transparent;
   color: var(--blue);
   border-color: var(--border-strong);
@@ -1065,12 +1056,17 @@ button.history-change:hover {
 .row-action {
   color: var(--muted);
 }
-.row-action:hover {
+.row-action:not(.active):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
   color: var(--blue);
   background: transparent;
   border-color: transparent;
 }
-.tree-row:has(.issue-card:hover) .row-action {
+.tree-row:has(
+    .issue-card:hover:where(:not(:disabled):not([aria-disabled="true"]))
+  )
+  .row-action {
   color: var(--blue);
 }
 
@@ -1103,10 +1099,6 @@ button.history-change:hover {
 .comment-author strong {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-.comment-toolbar {
-  flex-wrap: nowrap;
-  gap: 4px;
 }
 
 @media (min-width: 601px) {
@@ -1148,8 +1140,9 @@ button.history-change:hover {
 }
 .connection-fields {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
   min-width: 0;
-  gap: var(--density-space-4-5);
+  gap: var(--density-space-3);
   margin: 0;
   padding: 0;
   border: 0;
@@ -1216,7 +1209,10 @@ button.history-change:hover {
   font-size: var(--button-font-size);
   white-space: nowrap;
 }
-.connection-field-label .connection-token-link:hover {
+.connection-field-label
+  .connection-token-link:hover:where(
+    :not(:disabled):not([aria-disabled="true"])
+  ) {
   text-decoration: none;
   border-color: var(--border-strong);
 }
@@ -1224,8 +1220,13 @@ button.history-change:hover {
   margin: 0;
   font-size: var(--font-size-14);
 }
+.connection-field[data-field="token"] {
+  grid-column: 1 / -1;
+}
 .connection-field {
   display: grid;
+  align-content: start;
+  min-width: 0;
   gap: var(--density-space-1-5);
   font-size: var(--font-size-12);
   color: var(--muted);
@@ -1305,11 +1306,6 @@ button.history-change:hover {
 .detail-identity {
   min-width: 0;
 }
-.detail-head-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--density-space-1-5);
-}
 .detail-breadcrumbs {
   min-height: 28px;
   display: flex;
@@ -1333,7 +1329,7 @@ button.history-change:hover {
 .breadcrumb-label {
   overflow-wrap: anywhere;
 }
-.detail-breadcrumbs a:hover {
+.detail-breadcrumbs a:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   color: var(--blue);
   text-decoration: underline;
 }
@@ -1365,24 +1361,71 @@ button.history-change:hover {
   flex: 1 1 auto;
   overflow: hidden;
 }
+/* 탭 모양은 유지하고 탐색 영역 전체를 본문과 구분한다. */
 .settings-tabs {
   display: flex;
   flex: none;
-  gap: 4px;
-  margin: var(--density-space-3) 0 0;
-  padding-bottom: var(--density-space-2);
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-1);
+  margin: var(--density-space-2) 0 var(--density-space-2);
+  padding: var(--density-space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-alt);
+}
+.dialog-head > .settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 auto;
+  padding: var(--space-1);
+  border: 0;
+  background: var(--page);
+}
+.dialog-head > .settings-tabs .settings-tab {
+  flex: 0 1 auto;
+  padding-inline: var(--density-space-3);
+}
+.dialog-head:has(> .settings-tabs) > .tool-button {
+  align-self: center;
+}
+.dialog-head:has(> .settings-tabs) > h2 {
+  flex: none;
+}
+@media (max-width: 400px) {
+  .dialog-head:has(> .settings-tabs) {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+  .dialog-head > .settings-tabs {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+  }
+  .dialog-head > .settings-tabs .settings-tab {
+    flex: 1;
+  }
 }
 .settings-tab {
   flex: 1;
   padding: 0 var(--density-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   color: var(--muted);
   background: transparent;
   font-weight: var(--font-weight-medium);
 }
+.settings-tab:hover:where(:not(:disabled)) {
+  background: var(--hover);
+  color: var(--text);
+}
 .settings-tab[aria-selected="true"] {
   color: var(--blue);
-  background: var(--blue-soft);
+  background: var(--selected);
+  border-color: var(--blue);
+}
+.settings-tab[aria-selected="true"]:hover:where(:not(:disabled)) {
+  background: var(--selected-hover);
 }
 .settings-panels {
   flex: 1;
@@ -1425,7 +1468,8 @@ button.history-change:hover {
   font-size: var(--font-size-12);
   text-decoration: none;
 }
-.connection-field-label a:hover {
+.connection-field-label
+  a:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   text-decoration: underline;
 }
 
@@ -1450,7 +1494,7 @@ button.history-change:hover {
     --nav-brand-space: 120px;
   }
   .nav-center > .workspace-views {
-    right: calc(100% + var(--space-1));
+    right: calc(var(--density-space-3) / 2);
   }
   .nav-tools,
   .nav-actions {
@@ -1507,7 +1551,7 @@ button.history-change:hover {
   text-decoration: none;
   border-radius: var(--radius-4);
 }
-.activity-row:hover {
+.activity-row:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
 }
 .activity-meta {
@@ -1542,7 +1586,7 @@ button.history-change:hover {
   border-bottom: 1px solid var(--border);
 }
 .favorite-button,
-.favorite-button:hover,
+.favorite-button:hover:where(:not(:disabled):not([aria-disabled="true"])),
 .favorite-button:active {
   border-color: transparent;
   background: transparent;
@@ -1550,7 +1594,11 @@ button.history-change:hover {
 .favorite-button[aria-pressed="true"] {
   color: var(--favorite);
 }
-.favorite-button:is(:hover, :focus-visible) .ui-icon {
+.favorite-button:not([aria-pressed="true"]):is(
+    :hover:where(:not(:disabled):not([aria-disabled="true"])),
+    :focus-visible
+  )
+  .ui-icon {
   color: var(--favorite);
   fill: var(--favorite);
   stroke: var(--favorite-outline);
@@ -1665,29 +1713,43 @@ button.history-change:hover {
   color: var(--blue);
 }
 
-.installation-status,
+.installation-status {
+  display: grid;
+  gap: var(--density-space-3);
+}
 .installation-rows {
   display: grid;
-  gap: var(--density-space-4);
+  container-type: inline-size;
 }
-.installation-heading,
-.installation-row {
+.installation-heading {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--density-space-3);
+}
+.installation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--density-space-2) var(--density-space-3);
+  padding-block: var(--density-space-3);
+  border-bottom: 1px solid var(--border);
+}
+.installation-row:first-child {
+  padding-top: 0;
+}
+.installation-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 .installation-heading h3,
 .installation-status p {
   margin: 0;
 }
-.installation-summary {
-  padding: var(--density-space-2) var(--density-space-3);
-  border-radius: var(--radius-control);
-  background: var(--surface-alt);
-  color: var(--secondary-text);
+.installation-address {
+  overflow-wrap: anywhere;
   font-size: var(--font-size-12);
+  color: var(--text);
 }
 .installation-row-title {
   display: flex;
@@ -1696,6 +1758,10 @@ button.history-change:hover {
   gap: var(--density-space-2);
 }
 .installation-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  white-space: nowrap;
   padding: 2px 6px;
   border-radius: var(--radius-4);
   background: var(--surface-alt);
@@ -1716,14 +1782,28 @@ button.history-change:hover {
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 .installation-copy {
-  display: grid;
-  flex: 1 1 180px;
-  gap: var(--density-space-1);
+  display: contents;
+}
+.installation-copy > :is(.setting-help, .installation-address) {
+  grid-column: 1 / -1;
 }
 .installation-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--density-space-2);
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+}
+.installation-actions:empty {
+  display: none;
+}
+@container (max-width: 360px) {
+  .installation-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .installation-actions {
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
+  }
 }
 .installation-status button[aria-busy="true"] .ui-icon {
   display: none;
@@ -1745,10 +1825,10 @@ button.history-change:hover {
 
 .app-update-content {
   display: grid;
-  gap: 12px;
+  gap: var(--density-space-2);
   min-height: 0;
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: var(--density-space-2);
+  padding-top: var(--density-space-2);
   border-top: 1px solid var(--border);
 }
 .app-update-content h3,
@@ -1756,20 +1836,23 @@ button.history-change:hover {
   margin: 0;
 }
 .app-update-content h3 {
-  font-size: 17px;
-  font-weight: 600;
+  font-size: var(--font-size-13);
+  font-weight: var(--font-weight-semibold);
 }
 .app-update-versions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  font-size: 14px;
+  gap: var(--density-space-2);
+  font-size: var(--font-size-12);
 }
 .app-update-versions > span,
 .app-update-checked,
 .app-update-support {
   color: var(--muted);
+}
+.app-update-versions > [hidden] {
+  display: none;
 }
 .app-update-versions > strong {
   color: var(--blue);
@@ -1815,12 +1898,16 @@ button.history-change:hover {
   justify-content: space-between;
   gap: 12px;
 }
-.app-update-actions {
+.app-update-heading,
+.app-update-status {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--density-space-2);
+}
+.app-update-actions {
+  margin: 0;
 }
 .connection-update-settings {
   margin-top: 20px;
@@ -1864,14 +1951,17 @@ button.history-change:hover {
   align-items: center;
   justify-content: center;
 }
-.setting-option:hover {
+.setting-option:where(:not(:has(input:disabled))):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
+  background: var(--hover);
   border-color: var(--border-strong);
 }
 .setting-option:has(input:checked) {
   border-color: var(--blue);
-  background: var(--blue-soft);
+  background: var(--selected);
 }
-.setting-option:focus-within {
+.setting-option:has(input:focus-visible) {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
@@ -1946,9 +2036,6 @@ button.history-change:hover {
 
 /* 뷰와 도구는 탑바 중앙을 공유하고 뷰 이름은 필요할 때 펼친다. */
 .workspace-views {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
   min-width: 0;
   padding: var(--space-1);
   border-radius: var(--radius-dialog);
@@ -1956,8 +2043,6 @@ button.history-change:hover {
 }
 .workspace-tabs {
   flex: 0 1 auto;
-  display: flex;
-  gap: 2px;
   overflow-x: auto;
   scrollbar-width: none;
   align-items: center;
@@ -1981,10 +2066,10 @@ button.history-change:hover {
   background: transparent;
   color: var(--muted);
   padding: 4px 8px;
-  height: 32px;
-  min-height: 32px;
+  height: var(--button-height);
+  min-height: var(--button-height);
   font: inherit;
-  font-size: var(--font-size-13);
+  font-size: var(--button-font-size);
   cursor: pointer;
 }
 .workspace-tab-label {
@@ -1998,7 +2083,7 @@ button.history-change:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.workspace-views:is(:hover, :focus-within) .workspace-tab-label {
+.workspace-views[data-expanded="true"] .workspace-tab-label {
   max-width: 200px;
   margin-left: var(--space-2);
   opacity: 1;
@@ -2008,15 +2093,25 @@ button.history-change:hover {
     transition: none;
   }
 }
-.workspace-tab:hover {
-  background: var(--soft);
+.workspace-tab:hover:where(:not(:disabled):not([aria-disabled="true"])) {
+  background: var(--hover);
   color: var(--text);
 }
 .workspace-tab[aria-selected="true"] {
-  color: var(--text);
-  background: var(--page);
-  border-color: var(--border);
+  color: var(--blue-text);
+  background: var(--selected);
+  border-color: var(--blue);
   font-weight: var(--font-weight-semibold);
+}
+.workspace-tab[aria-selected="true"]:hover:where(:not(:disabled)),
+.workspace-switch-option[aria-checked="true"]:hover:where(:not(:disabled)),
+.faq-topic[aria-pressed="true"]:hover:where(:not(:disabled)),
+.setting-option:has(input:checked):hover:where(:not(:has(input:disabled))),
+.nav-tools .active:hover:where(:not(:disabled)),
+.row-action.active:hover:where(:not(:disabled)),
+.detail-child-filter.active:hover:where(:not(:disabled)) {
+  background: var(--selected-hover);
+  border-color: var(--blue);
 }
 .workspace-views > button {
   flex: none;
@@ -2027,24 +2122,6 @@ button.history-change:hover {
   flex: none;
 }
 
-.workspace-views > .tool-button {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  padding: 4px;
-}
-.workspace-tab-menu button {
-  width: 100%;
-  justify-content: flex-start;
-  background: transparent;
-  color: var(--text);
-  min-height: 32px;
-  border-radius: var(--radius-control);
-}
-.workspace-tab-menu button:hover,
-.workspace-tab-menu button:focus-visible {
-  background: var(--hover);
-}
 .workspace-switcher {
   position: relative;
   flex: none;
@@ -2061,9 +2138,6 @@ button.history-change:hover {
   border-right: 1px solid var(--border-strong);
   pointer-events: none;
 }
-.workspace-switch-menu {
-  padding: var(--density-space-2);
-}
 .workspace-switch-heading {
   display: flex;
   align-items: center;
@@ -2075,23 +2149,20 @@ button.history-change:hover {
   overflow-y: auto;
   padding: 3px;
 }
-.workspace-switch-option {
-  width: 100%;
-  justify-content: flex-start;
-  color: var(--text);
-  background: transparent;
-  text-align: left;
-}
 .workspace-switch-option span:not(.workspace-icon) {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 .workspace-switch-option[aria-checked="true"] {
-  color: var(--blue);
-  background: var(--blue-soft);
+  color: var(--blue-text);
+  background: var(--selected);
+  border-color: var(--blue);
+  font-weight: var(--font-weight-semibold);
 }
-.workspace-switch-option:hover {
+.workspace-switch-option:not([aria-checked="true"]):hover:where(
+  :not(:disabled):not([aria-disabled="true"])
+) {
   background: var(--hover);
 }
 .workspace-switch-hint {
@@ -2182,7 +2253,7 @@ button.history-change:hover {
   background: transparent;
   color: var(--blue);
 }
-.workspace-icon-clear:hover {
+.workspace-icon-clear:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
 }
 .workspace-icon-panel [hidden] {
@@ -2345,8 +2416,13 @@ button.history-change:hover {
 .faq-topic small {
   color: var(--muted);
 }
+.faq-topic:hover:where(:not(:disabled)) {
+  background: var(--hover);
+}
+
 .faq-topic[aria-pressed="true"] {
-  background: var(--blue-soft);
+  border-color: var(--blue);
+  background: var(--selected);
   color: var(--blue);
 }
 .faq-group h3 {
@@ -2381,7 +2457,7 @@ button.history-change:hover {
   margin-top: var(--density-space-1);
   font-size: var(--font-size-11);
 }
-.faq-result:hover {
+.faq-result:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
 }
 .faq-back {
@@ -2449,34 +2525,6 @@ button.history-change:hover {
 .app-menu {
   display: flex;
 }
-.app-menu-panel {
-  padding: var(--space-2);
-}
-.app-menu-panel > button,
-.app-menu-panel > a {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: var(--button-height);
-  padding: var(--space-2) var(--space-3);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--text);
-  font-size: var(--font-size-13);
-  text-decoration: none;
-}
-.app-menu-panel > :is(button, a):hover,
-.app-menu-panel > :is(button, a):focus-visible {
-  background: var(--hover);
-}
-.app-menu-panel hr {
-  border: 0;
-  border-top: 1px solid var(--border);
-  margin: var(--space-2) 0;
-}
 .feedback-content {
   display: grid;
   gap: var(--space-4);
@@ -2498,7 +2546,7 @@ button.history-change:hover {
   color: var(--text);
   text-decoration: none;
 }
-.feedback-option:hover {
+.feedback-option:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
 }
 .feedback-option > span {

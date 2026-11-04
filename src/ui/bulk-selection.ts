@@ -2,7 +2,7 @@ import type { Api } from "../client/api.ts";
 import type { BulkField, BulkResult } from "../domain/bulk.ts";
 import type { Issue } from "../domain/issue.ts";
 import { copyText } from "./clipboard.ts";
-import { actionButton, element, iconButton } from "./dom.ts";
+import { actionButton, buttonGroup, element, iconButton } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
 import { personPill, priorityPill, statusPill } from "./meta.ts";
 import { parentSelect } from "./parent-select.ts";
@@ -29,8 +29,8 @@ export function createBulkSelection(config: {
   panel.setAttribute("aria-label", "일괄 변경 값");
   const head = element("div", "bulk-head"),
     count = element("strong"),
-    exit = iconButton("선택 종료", "x");
-  const actions = element("div", "bulk-actions"),
+    exit = iconButton("선택 종료", "x", { size: "sm" });
+  const actions = buttonGroup(element("div", "bulk-actions"), { size: "sm" }),
     result = element("div", "bulk-result");
   result.setAttribute("role", "status");
   head.append(count, actions, exit);

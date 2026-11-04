@@ -1,4 +1,4 @@
-import { element, iconButton } from "./dom.ts";
+import { buttonGroup, element, iconButton } from "./dom.ts";
 
 /** 본문은 필수, 푸터는 선택이다. 모든 모달의 작업 버튼은 오른쪽에 모은다. */
 export function showModal(
@@ -6,6 +6,7 @@ export function showModal(
   options: {
     title: string;
     content: Node;
+    headerContent?: Node;
     actions?: HTMLButtonElement[];
     dismissible?: boolean;
   },
@@ -15,13 +16,22 @@ export function showModal(
     close = iconButton("닫기", "x");
   close.hidden = options.dismissible === false;
   close.addEventListener("click", () => dialog.close());
-  head.append(element("h2", "", options.title), close);
+  head.append(element("h2", "", options.title));
+  if (options.headerContent) {
+    head.dataset.size = "sm";
+    head.append(options.headerContent);
+  }
+  head.append(close);
   dialog.setAttribute("aria-label", options.title);
   dialog.replaceChildren(head, options.content);
   if (options.actions?.length) {
-    const footer = element("footer", "modal-footer");
+    const footer = buttonGroup(element("footer", "modal-footer"));
     footer.append(...options.actions);
     dialog.append(footer);
   }
   dialog.showModal();
+  if (options.headerContent instanceof HTMLElement)
+    options.headerContent
+      .querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+      ?.focus({ preventScroll: true });
 }

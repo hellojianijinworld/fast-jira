@@ -4,7 +4,7 @@ import { actionButton, element, elementId, uiIcon } from "./dom.ts";
 /** 설정 변경은 즉시 적용한다. 첫 연결에서만 시작 버튼을 표시한다. */
 export function settingsContent(
   current: Preferences,
-  account: string,
+  account: { name: string; site: string },
   save: (preferences: Preferences) => void,
   start?: () => void,
   connection?: HTMLElement,
@@ -18,6 +18,8 @@ export function settingsContent(
     draft = { ...current },
     id = elementId("settings");
   const tabs = element("div", "settings-tabs");
+  root.dataset.size = "sm";
+  tabs.dataset.size = "sm";
   tabs.setAttribute("role", "tablist");
   tabs.setAttribute("aria-label", "설정 카테고리");
   const body = element("div", "settings-panels");
@@ -67,9 +69,18 @@ export function settingsContent(
   }
   if (connection) categories[0].panel.append(connection);
   const accountState = element("section", "settings-account");
+  const accountTitle = element("div", "installation-row-title");
+  const badge = element(
+    "span",
+    "installation-state",
+    start ? "확인 전" : "인증 확인됨",
+  );
+  badge.dataset.state = start ? "unchecked" : "ready";
+  accountTitle.append(element("h3", "", "현재 연결"), badge);
   accountState.append(
-    element("h3", "", "현재 연결"),
-    element("p", "", account),
+    accountTitle,
+    element("p", "", `계정 · ${account.name}`),
+    element("p", "", `Jira 사이트 · ${account.site}`),
     element(
       "small",
       "setting-help",
@@ -103,6 +114,17 @@ export function settingsContent(
       ],
       (index: number) => {
         draft.compactView = index === 1;
+      },
+    ],
+    [
+      "뷰 표시",
+      draft.viewNamesExpanded ? 1 : 0,
+      [
+        ["아이콘만", "이름은 마우스를 올리면 툴팁으로 보여요."],
+        ["이름도 표시", "모든 뷰의 아이콘과 이름을 함께 보여요."],
+      ],
+      (index: number) => {
+        draft.viewNamesExpanded = index === 1;
       },
     ],
     [
@@ -151,10 +173,10 @@ export function settingsContent(
       copy.append(optionTitle);
       if (description) copy.append(description);
       card.append(radio, copy);
-      if (groupIndex > 0) {
+      if (title === "제목 표시" || title === "완료된 작업") {
         const preview = element(
           "span",
-          `setting-preview ${groupIndex === 1 ? "setting-preview-title" : "setting-preview-done"}`,
+          `setting-preview ${title === "제목 표시" ? "setting-preview-title" : "setting-preview-done"}`,
         );
         preview.dataset.variant = index === 0 ? "list" : "compact";
         preview.setAttribute("aria-hidden", "true");
@@ -173,5 +195,5 @@ export function settingsContent(
     button.addEventListener("click", start);
     actions.push(button);
   }
-  return { element: root, actions };
+  return { element: root, navigation: tabs, actions };
 }

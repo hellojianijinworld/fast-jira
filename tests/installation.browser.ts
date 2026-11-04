@@ -4,6 +4,7 @@ import type {
   RepairRequest,
 } from "../src/domain/installation-management.ts";
 import { installationStatus } from "../src/ui/installation-status.ts";
+import { startTooltips, TOOLTIP_DELAY_MS } from "../src/ui/tooltip.ts";
 import "../src/client/styles.css";
 
 const host = document.querySelector<HTMLElement>("#app");
@@ -18,6 +19,7 @@ let phase: InstallationManagement["job"] = null,
   consent = false,
   domainReady = false;
 let assistantChecks = 0;
+const notices: string[] = [];
 const connection = createAssistantConnection(async () => {
   assistantChecks++;
   return {
@@ -55,16 +57,60 @@ const ui = installationStatus({
     },
   },
   assistant: connection,
+  notice: (message) => notices.push(message),
   confirmDomain: () => consent,
   active: () => false,
 });
 host.append(ui.element);
+startTooltips();
 try {
   await ui.refresh();
-  assert(host.textContent?.includes("로그인이 필요해요"), "로그인 상태 누락");
+  assert(host.textContent?.includes("로그인 버튼을 눌러"), "로그인 상태 누락");
   assert(
     host.textContent?.includes("실행 파일을 찾지 못했어요"),
     "설치 누락 상태 누락",
+  );
+  assert(
+    host.querySelector(".installation-row:first-child .installation-state")
+      ?.textContent === "실행 중",
+    "앱 상태 배지 누락",
+  );
+  assert(
+    host.querySelector('.installation-row [aria-label="Codex 도구 연결"]'),
+    "도구 재등록 동작 구분 누락",
+  );
+  const help = host.querySelector<HTMLButtonElement>(
+    '[aria-label="간편 주소 안내"]',
+  );
+  assert(help, "간편 주소 안내 버튼 누락");
+  assert(
+    help.title.includes("fast-jira.local") &&
+      help.title.includes("시스템 승인"),
+    "공통 툴팁 안내 누락",
+  );
+  assert(!help.hasAttribute("aria-expanded"), "본문 펼침 방식이 남음");
+  help.click();
+  await new Promise((resolve) => setTimeout(resolve, TOOLTIP_DELAY_MS + 30));
+  assert(
+    document
+      .querySelector(".ui-tooltip:popover-open")
+      ?.textContent?.includes("fast-jira.local"),
+    "클릭 툴팁 열기 실패",
+  );
+  help.click();
+  assert(
+    !document.querySelector(".ui-tooltip:popover-open"),
+    "클릭 툴팁 닫기 실패",
+  );
+  assert(
+    host.querySelector(".installation-row:last-child .installation-state")
+      ?.textContent === location.host &&
+      !host.textContent?.includes("현재 사용 중"),
+    "주소 종류와 이용 상태가 섞임",
+  );
+  assert(
+    !host.querySelector(".installation-recovery"),
+    "별도 연결 문제 해결 영역이 남음",
   );
   const login = host.querySelector<HTMLButtonElement>(
     '[aria-label="Codex 로그인"]',
@@ -89,12 +135,12 @@ try {
     phase: "complete",
   };
   await ui.refresh();
-  assert(host.textContent?.includes("연결 작업을 마쳤어요"), "완료 결과 누락");
+  assert(notices.includes("연결을 마쳤어요."), "완료 토스트 누락");
   domainReady = true;
   phase = null;
   await ui.refresh();
   assert(
-    !host.querySelector('[aria-label="간편 주소 연결"]'),
+    !host.querySelector('[aria-label="간편 주소 설정"]'),
     "정상 도메인 재설정 버튼 노출",
   );
   assert(
@@ -104,7 +150,7 @@ try {
   domainReady = false;
   await ui.refresh();
   const domain = host.querySelector<HTMLButtonElement>(
-    '[aria-label="간편 주소 연결"]',
+    '[aria-label="간편 주소 설정"]',
   );
   assert(domain, "도메인 복구 누락");
   const countBeforeDomain = calls.length;
@@ -126,14 +172,18 @@ try {
     "앱 관리 실패 때문에 AI 상태 조회를 건너뜀",
   );
   assert(
-    host
-      .querySelector(".installation-summary")
-      ?.textContent?.includes("Codex 로그인 필요"),
-    "상단에 미연결 이유 요약 누락",
+    host.querySelectorAll('.installation-state[data-state="login_required"]')
+      .length === 1,
+    "AI별 상태 배지 누락",
   );
   assert(
-    host.textContent?.includes("앱·간편 주소의 관리 정보를 불러오지 못했어요"),
+    host.textContent?.includes("앱과 접속 주소의 상태를 확인하지 못했어요"),
     "어느 상태 조회가 실패했는지 누락",
+  );
+  assert(
+    host.querySelector(".installation-row:first-child .installation-state")
+      ?.textContent === "확인 못함",
+    "조회 실패 뒤 이전 앱 상태 유지",
   );
   assert(!host.textContent?.includes("private secret"), "내부 오류 원문 노출");
   results.textContent = "전체 검사 통과 · 실제 설치·로그인·Jira 변경 없음";
@@ -160,12 +210,17 @@ if (new URLSearchParams(location.search).has("preview")) {
   host.replaceChildren(modal);
   const content = settingsContent(
     readPreferences({ getItem: () => null, setItem: () => {} }),
-    "모의 계정",
+    { name: "모의 계정", site: "fixture.atlassian.net" },
     () => {},
     undefined,
     undefined,
     ui.element,
     "관리",
   );
-  showModal(modal, { title: "설정", content: content.element, actions: [] });
+  showModal(modal, {
+    title: "설정",
+    headerContent: content.navigation,
+    content: content.element,
+    actions: [],
+  });
 }

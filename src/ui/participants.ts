@@ -9,7 +9,7 @@ import {
   rememberParticipant,
   uniqueParticipants,
 } from "../domain/participants.ts";
-import { actionButton, element } from "./dom.ts";
+import { actionButton, buttonGroup, element } from "./dom.ts";
 import { personChip, personPill } from "./meta.ts";
 import { showModal } from "./modal.ts";
 import { participantAvatars } from "./participant-avatars.ts";
@@ -93,7 +93,7 @@ export function participantsField(
     save.disabled = true;
     const cancel = actionButton("취소", "x");
     cancel.addEventListener("click", () => dialog.close());
-    const footer = element("footer", "modal-footer");
+    const footer = buttonGroup(element("footer", "modal-footer"));
     footer.append(cancel, save);
     form.append(content, error, footer);
     content.setAttribute("aria-busy", "true");

@@ -16,6 +16,7 @@ import { participantUsers } from "../domain/participants.ts";
 import { creationField } from "./create-field.ts";
 import {
   actionButton,
+  buttonGroup,
   element,
   elementId,
   externalLink,
@@ -135,7 +136,7 @@ export function createIssueDialog(config: {
     aiControls.append(model, mic, fill);
     inputs.append(contextRow, parentField, fieldHost);
     body.append(ai, inputs, error);
-    const footer = element("footer", "modal-footer");
+    const footer = buttonGroup(element("footer", "modal-footer"));
     footer.append(cancel, save);
     form.append(body, footer);
     let request: AbortController | undefined,

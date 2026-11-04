@@ -10,7 +10,13 @@ import type { IssueDetails } from "../domain/details.ts";
 import { renderADF } from "./adf-render.ts";
 import { copyText } from "./clipboard.ts";
 import { documentForm } from "./document-form.ts";
-import { actionButton, element, iconButton, safeHref } from "./dom.ts";
+import {
+  actionButton,
+  buttonGroup,
+  element,
+  iconButton,
+  safeHref,
+} from "./dom.ts";
 import { avatar, relativeTime } from "./meta.ts";
 
 /** 댓글은 페이지 단위로 읽는다. 목록 카드마다 추가 요청하지 않는다. */
@@ -165,7 +171,10 @@ export function issueComments(
     );
     const body = element("div", "adf comment-body");
     body.append(renderADF(comment.body, issue, imageEnabled));
-    const toolbar = element("div", "comment-toolbar"),
+    const toolbar = buttonGroup(element("div", "comment-toolbar"), {
+        compact: true,
+        wrap: false,
+      }),
       copy = iconButton("댓글 링크 복사", "copy", { size: "sm" });
     copy.disabled = !commentLink(comment.id);
     copy.addEventListener("click", async () => {

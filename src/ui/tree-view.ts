@@ -436,7 +436,7 @@ export function createTreeView(
       if (callbacks.onCreate) {
         const create = actionButton("생성", "plus", {
           size: "sm",
-          variant: "ghost",
+          variant: "secondary",
         });
         create.classList.add("project-create");
         create.addEventListener("click", () => callbacks.onCreate?.(key));

@@ -1,6 +1,12 @@
 import { emptyIssue } from "../src/domain/wire.ts";
-import { actionButton, element, iconButton } from "../src/ui/dom.ts";
+import {
+  actionButton,
+  buttonGroup,
+  element,
+  iconButton,
+} from "../src/ui/dom.ts";
 import { issueCard } from "../src/ui/issue-card.ts";
+import { createMenu } from "../src/ui/menu.ts";
 import { enhanceSelect } from "../src/ui/select-menu.ts";
 import "../src/client/styles.css";
 
@@ -209,5 +215,176 @@ check("크기 상속과 비활성·로딩 상태는 표시 규칙을 유지한�
     scope.remove();
   }
 });
+
+check("버튼 그룹은 의미를 보존하고 크기·간격·줄바꿈을 공유한다", () => {
+  const group = element("div");
+  group.setAttribute("role", "tablist");
+  buttonGroup(group, { size: "sm", compact: true });
+  group.style.width = "150px";
+  const buttons = [
+    actionButton("저장하기", "check"),
+    actionButton("취소하기", "x"),
+    iconButton("닫기", "x"),
+  ];
+  group.append(...buttons);
+  fixture.append(group);
+  try {
+    assert(group.getAttribute("role") === "tablist", "기존 역할을 덮어씀");
+    for (const button of buttons)
+      assert(
+        button.getBoundingClientRect().height === 32,
+        "그룹 크기를 상속하지 않음",
+      );
+    assert(
+      buttons[2] &&
+        buttons[0] &&
+        buttons[2].getBoundingClientRect().top >
+          buttons[0].getBoundingClientRect().top,
+      "좁은 그룹의 줄바꿈 누락",
+    );
+    const gap = Number.parseFloat(getComputedStyle(group).columnGap);
+    assert(gap >= 4 && gap <= 6, "아이콘 그룹 사이 간격 없음");
+    buttonGroup(group, { size: "sm", compact: true, wrap: false });
+    assert(
+      buttons[2] &&
+        buttons[0] &&
+        buttons[2].getBoundingClientRect().top ===
+          buttons[0].getBoundingClientRect().top,
+      "줄바꿈 제한 무시",
+    );
+  } finally {
+    group.remove();
+  }
+});
+check("정렬 버튼 패딩은 다른 보조 버튼의 크기를 덮지 않는다", () => {
+  const primary = actionButton("저장", "check", {
+    size: "md",
+    variant: "primary",
+  });
+  const secondary = actionButton("취소", "x", { size: "md" });
+  fixture.append(primary, secondary);
+  try {
+    assert(
+      getComputedStyle(primary).paddingInlineStart ===
+        getComputedStyle(secondary).paddingInlineStart,
+      "정렬 전용 패딩이 공통 버튼을 덮음",
+    );
+  } finally {
+    primary.remove();
+    secondary.remove();
+  }
+});
+
+check(
+  "공통 메뉴는 숨김·비활성 항목을 건너뛰고 체크 항목과 포커스 복원을 지원한다",
+  () => {
+    const trigger = iconButton("검사 메뉴", "menu");
+    const menu = createMenu({ label: "공통 메뉴 검사", width: 220 });
+    const first = actionButton("첫 동작", "search"),
+      hidden = actionButton("숨김", "x"),
+      disabled = actionButton("비활성", "x"),
+      toggle = actionButton("이름 표시", "check");
+    for (const item of [first, hidden, disabled])
+      item.setAttribute("role", "menuitem");
+    hidden.hidden = true;
+    disabled.disabled = true;
+    toggle.setAttribute("role", "menuitemcheckbox");
+    toggle.setAttribute("aria-checked", "true");
+    menu.element.append(first, hidden, disabled, toggle);
+    fixture.append(trigger, menu.element);
+    try {
+      menu.open(trigger, { x: innerWidth - 1, y: innerHeight - 1 });
+      assert(document.activeElement === first, "첫 항목 포커스 누락");
+      first.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      );
+      assert(
+        document.activeElement === toggle,
+        "숨김·비활성 항목 건너뛰기 실패",
+      );
+      const rect = menu.element.getBoundingClientRect();
+      assert(
+        rect.right <= innerWidth && rect.bottom <= innerHeight,
+        "화면 밖으로 메뉴가 나감",
+      );
+      toggle.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+      assert(
+        !menu.element.matches(":popover-open") &&
+          document.activeElement === trigger,
+        "Escape 닫기·포커스 복원 실패",
+      );
+      menu.open(trigger, { last: true });
+      assert(document.activeElement === toggle, "마지막 항목 진입 실패");
+      toggle.click();
+      assert(!menu.element.matches(":popover-open"), "선택 후 닫기 실패");
+      menu.open(trigger);
+      window.dispatchEvent(new Event("resize"));
+      assert(
+        !menu.element.matches(":popover-open"),
+        "화면 크기 변경 후 메뉴 유지",
+      );
+    } finally {
+      menu.destroy();
+      trigger.remove();
+    }
+  },
+);
+
+check(
+  "메뉴 너비는 기본적으로 내용에 맞고 명시적 너비와 긴 내용도 처리한다",
+  () => {
+    const trigger = iconButton("너비 검사", "menu");
+    const auto = createMenu({ label: "내용 너비 검사" }),
+      fixed = createMenu({ label: "고정 너비 검사", width: 260 });
+    const item = actionButton("설정", "settings"),
+      fixedItem = actionButton("설정", "settings");
+    item.setAttribute("role", "menuitem");
+    fixedItem.setAttribute("role", "menuitem");
+    auto.element.append(item);
+    fixed.element.append(fixedItem);
+    fixture.append(trigger, auto.element, fixed.element);
+    try {
+      auto.open(trigger);
+      const shortWidth = auto.element.getBoundingClientRect().width;
+      assert(shortWidth < 160, "짧은 메뉴의 불필요한 고정 폭");
+      assert(
+        auto.element.style.width === "",
+        "자동 너비를 픽셀 인라인 스타일로 덮음",
+      );
+      const label = item.querySelector("span");
+      assert(label, "메뉴 레이블 누락");
+      label.textContent = "모든 뷰 이름 표시";
+      const longerWidth = auto.element.getBoundingClientRect().width;
+      assert(
+        longerWidth > shortWidth && longerWidth < 220,
+        "내용 변경 후 너비가 갱신되지 않음",
+      );
+      auto.close(false);
+      label.textContent = "VeryLongMenuItem".repeat(100);
+      auto.open(trigger, { x: innerWidth - 1, y: 0 });
+      assert(
+        auto.element.getBoundingClientRect().right <= innerWidth &&
+          auto.element.clientWidth >= auto.element.scrollWidth,
+        "긴 메뉴가 화면을 벗어나거나 가로 스크롤 생성",
+      );
+      auto.close(false);
+      fixed.open(trigger);
+      assert(
+        Math.abs(
+          fixed.element.getBoundingClientRect().width -
+            Math.min(260, innerWidth - 24),
+        ) < 1,
+        "명시적 메뉴 너비 무시",
+      );
+    } finally {
+      auto.destroy();
+      fixed.destroy();
+      trigger.remove();
+    }
+  },
+);
+
 results.dataset.failures = String(failures);
 results.dataset.complete = "true";

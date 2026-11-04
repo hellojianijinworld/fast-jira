@@ -15,12 +15,18 @@ export const browserSettingsStorage: LocalStore = {
 export function readGlobalSettings(storage: LocalStore): GlobalSettings {
   const defaults: GlobalSettings = {
     version: 1,
-    display: { theme: "light", compactView: false, compactDone: true },
+    display: {
+      theme: "light",
+      compactView: false,
+      compactDone: true,
+      viewNamesExpanded: false,
+    },
     history: { diffLayout: "split" },
   };
   try {
     const legacyTheme = storage.getItem("fastJira:theme");
     const legacy: Preferences = {
+      viewNamesExpanded: false,
       theme:
         legacyTheme === "dark" || legacyTheme === "system"
           ? legacyTheme
@@ -43,6 +49,7 @@ export function readGlobalSettings(storage: LocalStore): GlobalSettings {
     return {
       version: 1,
       display: {
+        viewNamesExpanded: display.viewNamesExpanded === true,
         theme:
           display.theme === "light" ||
           display.theme === "dark" ||

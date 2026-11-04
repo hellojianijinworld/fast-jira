@@ -25,6 +25,7 @@ import { connectionForm } from "../ui/connection.ts";
 import { createIssueDialog } from "../ui/create-issue.ts";
 import {
   actionButton,
+  buttonGroup,
   element,
   externalLink,
   iconButton,
@@ -80,8 +81,14 @@ export async function createApp(
   const initialAssistant = assistantConnection.refresh();
   const nav = element("header", "top-nav"),
     center = element("div", "nav-center"),
-    tools = element("div", "nav-tools"),
-    menuActions = element("div", "nav-actions");
+    tools = buttonGroup(element("div", "nav-tools"), {
+      compact: true,
+      wrap: false,
+    }),
+    menuActions = buttonGroup(element("div", "nav-actions"), {
+      compact: true,
+      wrap: false,
+    });
   tools.setAttribute("role", "group");
   tools.setAttribute("aria-label", "이슈 도구");
   const searchToggle = iconButton("검색", "search"),
@@ -379,6 +386,7 @@ export async function createApp(
       preferences.compactDone,
     );
     writePreferences(storage, preferences);
+    workspaceNavigation?.render();
   }
   applyPreferences();
   function refreshFavorites(
@@ -829,6 +837,11 @@ export async function createApp(
     } else activate();
   }
   workspaceNavigation = createWorkspaceNavigation({
+    namesExpanded: () => preferences.viewNamesExpanded,
+    setNamesExpanded: (expanded) => {
+      preferences = { ...preferences, viewNamesExpanded: expanded };
+      applyPreferences();
+    },
     state: () => workspaces,
     projects: bootstrap.projects,
     me: bootstrap.me,
@@ -991,7 +1004,7 @@ export async function createApp(
   function showSettings(management = false) {
     const content = settingsContent(
       preferences,
-      `현재 인증된 계정: ${bootstrap.me.displayName} · Jira 사이트: ${bootstrap.site}`,
+      { name: bootstrap.me.displayName, site: bootstrap.site },
       (next) => {
         preferences = next;
         applyPreferences();
@@ -1007,6 +1020,7 @@ export async function createApp(
     );
     showModal(popup, {
       title: "설정",
+      headerContent: content.navigation,
       content: content.element,
       actions: content.actions,
     });
