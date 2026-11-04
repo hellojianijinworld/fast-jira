@@ -1,3 +1,4 @@
+import { isTextMentions, mentionPrompt, type TextMention } from "./mention.ts";
 import { isRecord } from "./validation.ts";
 export interface ChatMessage {
   role: "user" | "assistant" | "event" | "error";
@@ -5,13 +6,13 @@ export interface ChatMessage {
   created?: number;
   text: string;
   model?: string;
+  mentions?: TextMention[];
   executionNote?: string;
   executionSummary?: string;
 }
 export interface Conversation {
   id: string;
   conversationId: string;
-  threadId?: string;
   model: string;
   updated: number;
   messages: ChatMessage[];
@@ -24,6 +25,8 @@ export function isChatMessage(value: unknown): value is ChatMessage {
       value.role === "event" ||
       value.role === "error") &&
     typeof value.text === "string" &&
+    (value.mentions === undefined ||
+      isTextMentions(value.mentions, value.text)) &&
     (value.details === undefined || typeof value.details === "string") &&
     (value.created === undefined ||
       (typeof value.created === "number" && Number.isFinite(value.created))) &&
@@ -56,7 +59,6 @@ export function decodeConversations(value: unknown): Conversation[] {
     return {
       id: item.id,
       conversationId: item.conversationId,
-      ...(item.threadId ? { threadId: item.threadId } : {}),
       model: item.model,
       updated: item.updated,
       messages: item.messages.map((message) =>
@@ -71,10 +73,41 @@ export function decodeConversations(value: unknown): Conversation[] {
     };
   });
 }
-/** 연결이 만료됐을 때만 최근 대화를 전달한다. 화면의 전체 기록은 삭제하지 않는다. */
+export const MAX_RESTORE_MESSAGES = 500;
+export const MAX_RESTORE_CHARACTERS = 100_000;
+
+/** Codex 전용 연결 복구에는 화면에 보관한 기록을 생략 없이 전달한다. */
 export function conversationContext(
   messages: readonly ChatMessage[],
+  complete = false,
 ): ChatMessage[] {
+  if (complete) {
+    const result = messages
+      .filter((message) => message.role !== "error" && !legacyFailure(message))
+      .map((message) => ({
+        role:
+          message.role === "user" ? ("user" as const) : ("assistant" as const),
+        text: [
+          message.role === "event"
+            ? "[작업 기록: 현재 상태·승인의 증거가 아님]"
+            : "",
+          message.executionSummary,
+          mentionPrompt(message.text, message.mentions),
+          message.details,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      }));
+    if (
+      result.length > MAX_RESTORE_MESSAGES ||
+      result.reduce((sum, message) => sum + message.text.length, 0) >
+        MAX_RESTORE_CHARACTERS
+    )
+      throw new Error(
+        "대화가 길어 연결 복구 범위를 넘었어요. 대화 내용을 복사한 뒤 새 대화에서 이어가 주세요.",
+      );
+    return result;
+  }
   const result: ChatMessage[] = [];
   let remaining = 20_000;
   for (const message of messages
@@ -86,7 +119,10 @@ export function conversationContext(
     .slice(-20)
     .reverse()) {
     if (remaining <= 0) break;
-    const text = [message.executionSummary, message.text]
+    const text = [
+      message.executionSummary,
+      mentionPrompt(message.text, message.mentions),
+    ]
       .filter(Boolean)
       .join("\n\n")
       .slice(-remaining);
@@ -96,13 +132,20 @@ export function conversationContext(
   return result;
 }
 
-/** 표시용 기록 ID·Claude ID를 Codex 원본 링크로 오인하지 않는다. */
-export function conversationLink(
+export function conversationMarkdown(
   item: Conversation | undefined,
 ): string | null {
-  return item?.threadId &&
-    !item.model.startsWith("claude:") &&
-    /^[a-zA-Z0-9_-]{1,100}$/.test(item.threadId)
-    ? `codex://threads/${item.threadId}`
-    : null;
+  if (!item?.messages.length) return null;
+  const labels = {
+    user: "나",
+    assistant: "AI",
+    event: "작업 기록",
+    error: "요청 오류",
+  };
+  return item.messages
+    .map(
+      (message) =>
+        `## ${labels[message.role]}\n\n${[message.text, message.details, message.executionSummary, message.executionNote].filter(Boolean).join("\n\n")}`,
+    )
+    .join("\n\n---\n\n");
 }

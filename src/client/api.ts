@@ -218,7 +218,6 @@ export function createApi(fetcher: typeof fetch = fetch) {
       signal: AbortSignal,
       history: import("../domain/conversation.ts").ChatMessage[] = [],
       requestId?: string,
-      threadId?: string,
       progress?: (event: AssistantProgress) => void,
     ) => {
       const started = Date.now();
@@ -233,11 +232,9 @@ export function createApi(fetcher: typeof fetch = fetch) {
           context,
           conversationId,
           model,
-          ...(model.startsWith("claude:")
-            ? { history }
-            : { hasHistory: history.length > 0 }),
+          history,
+          hasHistory: history.length > 0,
           ...(requestId ? { requestId } : {}),
-          ...(threadId ? { threadId } : {}),
         }),
         signal,
       })

@@ -1,4 +1,4 @@
-import { type Conversation, conversationLink } from "../domain/conversation.ts";
+import type { Conversation } from "../domain/conversation.ts";
 import { element, iconButton } from "./dom.ts";
 export function createChatSidebar(actions: {
   choose: (conversation: Conversation) => void;
@@ -43,18 +43,10 @@ export function createChatSidebar(actions: {
           open.addEventListener("click", () => actions.choose(item));
           remove.addEventListener("click", () => actions.remove(item.id));
           row.append(open);
-          if (!item.model.startsWith("claude:")) {
-            const copy = iconButton("대화 링크 복사", "copy", { size: "sm" });
-            const linked = Boolean(conversationLink(item));
-            copy.setAttribute("aria-disabled", String(!linked));
-            copy.title = linked
-              ? "Codex 원본 대화 링크 복사"
-              : "이 대화는 원본 링크가 저장되지 않았어요.";
-            copy.addEventListener("click", () => {
-              if (linked) actions.copy(item);
-            });
-            row.append(copy);
-          }
+          const copy = iconButton("대화 내용 복사", "copy", { size: "sm" });
+          copy.disabled = !item.messages.length;
+          copy.addEventListener("click", () => actions.copy(item));
+          row.append(copy);
           row.append(remove);
           return row;
         }),

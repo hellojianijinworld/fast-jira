@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { record } from "../src/domain/validation.ts";
+import { callApprovedJiraTool } from "../src/server/jira-approvals.ts";
 import { createJiraClient } from "../src/server/jira-client.ts";
 import { createJiraService } from "../src/server/jira-service.ts";
 import { createJiraTools } from "../src/server/jira-tools.ts";
@@ -344,4 +345,33 @@ test("도구 목록은 자격 증명을 포함하지 않고 카탈로그도 필�
   await assert.rejects(tools.call("jira_search", { projects: null }));
   await assert.rejects(tools.call("jira_search", { scope: null }));
   assert.equal(requests.length, before);
+});
+
+test("실제 공통 도구의 승인 질문은 Jira 조회 제목·상태를 사용하고 이유·근거를 실행 인자와 분리해 표시한다", async () => {
+  const { tools, requests } = setup(true);
+  await callApprovedJiraTool(
+    tools,
+    "jira_edit_issue",
+    {
+      key: "AA-1",
+      field: "status",
+      value: "팀에서 정한 진행 단계",
+      reason: "구현을 확인했어요",
+      evidence: "커밋 abc123 · 테스트 실행 미확인",
+    },
+    async (request) => {
+      assert.match(request.title, /모의 이슈/);
+      assert.match(request.title, /대기/);
+      assert.match(request.details, /커밋 abc123/);
+      return { approved: false, values: {} };
+    },
+  );
+  assert.equal(
+    requests.filter((x) => x.path.includes("/search/jql")).length,
+    1,
+  );
+  assert.equal(requests.filter((x) => x.method !== "GET").length, 0);
+  const edit = tools.definitions.find((x) => x.name === "jira_edit_issue");
+  assert(edit?.inputSchema.properties.reason);
+  assert(edit?.inputSchema.properties.evidence);
 });

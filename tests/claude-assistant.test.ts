@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { test } from "node:test";
 import { assistantStatus } from "../src/domain/assistant.ts";
 import { executionReport } from "../src/domain/assistant-execution.ts";
+import { emptyIssue } from "../src/domain/wire.ts";
 import { createAssistantService } from "../src/server/assistant-service.ts";
 import { createClaudeAssistant } from "../src/server/claude-assistant.ts";
 import {
@@ -124,7 +125,20 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
       if (command.args[0] === "auth") return loggedIn;
       runCount++;
       assert(command.args.includes("--no-session-persistence"));
-      assert.equal(command.args[command.args.indexOf("--tools") + 1], "");
+      assert.equal(
+        command.args[command.args.indexOf("--tools") + 1],
+        "Read,Glob,Grep,Bash,Edit,Write",
+      );
+      const autoAllowed =
+        command.args[command.args.indexOf("--allowedTools") + 1] ?? "";
+      for (const tool of ["Bash", "Edit", "Write"])
+        assert(!autoAllowed.split(",").includes(tool));
+      assert.deepEqual(
+        JSON.parse(
+          command.args[command.args.indexOf("--settings") + 1] ?? "{}",
+        ),
+        { permissions: { ask: ["Bash", "Edit", "Write"] } },
+      );
       assert(!command.args.includes("--strict-mcp-config"));
       assert(command.args.includes("--permission-prompt-tool"));
       assert(command.args.includes("--append-system-prompt"));
@@ -576,3 +590,54 @@ for (const approved of [true, false])
       claude.dispose();
     }
   });
+
+test("Claude MCP의 승인도 서버가 조회한 작업 제목·상태와 제안 근거를 표시한다", async () => {
+  const jira = service();
+  jira.issuesByKeys = async () => [
+    {
+      ...emptyIssue("AA-848"),
+      summary: "서버가 확인한 역량 추출 작업",
+      status: "백로그",
+    },
+  ];
+  let asked = false;
+  const assistant = createClaudeAssistant(
+    () => jira,
+    "test",
+    async (command) => {
+      const config = JSON.parse(
+        command.args[command.args.indexOf("--mcp-config") + 1] ?? "{}",
+      ).mcpServers.fast_jira;
+      const response = await rpc(config.url, config.headers, "tools/call", {
+        name: "jira_edit_issue",
+        arguments: {
+          key: "AA-848",
+          field: "status",
+          value: "진행",
+          reason: "로컬 구현 확인",
+          evidence: "테스트 실행 미확인",
+        },
+      });
+      const reply = await response.json();
+      const result = JSON.parse(reply.result.content[0].text);
+      assert.equal(result.execution[0].status, "notApproved");
+      return { is_error: false, result: "실행하지 않았어요" };
+    },
+  );
+  try {
+    await assistant.run(
+      { prompt: "상태 변경", context, model: "claude:default", history: [] },
+      undefined,
+      async (request) => {
+        asked = true;
+        assert.match(request.title, /서버가 확인한 역량 추출 작업/);
+        assert.match(request.title, /백로그/);
+        assert.match(request.details, /테스트 실행 미확인/);
+        return { approved: false, values: {} };
+      },
+    );
+    assert(asked, "서버 승인 질문 누락");
+  } finally {
+    assistant.dispose();
+  }
+});

@@ -13,6 +13,7 @@ const host = document.querySelector<HTMLElement>("#fixture"),
 if (!host || !results) throw new Error("fixture 누락");
 let failures = 0;
 let requestedThread = "";
+let localApproval = false;
 const assert = (condition: unknown, message: string) => {
   if (!condition) throw new Error(message);
 };
@@ -171,10 +172,15 @@ const api = createApi(async (input, init) => {
         ? [
             {
               id: "approval",
-              title:
-                "AA-1의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
-              description: "",
-              details: "",
+              title: localApproval
+                ? "이 명령을 실행할까요?"
+                : "AA-1의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
+              description: localApproval
+                ? "AA-1 검증에 필요한 명령이에요. 표시된 작업만 승인해요."
+                : "",
+              details: localApproval
+                ? "작업 폴더: /project\n명령: npm test"
+                : "",
               fields: [
                 {
                   key: "feedback",
@@ -830,7 +836,7 @@ await check(
   },
 );
 await check(
-  "복원한 대화에서도 Codex 원본 링크를 복사하고 새 대화에는 링크를 만들지 않는다",
+  "전용 대화는 제공자 원본 링크 대신 보관한 대화 내용을 복사한다",
   async () => {
     const descriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     let copied = "";
@@ -843,34 +849,34 @@ await check(
       },
     });
     try {
-      button("대화 링크 복사").click();
+      button("대화 내용 복사").click();
       await tick();
       assert(
-        copied === "codex://threads/01a1804c-6b69-7621-aa0f-83a2a66d2959",
-        "원본 대화 링크 누락",
+        copied.includes("## 나") && !copied.includes("codex://"),
+        "보관한 대화 내용 복사 누락",
       );
       button("대화 시작").click();
       assert(
-        !dialog().querySelector(".command-head [aria-label='대화 링크 복사']"),
+        !dialog().querySelector(".command-head [aria-label='대화 내용 복사']"),
         "대화 복사 버튼이 모달 상단에 남아 있음",
       );
       assert(
         dialog().querySelectorAll(
-          ".chat-conversation [aria-label='대화 링크 복사']",
+          ".chat-conversation [aria-label='대화 내용 복사']",
         ).length === 1,
-        "원본 링크가 있는 대화에만 복사 버튼을 제공해야 함",
+        "보관한 대화의 복사 버튼 누락",
       );
-      button("대화 링크 복사").click();
+      button("대화 내용 복사").click();
       await tick();
       assert(
-        copied === "codex://threads/01a1804c-6b69-7621-aa0f-83a2a66d2959",
-        "선택하지 않은 대화의 원본 링크 복사 실패",
+        copied.includes("## 나") && !copied.includes("codex://"),
+        "선택하지 않은 대화의 내용 복사 실패",
       );
       dialog()
         .querySelector<HTMLButtonElement>(".chat-conversation-open")
         ?.click();
       assert(
-        !button("대화 링크 복사").hidden && !button("대화 링크 복사").disabled,
+        !button("대화 내용 복사").hidden && !button("대화 내용 복사").disabled,
         "기록 복원 후 복사 비활성",
       );
     } finally {
@@ -898,15 +904,15 @@ await check(
       "모델 변경 이력 누락",
     );
     assert(
-      !button("대화 링크 복사").hidden,
-      "모델 변경으로 원본 링크가 사라짐",
+      !button("대화 내용 복사").hidden,
+      "모델 변경으로 대화 복사 버튼이 사라짐",
     );
     input().value = "다른 모델로 이어가기";
     dialog().querySelector("form")?.requestSubmit();
     await tick();
     assert(
-      requestedThread === "01a1804c-6b69-7621-aa0f-83a2a66d2959",
-      "모델 변경 뒤 원본 대화를 전달하지 않음",
+      requestedThread === "",
+      "모델 변경 뒤 이전 Codex 원본 ID를 다시 전달함",
     );
     const existing = [
       ...dialog().querySelectorAll<HTMLButtonElement>(
@@ -1343,6 +1349,33 @@ await check(
       ),
       "대화를 다시 연 뒤 승인 기록 유실",
     );
+  },
+);
+await check(
+  "로컬 명령도 같은 승인 카드에서 목적·작업 폴더·명령을 보여주고 거절할 수 있다",
+  async () => {
+    localApproval = true;
+    holdApproval = true;
+    try {
+      input().value = "AA-1 코드 검증";
+      dialog().querySelector("form")?.requestSubmit();
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      const card = dialog().querySelector(".assistant-approval");
+      assert(card?.textContent?.includes("npm test"), "승인 명령 누락");
+      assert(card?.textContent?.includes("/project"), "작업 폴더 누락");
+      assert(pendingApproval, "확인 전 실행됨");
+      const deny = card?.querySelector<HTMLInputElement>("input[value=deny]");
+      assert(deny, "거절 선택지 누락");
+      if (deny) {
+        deny.checked = true;
+        deny.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      await tick();
+      assert(!approvalAccepted && !pendingApproval, "거절한 명령 승인됨");
+    } finally {
+      localApproval = false;
+      holdApproval = false;
+    }
   },
 );
 await check(
@@ -2092,6 +2125,12 @@ await check(
       dialog().querySelector("form")?.requestSubmit();
       await tick();
       assert(prompt.includes('"id":"1"'), "일반 요청에 이슈 ID 누락");
+      assert(
+        dialog()
+          .querySelector('.command-user .chat-mention[data-kind="issue"]')
+          ?.textContent?.includes("AA-1"),
+        "전송된 멘션 배지 누락",
+      );
       await selectMention();
       dialog().querySelector("form")?.requestSubmit();
       await tick();
@@ -2114,6 +2153,28 @@ await check(
     } finally {
       endControlChat();
     }
+  },
+);
+await check(
+  "저장한 멘션은 대화를 다시 열어도 배지를 복원하고 기존 이슈 표기도 안전하게 표시한다",
+  async () => {
+    palette.destroy();
+    palette = makePalette();
+    palette.open("ai");
+    await tick();
+    assert(
+      dialog()
+        .querySelector('.command-user .chat-mention[data-kind="issue"]')
+        ?.textContent?.includes("AA-1"),
+      "대화 복원 후 멘션 마크업 누락",
+    );
+    const old = chatMessage("user", "@AA-1 · 이전에 선택한 긴 제목… 확인해 줘");
+    assert(
+      old.querySelector(".chat-mention")?.textContent?.includes("이전"),
+      "기존 이슈 멘션 표시 누락",
+    );
+    const plain = chatMessage("user", "<script>실행 안 함</script>");
+    assert(!plain.querySelector("script"), "사용자 입력을 HTML로 실행함");
   },
 );
 document.body.dataset.result = failures ? "failed" : "passed";

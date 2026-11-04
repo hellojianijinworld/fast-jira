@@ -911,7 +911,7 @@ test("초기 메타정보 캐시는 계정별로 구분하고 만료·손상된 
   assert.equal(mine.bootstrap(), null);
 });
 
-test("Codex 요청은 브라우저의 과거 대화 본문을 보내지 않고 Claude의 기존 맥락 전달은 유지한다", async () => {
+test("최신 요청은 복구용 대화 기록과 분리하고 두 제공자의 맥락 전달을 유지한다", async () => {
   const sent: Record<string, unknown>[] = [];
   const api = createApi(async (_url, init) => {
     sent.push(JSON.parse(String(init?.body)));
@@ -931,9 +931,9 @@ test("Codex 요청은 브라우저의 과거 대화 본문을 보내지 않고 C
     history,
   );
   assert.equal(sent[0]?.prompt, "833 개발 진행 중으로 바꿔");
-  assert.equal(sent[0]?.history, undefined);
+  assert.deepEqual(sent[0]?.history, history);
   assert.equal(sent[0]?.hasHistory, true);
-  assert.equal(JSON.stringify(sent[0]).includes("이전의 긴 작업 지시"), false);
+  assert.equal(JSON.stringify(sent[0]).includes("이전의 긴 작업 지시"), true);
   await api.assistantRun(
     "계속",
     { projects: [], issue: "", keys: [] },
@@ -972,7 +972,6 @@ test("AI 스트림은 한글과 프레임이 바이트 경계에서 나뉘어도
     new AbortController().signal,
     [],
     undefined,
-    undefined,
     (event) => events.push(event),
   );
   assert.equal(reply.answer, "완료");
@@ -993,7 +992,6 @@ test("AI 스트림은 한글과 프레임이 바이트 경계에서 나뉘어도
       "model",
       new AbortController().signal,
       [],
-      undefined,
       undefined,
       () => {},
     ),

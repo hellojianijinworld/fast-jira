@@ -340,6 +340,32 @@ await check(
     assert(!panel.element.childElementCount, "취소 후 음성으로 폼 복원됨");
   },
 );
+await check(
+  "서버 제목·현재 상태·AI 이유와 미확인 근거는 기존 승인 카드에 바로 보인다",
+  async () => {
+    pending = [
+      {
+        ...question("enriched"),
+        title:
+          "CLIPO-848 · [세특] 역량 추출·근거·기록을 1회 호출로 통합의 상태를 ‘백로그’에서 ‘개발 진행 중’으로 바꿀까요?",
+        description: "2/4",
+        details:
+          "현재 상태: 백로그\n\n변경 이유 (AI 제안): 관련 로컬 구현을 확인했어요.\n\nAI가 제시한 근거: 커밋 abc123에서 구현과 테스트 코드를 확인했어요. 테스트 실행 결과는 미확인이에요.",
+      },
+    ];
+    panel.start("5".repeat(32), new AbortController().signal);
+    await tick();
+    const text = panel.element.textContent ?? "";
+    for (const value of [
+      "역량 추출",
+      "백로그",
+      "AI 제안",
+      "테스트 실행 결과는 미확인",
+    ])
+      assert(text.includes(value), `${value} 누락`);
+    assert(!panel.element.querySelector("details"), "승인 내용이 접혀 있어요");
+  },
+);
 panel.destroy();
 document.title = failures ? `실패 ${failures}개` : "검사 통과";
 
@@ -348,9 +374,10 @@ if (new URLSearchParams(location.search).has("preview")) {
     {
       ...question("preview"),
       title:
-        "CLIPO-833의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
-      description: "",
-      details: "",
+        "CLIPO-848 · [세특] 역량 추출·근거·기록을 1회 호출로 통합의 상태를 ‘백로그’에서 ‘개발 진행 중’으로 바꿀까요?",
+      description: "2/4",
+      details:
+        "현재 상태: 백로그\n\n변경 이유 (AI 제안): 관련 로컬 구현을 확인했어요.\n\nAI가 제시한 근거: 커밋 abc123에서 구현과 테스트 코드를 확인했어요. 테스트 실행 결과는 미확인이에요.",
     },
   ];
   host.append(panel.element);

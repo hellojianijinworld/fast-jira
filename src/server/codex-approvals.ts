@@ -13,7 +13,7 @@ export const codexApprovalMethods = new Set([
   "item/tool/requestUserInput",
   "tool/requestUserInput",
 ]);
-/** Jira 밖의 로컬 실행·권한 확대는 거절하고, 연결 자료 확인과 사용자 질문만 전달한다. */
+/** 로컬 작업과 연결 도구의 추가 승인은 기존 확인 UI로 전달하고 영구 권한은 부여하지 않는다. */
 export async function answerCodexApproval(
   method: string,
   params: Record<string, unknown>,
@@ -21,13 +21,6 @@ export async function answerCodexApproval(
   item?: unknown,
   onFeedback?: (text: string) => void,
 ): Promise<unknown> {
-  if (method === "item/permissions/requestApproval")
-    return { permissions: {}, scope: "turn" };
-  if (
-    method === "item/commandExecution/requestApproval" ||
-    method === "item/fileChange/requestApproval"
-  )
-    return { decision: "decline" };
   const confirm: ApprovalHandler = async (request) => {
     const answer = await ask(request);
     const ownConfirmation =
@@ -58,6 +51,33 @@ export async function answerCodexApproval(
     null,
     2,
   );
+  if (method === "item/permissions/requestApproval") {
+    if (!isRecord(params.permissions))
+      return { permissions: {}, scope: "turn" };
+    const permissions = structuredClone(params.permissions);
+    const answer = await confirm({
+      title: "이 작업에 필요한 접근을 허용할까요?",
+      description: `${description}\n표시된 접근 권한은 이번 요청이 끝나면 만료돼요.`,
+      details,
+      fields: [],
+    });
+    return { permissions: answer.approved ? permissions : {}, scope: "turn" };
+  }
+  if (
+    method === "item/commandExecution/requestApproval" ||
+    method === "item/fileChange/requestApproval"
+  ) {
+    const answer = await confirm({
+      title:
+        method === "item/commandExecution/requestApproval"
+          ? "이 명령을 실행할까요?"
+          : "이 파일 변경을 적용할까요?",
+      description: `${description}\n표시된 작업만 승인해요. 이후 작업의 자동 승인 규칙은 추가하지 않아요.`,
+      details,
+      fields: [],
+    });
+    return { decision: answer.approved ? "accept" : "decline" };
+  }
   if (
     method === "item/tool/requestUserInput" ||
     method === "tool/requestUserInput"

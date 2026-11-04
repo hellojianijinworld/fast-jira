@@ -197,6 +197,7 @@ export function createClaudeAssistant(
           approve ?? (async () => ({ approved: false, values: {} })),
           {
             describeChange: tools.describeChange,
+            approvalIssues: tools.approvalIssues,
             onResult: (result) => {
               execution.push(result);
               traceExecution(input.requestId, result);
@@ -211,7 +212,7 @@ export function createClaudeAssistant(
               "json",
               "--no-session-persistence",
               "--tools",
-              "",
+              "Read,Glob,Grep,Bash,Edit,Write",
               "--mcp-config",
               JSON.stringify({ mcpServers: { fast_jira: bridge.config } }),
               "--allowedTools",
@@ -221,6 +222,10 @@ export function createClaudeAssistant(
                 ),
                 "mcp__fast_jira__fast_jira_confirm",
               ].join(","),
+              "--settings",
+              JSON.stringify({
+                permissions: { ask: ["Bash", "Edit", "Write"] },
+              }),
               "--permission-mode",
               "default",
               "--permission-prompt-tool",

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { emptyIssue } from "../src/domain/wire.ts";
 import { callApprovedJiraTool } from "../src/server/jira-approvals.ts";
 import type { ToolService } from "../src/server/mcp-server.ts";
 
@@ -200,7 +201,7 @@ test("짧은 필드 변경은 실제 대상과 전후 값을 질문 한 문장�
         "AA-833의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
       );
       assert.equal(question.description, "");
-      assert.equal(question.details, "");
+      assert.match(question.details, /미확인/);
       return { approved: false, values: {} };
     },
   );
@@ -232,6 +233,173 @@ test("댓글 편집 질문은 생성으로 안내하지 않고 원문을 보존�
       assert.ok(question.details.includes("수정할 댓글"));
       return { approved: false, values: {} };
     },
+  );
+  assert.equal(f.writes.length, 0);
+});
+
+test("서버에서 조회한 제목·현재 상태와 AI 제안 이유·근거를 승인 전에 보여준다", async () => {
+  const f = fixture();
+  Object.assign(f.tools, {
+    approvalIssues: async () => [
+      {
+        ...emptyIssue("AA-848"),
+        summary: "역량 추출·근거·기록을 1회 호출로 통합",
+        status: "백로그",
+      },
+    ],
+  });
+  await execute(
+    f.tools,
+    "jira_edit_issue",
+    {
+      key: "AA-848",
+      field: "status",
+      value: "개발 진행 중",
+      reason: "관련 구현을 확인했어요",
+      evidence: "커밋 abc123에서 테스트 코드를 확인. 테스트 실행은 미확인.",
+    },
+    async (request) => {
+      assert.match(request.title, /역량 추출/);
+      assert.match(request.title, /AA-848/);
+      assert.match(request.title, /백로그/);
+      assert.match(request.details, /변경 이유/);
+      assert.match(request.details, /관련 구현/);
+      assert.match(request.details, /AI가 제시한 근거/);
+      assert.match(request.details, /테스트 실행은 미확인/);
+      return { approved: false, values: {} };
+    },
+  );
+  assert.equal(f.writes.length, 0);
+});
+test("이슈 조회 실패·누락·빈 제목은 불완전한 승인 질문으로 대체하지 않는다", async () => {
+  for (const data of [
+    [],
+    [{ ...emptyIssue("AA-1"), summary: "", status: "백로그" }],
+  ]) {
+    const f = fixture();
+    Object.assign(f.tools, { approvalIssues: async () => data });
+    await assert.rejects(
+      execute(
+        f.tools,
+        "jira_edit_issue",
+        { key: "AA-1", field: "status", value: "진행" },
+        async () => {
+          assert.fail("승인을 물으면 안 됨");
+        },
+      ),
+      /확인/,
+    );
+    assert.equal(f.writes.length, 0);
+  }
+});
+test("승인 대기 중 상태가 바뀌면 이전 승인으로 덮어쓰지 않는다", async () => {
+  const f = fixture();
+  let state = "백로그";
+  Object.assign(f.tools, {
+    approvalIssues: async () => [
+      { ...emptyIssue("AA-1"), summary: "서버의 작업 제목", status: state },
+    ],
+  });
+  const result = await execute(
+    f.tools,
+    "jira_edit_issue",
+    { key: "AA-1", field: "status", value: "진행" },
+    async () => {
+      state = "완료";
+      return { approved: true, values: {} };
+    },
+  );
+  assert.equal(f.writes.length, 0);
+  assert.equal(result.results[0]?.status, "failed");
+});
+test("일괄 승인도 모든 대상의 제목·현재 상태를 묶음 조회하고 미제공 근거를 표시한다", async () => {
+  const f = fixture();
+  const calls: string[][] = [];
+  Object.assign(f.tools, {
+    approvalIssues: async (keys: string[]) => {
+      calls.push([...keys]);
+      return keys.map((key) => ({
+        ...emptyIssue(key),
+        summary: `작업 ${key}`,
+        status: "대기",
+      }));
+    },
+  });
+  await execute(
+    f.tools,
+    "jira_update_issues",
+    {
+      keys: ["AA-1", "AA-2"],
+      field: "status",
+      value: "진행",
+      expected: "잘못된 AI 상태",
+    },
+    async (request) => {
+      assert(!request.title.includes("잘못된 AI 상태"));
+      assert.match(request.details, /작업 AA-1/);
+      assert.match(request.details, /작업 AA-2/);
+      assert.match(request.details, /대기/);
+      assert.match(request.details, /미확인/);
+      return { approved: false, values: {} };
+    },
+  );
+  assert.deepEqual(calls, [["AA-1", "AA-2"]]);
+});
+
+test("같은 이슈의 앞선 승인 작업으로 바뀐 제목은 다음 질문에 반영하고 외부 변경과 혼동하지 않는다", async () => {
+  const f = fixture();
+  const issue = { ...emptyIssue("AA-1"), summary: "이전 제목", status: "대기" };
+  Object.assign(f.tools, { approvalIssues: async () => [issue] });
+  f.tools.call = async (name, args) => {
+    f.writes.push({ name, args });
+    issue.summary = "새 제목";
+    return { key: "AA-1" };
+  };
+  let asked = 0;
+  const result = await execute(
+    f.tools,
+    "jira_apply_changes",
+    {
+      actions: [
+        {
+          tool: "jira_edit_issue",
+          arguments: { key: "AA-1", field: "summary", value: "새 제목" },
+        },
+        {
+          tool: "jira_edit_issue",
+          arguments: { key: "AA-1", field: "status", value: "진행" },
+        },
+      ],
+    },
+    async (request) => {
+      asked++;
+      assert.match(request.title, asked === 1 ? /이전 제목/ : /새 제목/);
+      return { approved: true, values: {} };
+    },
+  );
+  assert.deepEqual(
+    result.results.map((x) => x.status),
+    ["applied", "applied"],
+  );
+});
+
+test("Jira 조회 오류는 승인과 쓰기 전에 반환한다", async () => {
+  const f = fixture();
+  Object.assign(f.tools, {
+    approvalIssues: async () => {
+      throw new Error("Jira 조회 실패");
+    },
+  });
+  await assert.rejects(
+    execute(
+      f.tools,
+      "jira_edit_issue",
+      { key: "AA-1", field: "status", value: "진행" },
+      async () => {
+        assert.fail("조회 실패 시 승인 금지");
+      },
+    ),
+    /조회 실패/,
   );
   assert.equal(f.writes.length, 0);
 });

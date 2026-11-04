@@ -5,6 +5,7 @@ import {
   mentionPrompt,
 } from "../src/domain/mention.ts";
 import { adfEditor } from "../src/ui/adf-editor.ts";
+import { renderADF } from "../src/ui/adf-render.ts";
 import { element } from "../src/ui/dom.ts";
 import {
   adfMentionEditor,
@@ -119,6 +120,18 @@ await check("리치 작성란은 사람을 ADF 멘션으로, 이슈를 링크로
   if (!p.lastChild) throw new Error("텍스트 누락");
   range.selectNodeContents(p.lastChild);
   rich.insertMention({ id: "account-1", name: "김하나" }, range);
+  const rendered = element("div");
+  rendered.append(
+    renderADF(rich.document(), {
+      key: "DEMO-1",
+      url: "https://example.atlassian.net/browse/DEMO-1",
+    }),
+  );
+  assert(
+    rendered.querySelector("a.mention-issue"),
+    "저장 후 이슈 멘션 배지 누락",
+  );
+  assert(rendered.querySelector("span.mention"), "저장 후 사람 멘션 배지 누락");
   const saved = JSON.stringify(rich.document());
   assert(saved.includes('"type":"mention"'), "ADF 사람 멘션 누락");
   assert(saved.includes("account-1"), "계정 누락");

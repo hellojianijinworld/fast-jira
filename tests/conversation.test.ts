@@ -9,7 +9,7 @@ import {
 } from "../src/domain/commands.ts";
 import {
   conversationContext,
-  conversationLink,
+  conversationMarkdown,
   decodeConversations,
 } from "../src/domain/conversation.ts";
 
@@ -154,20 +154,16 @@ test("대화별 모델과 새 대화 기본 모델은 계정별로 각각 복원
   assert.equal(createConversationStore(storage, "site:b").defaultModel(), "");
 });
 
-test("원본 Codex 링크만 만들고 저장한 뒤에도 복원한다", () => {
-  const threadId = "01a1804c-6b69-7621-aa0f-83a2a66d2959";
-  const linked = { ...chat, threadId };
-  assert.equal(
-    conversationLink(decodeConversations([linked])[0]),
-    `codex://threads/${threadId}`,
+test("이전 Codex 원본 ID는 복원하지 않고 제공자에 관계없이 대화 내용을 복사한다", () => {
+  const legacy = { ...chat, threadId: "old-thread" };
+  const restored = decodeConversations([legacy])[0];
+  assert.equal(restored && "threadId" in restored, false);
+  assert.match(conversationMarkdown(restored) ?? "", /## 나/);
+  assert.match(
+    conversationMarkdown({ ...chat, model: "claude:sonnet" }) ?? "",
+    /내 작업/,
   );
-  assert.equal(conversationLink({ ...linked, model: "claude:sonnet" }), null);
-  assert.equal(conversationLink(chat), null);
-  assert.equal(conversationLink(undefined), null);
-  assert.equal(
-    conversationLink({ ...linked, threadId: "foo?redirect=evil" }),
-    null,
-  );
+  assert.equal(conversationMarkdown(undefined), null);
 });
 
 test("실행 결과와 후속 질문을 함께 보관하고 연결 복구 때도 맥락을 유지한다", () => {
@@ -241,4 +237,79 @@ test("요청 오류는 기록에 보존하되 AI 대화 문맥에는 포함하�
     { role: "user", text: "작업 확인" },
     { role: "assistant", text: "정상 답변" },
   ]);
+});
+
+test("전송된 이슈·사람 멘션의 참조 정보는 브라우저 기록 저장과 복원 후에도 남는다", () => {
+  const store = createConversationStore(
+    {
+      getItem: () => saved,
+      setItem: (_key, value) => {
+        saved = value;
+      },
+    },
+    "mentions",
+  );
+  let saved = "";
+  const message = {
+    role: "user" as const,
+    text: "@김하나 확인해 주세요",
+    mentions: [
+      {
+        start: 0,
+        end: 4,
+        target: { kind: "user" as const, id: "account-1", label: "김하나" },
+      },
+    ],
+  };
+  store.upsert({ ...chat, messages: [message] });
+  assert.deepEqual(store.read()[0]?.messages[0]?.mentions, message.mentions);
+  assert.throws(() =>
+    decodeConversations([
+      {
+        ...chat,
+        messages: [
+          { ...message, mentions: [{ ...message.mentions[0], end: 1000 }] },
+        ],
+      },
+    ]),
+  );
+});
+
+test("Codex 복구 자료는 오래된 요청·멘션 ID·작업 결과·승인 의견을 보존하고 오류는 제외한다", () => {
+  const messages = [
+    ...Array.from({ length: 30 }, (_, i) => ({
+      role: "user" as const,
+      text: `요청 ${i}`,
+    })),
+    {
+      role: "user" as const,
+      text: "@김하나",
+      mentions: [
+        {
+          start: 0,
+          end: 4,
+          target: { kind: "user" as const, id: "account-1", label: "김하나" },
+        },
+      ],
+    },
+    {
+      role: "event" as const,
+      text: "승인 질문",
+      details: "사용자 의견",
+      executionSummary: "실행 결과",
+    },
+    { role: "error" as const, text: "이전 연결 오류" },
+  ];
+  const restored = conversationContext(messages, true);
+  assert.equal(restored.length, 32);
+  assert.equal(restored[0]?.text, "요청 0");
+  assert.match(JSON.stringify(restored), /account-1/);
+  assert.match(restored.at(-1)?.text ?? "", /사용자 의견/);
+  assert.match(restored.at(-1)?.text ?? "", /현재 상태·승인의 증거가 아님/);
+  assert.doesNotMatch(JSON.stringify(restored), /이전 연결 오류/);
+  assert.throws(
+    () =>
+      conversationContext([{ role: "user", text: "가".repeat(100001) }], true),
+    /복구 범위/,
+  );
 });

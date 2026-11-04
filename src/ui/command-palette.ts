@@ -39,7 +39,7 @@ import {
   type ChatMessage,
   type Conversation,
   conversationContext,
-  conversationLink,
+  conversationMarkdown,
 } from "../domain/conversation.ts";
 import type { Issue } from "../domain/issue.ts";
 import { createAssistantApprovalPanel } from "./assistant-approvals.ts";
@@ -184,8 +184,8 @@ export function createCommandPalette(config: {
   let reportedStorageError = "";
   const sidebar = createChatSidebar({
     copy: (item) => {
-      const url = conversationLink(item);
-      if (url) void copyText(url, notify, "Codex 대화 링크를 복사했어요.");
+      const text = conversationMarkdown(item);
+      if (text) void copyText(text, notify, "대화 내용을 복사했어요.");
     },
     create: () => {
       closeHistory();
@@ -763,8 +763,18 @@ export function createCommandPalette(config: {
           "steer",
           mentionPrompt(prompt, references),
         );
-        active.messages.push({ role: "user", text: prompt });
-        aiResults.append(renderMessage("user", prompt));
+        active.messages.push({
+          role: "user",
+          text: prompt,
+          ...(references.length
+            ? { mentions: structuredClone(references) }
+            : {}),
+        });
+        aiResults.append(
+          renderMessage("user", prompt, selectedModel, {
+            mentions: references,
+          }),
+        );
         saveConversation();
         scrollConversation();
       } else {
@@ -870,7 +880,7 @@ export function createCommandPalette(config: {
               ],
               [
                 "삭제",
-                "대화 목록에서 직접 지울 수 있어요. 브라우저 데이터를 지우면 기록도 사라져요. Codex 원본은 별도로 삭제해 주세요.",
+                "대화 목록에서 직접 지울 수 있어요. 브라우저 데이터를 지우면 기록도 사라져요.",
               ],
               ["대기열", "창을 닫아도 남아요. 페이지를 새로고침하면 지워져요."],
             ]),
@@ -1107,8 +1117,7 @@ export function createCommandPalette(config: {
                 message.role,
                 message.text,
                 message.model ?? current?.model ?? selectedModel,
-                message.executionNote,
-                message.executionSummary,
+                message,
               ),
       ),
     );
@@ -1161,15 +1170,15 @@ export function createCommandPalette(config: {
         ],
         [
           "연결 유지",
-          "Codex 원본 대화가 있으면 같은 대화를 다시 연결해요. 모델을 바꿔도 기록은 이어져요. 제공자를 바꾸면 각 서비스의 대화로 연결해요.",
+          "Codex 대화는 Fast Jira 전용으로 연결해요. 재시작 후에는 저장한 메시지와 작업 기록으로 이어가요.",
         ],
         [
           "이전 대화",
-          "Claude는 요청할 때마다 최근 내용을 참고해요. 새 연결에 전달하는 이전 대화는 최근 20개 메시지, 최대 2만 자예요.",
+          "Slack·Notion은 연결된 계정의 권한으로 참고해요. Claude는 최근 20개 메시지, 최대 2만 자를 참고해요.",
         ],
         [
-          "대화 링크",
-          "Codex 원본 링크는 같은 컴퓨터의 Codex에서 열 수 있어요. Claude 연결에는 복사할 링크가 없어요.",
+          "대화 공유",
+          "대화 목록에서 내용을 복사해 다른 곳에 붙여넣을 수 있어요.",
         ],
       ]),
     );
@@ -1179,9 +1188,12 @@ export function createCommandPalette(config: {
     role: "user" | "assistant",
     text: string,
     model = "",
-    executionNote?: string,
-    executionSummary?: string,
+    details: Pick<
+      ChatMessage,
+      "executionNote" | "executionSummary" | "mentions"
+    > = {},
   ) {
+    const { executionNote, executionSummary, mentions } = details;
     const message = chatMessage(
       role,
       text,
@@ -1191,6 +1203,7 @@ export function createCommandPalette(config: {
         select: selectIssue,
       },
       executionSummary,
+      mentions,
     );
     if (executionNote)
       message.append(element("p", "chat-execution-note", executionNote));
@@ -1270,13 +1283,28 @@ export function createCommandPalette(config: {
         messages: [],
       };
     current.model = selectedModel;
-    const active = current,
-      history = conversationContext(active.messages);
-    active.messages.push({ role: "user", text: prompt });
+    const active = current;
+    let history: ChatMessage[];
+    try {
+      history = conversationContext(
+        active.messages,
+        !selectedModel.startsWith("claude:"),
+      );
+    } catch (error) {
+      notify(errorText(error));
+      return;
+    }
+    active.messages.push({
+      role: "user",
+      text: prompt,
+      ...(references.length ? { mentions: structuredClone(references) } : {}),
+    });
     busy = true;
     request = new AbortController();
     const controller = request;
-    aiResults.append(renderMessage("user", prompt));
+    aiResults.append(
+      renderMessage("user", prompt, selectedModel, { mentions: references }),
+    );
     if (queuedPrompt === undefined) input.value = "";
     status.textContent = "";
     showThinking();
@@ -1355,7 +1383,6 @@ export function createCommandPalette(config: {
         controller.signal,
         history,
         requestId,
-        selectedModel.startsWith("claude:") ? undefined : active.threadId,
         receiveProgress,
       );
       if (!alive || controller.signal.aborted) return;
@@ -1368,11 +1395,10 @@ export function createCommandPalette(config: {
           );
       if (!alive || controller.signal.aborted) return;
       conversationId = active.conversationId = reply.conversationId;
-      if (reply.threadId) active.threadId = reply.threadId;
       if (reply.reconnected && !selectedModel.startsWith("claude:")) {
         const event = {
           role: "event" as const,
-          text: "원본 연결 정보가 없어 새 Codex 대화로 이어가요. 이전 화면 기록은 유지해요.",
+          text: "저장한 대화와 작업 기록을 불러와 이어가요.",
           created: Date.now(),
         };
         active.messages.push(event);
@@ -1434,13 +1460,10 @@ export function createCommandPalette(config: {
         transcript.scrollHeight - transcript.scrollTop <
         transcript.clientHeight + 80;
       hideThinking();
-      const finalRow = renderMessage(
-        "assistant",
-        answer,
-        selectedModel,
-        executionNote,
-        executionSummary,
-      );
+      const finalRow = renderMessage("assistant", answer, selectedModel, {
+        ...(executionNote ? { executionNote } : {}),
+        ...(executionSummary ? { executionSummary } : {}),
+      });
       if (finalEntry) {
         finalEntry.row.replaceWith(finalRow);
         finalEntry.row = finalRow;

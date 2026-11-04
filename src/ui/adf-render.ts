@@ -1,4 +1,5 @@
 import type { AdfNode } from "../domain/adf.ts";
+import { parseIssueKey } from "../domain/validation.ts";
 import { element, externalLink, safeHref } from "./dom.ts";
 
 export interface AdfContext {
@@ -54,7 +55,16 @@ export function renderADF(
         const href = mark.attrs?.href;
         const safe =
           typeof href === "string" ? safeHref(href, issue.url) : null;
-        if (safe) wrapper = externalLink(safe);
+        if (safe) {
+          wrapper = externalLink(safe);
+          try {
+            const key = parseIssueKey(safe, new URL(issue.url).hostname);
+            if (node.text?.startsWith(`${key} · `))
+              wrapper.classList.add("mention", "mention-issue");
+          } catch {
+            /* 일반 링크는 기존 표시를 유지한다. */
+          }
+        }
       }
       if (wrapper) {
         wrapper.append(content);

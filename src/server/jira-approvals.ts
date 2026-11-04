@@ -3,6 +3,7 @@ import { decodeAdfDocument } from "../domain/adf.ts";
 import { adfMarkdown } from "../domain/adf-markdown.ts";
 import type { ApprovalHandler } from "../domain/assistant-approval.ts";
 import type { AssistantExecution } from "../domain/assistant-execution.ts";
+import { type EditableField, fieldValue, type Issue } from "../domain/issue.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import type { ToolService } from "./mcp-server.ts";
 
@@ -91,12 +92,83 @@ export async function callApprovedJiraTool(
   });
   if (actions.length > 50)
     throw new Error("확인할 작업이 50개를 넘어요. 요청을 나눠 주세요.");
-  const previews = actions.map((action) => {
+  const keysOf = (input: Record<string, unknown>) =>
+    [input.key, ...(Array.isArray(input.keys) ? input.keys : [])].filter(
+      (key): key is string => typeof key === "string",
+    );
+  const keys = [
+    ...new Set(actions.flatMap((action) => keysOf(action.arguments))),
+  ];
+  if (keys.length > 50)
+    throw new Error("확인할 이슈가 50개를 넘어요. 요청을 나눠 주세요.");
+  for (const action of actions) {
+    const input = action.arguments as Record<string, unknown>;
+    if (
+      [
+        "jira_edit_issue",
+        "jira_update_issues",
+        "jira_description",
+        "jira_comment",
+      ].includes(action.tool) &&
+      !keysOf(input).length
+    )
+      throw new Error("변경할 이슈를 확인하세요.");
+    for (const field of ["reason", "evidence"])
+      if (
+        input[field] !== undefined &&
+        (typeof input[field] !== "string" || String(input[field]).length > 6000)
+      )
+        throw new Error("변경 이유와 근거를 6,000자 이내 문자열로 입력하세요.");
+  }
+  async function readTargets(
+    keys: readonly string[],
+  ): Promise<Map<string, Issue>> {
+    if (!tools.approvalIssues || !keys.length) return new Map();
+    const issues = new Map(
+      (await tools.approvalIssues(keys)).map((issue) => [
+        issue.key,
+        structuredClone(issue),
+      ]),
+    );
+    for (const key of keys) {
+      const issue = issues.get(key);
+      if (!issue?.summary.trim() || !issue.status.trim())
+        throw new Error(
+          `${key}의 제목과 현재 상태를 확인하지 못했어요. 변경을 실행하지 않았어요.`,
+        );
+    }
+    return issues;
+  }
+  const targets = await readTargets(keys);
+  const currentValue = (issue: Issue, field: unknown) =>
+    field === "parent"
+      ? issue.parent
+      : ["summary", "status", "assignee", "priority", "dueDate"].includes(
+            String(field),
+          )
+        ? fieldValue(issue, field as EditableField)
+        : undefined;
+  const previewAction = (action: (typeof actions)[number]) => {
     const data = action.arguments as Record<string, unknown>;
     const preview = record(
       tools.describeChange ? tools.describeChange(action.tool, data) : data,
     );
     const readable = { ...preview };
+    delete readable.reason;
+    delete readable.evidence;
+    if (tools.approvalIssues) delete readable.expected;
+    const issueKeys = keysOf(data);
+    const issue =
+      issueKeys.length === 1 ? targets.get(issueKeys[0] ?? "") : undefined;
+    if (issue && currentValue(issue, data.field) !== undefined) {
+      const actual = currentValue(issue, data.field);
+      readable.expected =
+        data.field === "assignee"
+          ? issue.assignee
+          : data.field === "priority"
+            ? issue.priority
+            : actual;
+    }
     delete readable.requestId;
     for (const key of ["document", "description"])
       if (readable[key]) {
@@ -159,9 +231,11 @@ export async function callApprovedJiraTool(
         : null;
     const value = short(readable.value),
       expected = short(readable.expected);
-    const targetText = String(target);
+    const targetText = issue
+      ? `${issue.key} · ${issue.summary}`
+      : String(target);
     const subject =
-      targetText.length <= 100
+      issue || targetText.length <= 100
         ? targetText
         : `${Array.isArray(data.keys) ? data.keys.length : "여러"}개 이슈`;
     let question = `${subject} 작업을 진행할까요?`;
@@ -196,14 +270,31 @@ export async function callApprovedJiraTool(
     else if (action.tool === "jira_undo") question = "이 변경을 되돌릴까요?";
     return {
       question,
-      description: Object.entries(readable)
-        .map(
-          ([key, value]) =>
-            `${fieldNames[key] ?? editFields[key] ?? key}: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`,
-        )
-        .join("\n"),
+      description: [
+        ...issueKeys.flatMap((key) => {
+          const item = targets.get(key);
+          return item
+            ? [
+                issueKeys.length === 1
+                  ? `현재 상태: ${item.status}`
+                  : `${item.key} · ${item.summary}\n현재 상태: ${item.status}`,
+              ]
+            : [];
+        }),
+        `변경 이유 (AI 제안): ${typeof data.reason === "string" && data.reason.trim() ? data.reason : "제공되지 않았어요."}`,
+        `AI가 제시한 근거: ${typeof data.evidence === "string" && data.evidence.trim() ? data.evidence : "미확인 · 근거가 제공되지 않았어요."}`,
+        Object.entries(readable)
+          .map(
+            ([key, value]) =>
+              `${fieldNames[key] ?? editFields[key] ?? key}: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`,
+          )
+          .join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
     };
-  });
+  };
+  const previews = actions.map(previewAction);
   if (JSON.stringify(previews).length > 100000)
     throw new Error("확인할 변경 내용이 너무 길어요. 요청을 나눠 주세요.");
   const results: Record<string, unknown>[] = [];
@@ -267,7 +358,27 @@ export async function callApprovedJiraTool(
       });
       continue;
     }
-    const preview = previews[index];
+    let preview = previews[index];
+    const ownChanged = keysOf(input).filter((key) => changedKeys.has(key));
+    try {
+      if (ownChanged.length) {
+        for (const [key, issue] of await readTargets(ownChanged))
+          targets.set(key, issue);
+        preview = previewAction(action);
+      }
+    } catch (error) {
+      recordResult({
+        index,
+        tool: action.tool,
+        ...receipt,
+        status: "failed",
+        error:
+          error instanceof Error
+            ? error.message
+            : "이슈 정보를 확인하지 못했어요.",
+      });
+      continue;
+    }
     const answer = await ask({
       title: preview?.question ?? "요청한 변경을 진행할까요?",
       description: actions.length > 1 ? `${index + 1}/${actions.length}` : "",
@@ -295,6 +406,29 @@ export async function callApprovedJiraTool(
       continue;
     }
     try {
+      if (tools.approvalIssues) {
+        const keys = keysOf(input),
+          fresh = await readTargets(keys);
+        for (const key of keys) {
+          const before = targets.get(key),
+            after = fresh.get(key);
+          if (
+            !before ||
+            !after ||
+            before.summary !== after.summary ||
+            before.status !== after.status ||
+            currentValue(before, input.field) !==
+              currentValue(after, input.field)
+          )
+            throw new Error(
+              `${key}의 값이 승인 대기 중 바뀌었어요. 다시 확인한 뒤 변경을 제안해 주세요.`,
+            );
+        }
+      }
+      if (action.tool === "jira_edit_issue" && input.expected === undefined) {
+        const issue = targets.get(String(input.key));
+        if (issue) input.expected = currentValue(issue, input.field);
+      }
       const result = await tools.call(action.tool, action.arguments);
       for (const key of changedJiraKeys(action.tool, action.arguments, result))
         changedKeys.add(key);

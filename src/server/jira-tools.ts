@@ -50,7 +50,23 @@ function definition(
     description,
     inputSchema: {
       type: "object",
-      properties,
+      properties: write
+        ? {
+            ...properties,
+            reason: {
+              type: "string",
+              maxLength: 6000,
+              description:
+                "변경을 제안하는 이유. jira_apply_changes는 각 actions의 arguments에 포함하세요.",
+            },
+            evidence: {
+              type: "string",
+              maxLength: 6000,
+              description:
+                "확인한 근거와 출처. 구현·테스트 코드 존재·테스트 실행·배포를 구분하고 미확인 사항을 명시하세요. AI 제안으로 표시됩니다.",
+            },
+          }
+        : properties,
       required,
       additionalProperties: false,
     },
@@ -423,6 +439,12 @@ export function createJiraTools(
     if (name !== "jira_undo") return args ?? {};
     return currentService().bulk.previewUndo(string(record(args), "token"));
   }
-  return { definitions, call, describeChange };
+  return {
+    definitions,
+    call,
+    describeChange,
+    approvalIssues: (keys: readonly string[]) =>
+      currentService().issuesByKeys(keys),
+  };
 }
 export type JiraTools = ReturnType<typeof createJiraTools>;

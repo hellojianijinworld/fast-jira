@@ -915,3 +915,11 @@
   margin: 0;
   white-space: pre-wrap;
 }
+.command-user .chat-mention {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}

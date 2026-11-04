@@ -100,27 +100,80 @@ test("승인 폼은 필수 값과 선택지를 검사하고 요청한 필드만 
   assert.deepEqual({ ...(await promise).values }, { target: "B" });
   run.close();
 });
-test("Jira 범위 밖의 명령·파일·권한 요청은 사용자 확인 없이 거절한다", async () => {
-  const ask = async () => {
-    assert.fail("범위 밖 실행을 승인 UI로 보내면 안 됩니다");
-  };
-  for (const method of [
-    "item/commandExecution/requestApproval",
-    "item/fileChange/requestApproval",
-  ]) {
-    assert.deepEqual(
-      await answerCodexApproval(method, { command: "touch target.txt" }, ask),
-      { decision: "decline" },
-    );
-  }
-  assert.deepEqual(
-    await answerCodexApproval(
+for (const approved of [true, false]) {
+  test(`로컬 명령·파일 변경은 기존 승인 UI의 ${approved} 응답만 반영한다`, async () => {
+    for (const method of [
+      "item/commandExecution/requestApproval",
+      "item/fileChange/requestApproval",
+    ]) {
+      let prompted = false;
+      const change = {
+        type: "fileChange",
+        changes: [{ path: "/project/src/task.ts", diff: "-old\n+new" }],
+      };
+      const result = await answerCodexApproval(
+        method,
+        { command: "npm test", cwd: "/project", reason: "AA-1 검증" },
+        async (request) => {
+          prompted = true;
+          assert.match(request.details, /\/project/);
+          assert.match(request.details, /npm test/);
+          assert.match(request.description, /AA-1/);
+          if (method.includes("fileChange"))
+            assert.match(request.details, /-old/);
+          return { approved, values: { decision: "acceptForSession" } };
+        },
+        change,
+      );
+      assert.equal(prompted, true);
+      assert.deepEqual(result, { decision: approved ? "accept" : "decline" });
+    }
+  });
+  test(`추가 권한은 ${approved} 응답에 따라 원래 요청한 범위만 이번 턴에 허용한다`, async () => {
+    const permissions = {
+      fileSystem: { write: ["/project"] },
+      network: { enabled: true },
+    };
+    const params = { permissions, cwd: "/project", reason: "AA-1 검사" };
+    const result = await answerCodexApproval(
       "item/permissions/requestApproval",
-      { permissions: { network: { enabled: true } } },
-      ask,
-    ),
-    { permissions: {}, scope: "turn" },
+      params,
+      async (request) => {
+        assert.match(request.details, /\/project/);
+        params.permissions.fileSystem.write.push("/unapproved");
+        return {
+          approved,
+          values: {
+            permissions: { fileSystem: { write: ["/"] } },
+            scope: "session",
+          },
+        };
+      },
+    );
+    assert.deepEqual(result, {
+      permissions: approved
+        ? { fileSystem: { write: ["/project"] }, network: { enabled: true } }
+        : {},
+      scope: "turn",
+    });
+  });
+}
+test("거절 의견은 권한을 부여하지 않고 모델에게 전달한다", async () => {
+  let feedback = "";
+  const result = await answerCodexApproval(
+    "item/commandExecution/requestApproval",
+    { command: "npm install", cwd: "/project" },
+    async () => ({
+      approved: false,
+      values: { feedback: "설치하지 말고 기존 코드만 확인해" },
+    }),
+    undefined,
+    (value) => {
+      feedback = value;
+    },
   );
+  assert.deepEqual(result, { decision: "decline" });
+  assert.match(feedback, /기존 코드/);
 });
 test("MCP 폼은 사용자가 확인한 값만 돌려주고 거절은 원격 승인이 되지 않는다", async () => {
   const params = {

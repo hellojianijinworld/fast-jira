@@ -441,20 +441,21 @@ export function createHttpServer(
           req,
           url.pathname === "/api/sync"
             ? 2000000
-            : [
-                  "/api/assistant/run",
-                  "/api/assistant/control",
-                  "/api/assistant/voice/start",
-                ].includes(url.pathname)
-              ? 120000
+            : url.pathname === "/api/assistant/run"
+              ? 500000
               : [
-                    "/api/create-issue",
-                    "/api/description",
-                    "/api/comment",
-                    "/api/comment-edit",
+                    "/api/assistant/control",
+                    "/api/assistant/voice/start",
                   ].includes(url.pathname)
-                ? 500000
-                : 20000,
+                ? 120000
+                : [
+                      "/api/create-issue",
+                      "/api/description",
+                      "/api/comment",
+                      "/api/comment-edit",
+                    ].includes(url.pathname)
+                  ? 500000
+                  : 20000,
         );
         if (url.pathname === "/api/assistant/voice/stop" && assistant) {
           if (typeof input.id !== "string")

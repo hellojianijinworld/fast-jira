@@ -11,7 +11,12 @@ import {
   type AssistantExecution,
   decodeExecutions,
 } from "../domain/assistant-execution.ts";
-import { type ChatMessage, isChatMessage } from "../domain/conversation.ts";
+import {
+  type ChatMessage,
+  isChatMessage,
+  MAX_RESTORE_CHARACTERS,
+  MAX_RESTORE_MESSAGES,
+} from "../domain/conversation.ts";
 import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import { createAssistantApprovals } from "./assistant-approvals.ts";
@@ -19,7 +24,10 @@ import {
   AssistantUnavailableError,
   assistantFailure,
 } from "./assistant-errors.ts";
-import { assistantInstructions as instructions } from "./assistant-instructions.ts";
+import {
+  assistantHistoryNotice,
+  assistantInstructions as instructions,
+} from "./assistant-instructions.ts";
 import {
   type ClaudeAssistant,
   createClaudeAssistant,
@@ -236,16 +244,26 @@ export function createAssistantService(
     const history = input.history ?? [];
     if (
       !Array.isArray(history) ||
-      history.length > 20 ||
+      history.length >
+        (String(input.model).startsWith("claude:")
+          ? 20
+          : MAX_RESTORE_MESSAGES) ||
       !history.every(
         (message) =>
           isChatMessage(message) &&
           (message.role === "user" || message.role === "assistant"),
       ) ||
       history.reduce((total, message) => total + message.text.length, 0) >
-        20_000
+        (String(input.model).startsWith("claude:")
+          ? 20_000
+          : MAX_RESTORE_CHARACTERS)
     )
       throw new JiraError("이전 대화의 형식이나 길이를 확인하세요.", 400);
+    if (input.hasHistory === true && !history.length)
+      throw new JiraError(
+        "대화 연결 방식이 바뀌었어요. 화면을 새로고침한 뒤 다시 보내 주세요. 보관된 대화는 그대로 남아 있어요.",
+        409,
+      );
     const context = assistantContext(input.context);
     projectKeys(context.projects.join(","));
     if (context.issue) agentIssueKeys([context.issue], "");
@@ -325,87 +343,59 @@ export function createAssistantService(
         traceExecution(approvalScope.id, result);
       }
       for (const [id, session] of sessions)
-        if (Date.now() - session.updated > 30 * 60_000) {
+        if (
+          Date.now() - session.updated > 30 * 60_000 &&
+          id !== input.conversationId
+        ) {
           sessions.delete(id);
           void native
             .request("thread/unsubscribe", { threadId: session.threadId })
             .catch(() => {});
         }
-      const previousEntry =
-        typeof input.conversationId === "string" &&
-        sessions.has(input.conversationId)
-          ? ([
-              input.conversationId,
-              sessions.get(input.conversationId),
-            ] as const)
-          : [...sessions.entries()].find(
-              ([, candidate]) =>
-                candidate.threadId === input.threadId &&
-                candidate.service === service &&
-                candidate.drafting === Boolean(context.creation),
-            );
-      const previous = previousEntry?.[1];
+      const previous =
+        typeof input.conversationId === "string"
+          ? sessions.get(input.conversationId)
+          : undefined;
       let session =
         previous?.service === service &&
         previous.drafting === Boolean(context.creation)
           ? previous
           : undefined;
       const conversationId =
-        session && previousEntry ? previousEntry[0] : randomUUID();
-      const resumeId =
-        session?.threadId ??
-        (typeof input.threadId === "string" ? input.threadId : "");
+        session && typeof input.conversationId === "string"
+          ? input.conversationId
+          : randomUUID();
       const reconnected =
-        !session &&
-        !resumeId &&
-        (input.hasHistory === true || history.length > 0);
+        !session && (input.hasHistory === true || history.length > 0);
       if (!session) {
         const toolApprovals = await codexToolApprovals(native);
         const started = record(
-          await native
-            .request(resumeId ? "thread/resume" : "thread/start", {
-              ...(resumeId
-                ? { threadId: resumeId, excludeTurns: true }
-                : { ephemeral: false }),
-              model,
-              sandbox: "read-only",
-              approvalPolicy: "on-request",
-              approvalsReviewer: "user",
-              config: {
-                ...toolApprovals,
-                "features.shell_tool": false,
-                "features.multi_agent": false,
-                "tools.view_image": false,
-              },
-              developerInstructions: instructions,
-              ...(resumeId
-                ? {}
-                : {
-                    dynamicTools: tools.definitions.map(
-                      ({ name, description, inputSchema }) => ({
-                        type: "function",
-                        name,
-                        description,
-                        inputSchema,
-                      }),
-                    ),
-                  }),
-            })
-            .catch((error: unknown) => {
-              if (
-                resumeId &&
-                /already has an active writer/i.test(messageOf(error))
-              )
-                throw new JiraError(
-                  "이 대화가 다른 Codex 연결에서 열려 있어요. 해당 대화를 사용하는 Codex 앱이나 터미널의 연결을 종료한 뒤 다시 보내 주세요. 이번 요청은 실행하지 않았어요.",
-                  409,
-                );
-              throw error;
-            }),
+          await native.request("thread/start", {
+            ephemeral: true,
+            model,
+            sandbox: "read-only",
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            config: {
+              ...toolApprovals,
+              "features.shell_tool": true,
+              "features.multi_agent": false,
+              "tools.view_image": false,
+            },
+            developerInstructions: instructions,
+            dynamicTools: tools.definitions.map(
+              ({ name, description, inputSchema }) => ({
+                type: "function",
+                name,
+                description,
+                inputSchema,
+              }),
+            ),
+          }),
         );
         const threadId = record(started.thread).id;
-        if (typeof threadId !== "string" || (resumeId && threadId !== resumeId))
-          throw new Error("Codex 원본 대화를 연결하지 못했어요.");
+        if (typeof threadId !== "string")
+          throw new Error("AI 대화를 연결하지 못했어요.");
         session = {
           threadId,
           service,
@@ -428,6 +418,17 @@ export function createAssistantService(
       const messages = new Map<string, string>();
       const threadId = session.threadId;
       const screenContext = () => ({
+        ...(reconnected && history.length
+          ? {
+              "fast-jira-history": {
+                kind: "untrusted",
+                value: JSON.stringify({
+                  previousConversation: history,
+                  historyNotice: assistantHistoryNotice,
+                }),
+              },
+            }
+          : {}),
         "fast-jira-screen": {
           kind: "untrusted",
           value: JSON.stringify({
@@ -495,7 +496,6 @@ export function createAssistantService(
                 : [...messages.values()].at(-1) || answer || deltas;
             const reply = {
               conversationId,
-              threadId,
               answer: finalAnswer,
               intermediate: [...messages.values()].filter(
                 (text) => text && text !== finalAnswer,
@@ -550,6 +550,30 @@ export function createAssistantService(
               activity.push({
                 role: "event",
                 text: `${String(item.tool ?? "연결 도구")} · ${item.status === "failed" || item.error ? "실패" : "완료"}`,
+                created: Date.now(),
+              });
+            }
+            if (
+              message.method === "item/completed" &&
+              isRecord(params.item) &&
+              ["commandExecution", "fileChange"].includes(
+                String(params.item.type),
+              )
+            ) {
+              const item = params.item;
+              const state =
+                item.status === "declined"
+                  ? "미실행"
+                  : item.status === "failed" ||
+                      item.error ||
+                      (typeof item.exitCode === "number" && item.exitCode !== 0)
+                    ? "실패"
+                    : item.status === "completed"
+                      ? "완료"
+                      : "결과 확인 필요";
+              activity.push({
+                role: "event",
+                text: `${item.type === "commandExecution" ? "명령 실행" : "파일 변경"} · ${state}`,
                 created: Date.now(),
               });
             }

@@ -10,7 +10,10 @@ export async function createAssistantMcp(
   definitions: readonly JiraToolDefinition[],
   call: (name: string, args: unknown) => Promise<unknown>,
   approve?: ApprovalHandler,
-  options: Pick<ToolService, "describeChange" | "onResult"> = {},
+  options: Pick<
+    ToolService,
+    "describeChange" | "approvalIssues" | "onResult"
+  > = {},
 ) {
   const token = randomUUID(),
     endpoint = createMcpEndpoint(

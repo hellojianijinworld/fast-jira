@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import type { ChatMessage } from "../domain/conversation.ts";
+import { mentionLabel, type TextMention } from "../domain/mention.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { element, safeHref } from "./dom.ts";
 
@@ -15,6 +16,7 @@ export function chatMessage(
   model = "",
   navigation?: { site: string; select(key: string): void },
   executionSummary = "",
+  mentions: readonly TextMention[] = [],
 ) {
   const row = element("article", `chat-message chat-message-${role}`),
     body = element("div", role === "user" ? "command-user" : "command-answer");
@@ -72,8 +74,39 @@ export function chatMessage(
       wrap.append(table);
     }
   }
-  if (role === "user") body.textContent = text;
-  else {
+  if (role === "user") {
+    // 이전 기록은 ID를 추정하지 않고 명시된 이슈 키만 표시상 복구한다.
+    const tokens = mentions.length
+      ? mentions
+      : [...text.matchAll(/@[A-Z][A-Z0-9_]*-\d+(?: · [^\n]*?…)?/g)].map(
+          (match) => ({
+            start: match.index,
+            end: match.index + match[0].length,
+            target: { kind: "issue" as const, id: "", label: match[0] },
+          }),
+        );
+    let offset = 0;
+    for (const token of [...tokens].sort((a, b) => a.start - b.start)) {
+      if (
+        token.start < offset ||
+        token.end > text.length ||
+        (token.target.id &&
+          text.slice(token.start, token.end) !== mentionLabel(token.target))
+      )
+        continue;
+      body.append(document.createTextNode(text.slice(offset, token.start)));
+      const badge = element(
+        "span",
+        "mention chat-mention",
+        text.slice(token.start, token.end),
+      );
+      badge.dataset.kind = token.target.kind;
+      badge.title = token.target.label;
+      body.append(badge);
+      offset = token.end;
+    }
+    body.append(document.createTextNode(text.slice(offset)));
+  } else {
     body.classList.add("chat-markdown");
     renderMarkdown(body, text);
   }

@@ -35,9 +35,20 @@ function fixture(models = ["available"]) {
       email: "test@example.com",
       token: "fake-secret",
     },
-    fetcher: async (_url, init) => {
+    fetcher: async (url, init) => {
       if (init?.method === "PUT" || init?.method === "POST") writes++;
       else reads++;
+      const target = new URL(String(url));
+      if (target.pathname.endsWith("/field")) return Response.json([]);
+      const jql = target.searchParams.get("jql") ?? "";
+      if (target.pathname.endsWith("/search/jql") && jql.startsWith("key in ("))
+        return Response.json({
+          issues: [...jql.matchAll(/AA-\d+/g)].map(([key]) => ({
+            key,
+            fields: { summary: "서버 조회 작업", status: { name: "대기" } },
+          })),
+          isLast: true,
+        });
       return Response.json({ issues: [], isLast: true });
     },
   });
@@ -168,9 +179,9 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
       ephemeral: boolean;
     };
     assert.equal(start.model, "available");
-    assert.equal(start.ephemeral, false);
+    assert.equal(start.ephemeral, true);
     assert.deepEqual(start.config, {
-      "features.shell_tool": false,
+      "features.shell_tool": true,
       "features.multi_agent": false,
       "tools.view_image": false,
       "mcp_servers.unrelated.default_tools_approval_mode": "writes",
@@ -206,10 +217,10 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
       { keys: ["AA-1"], field: "assignee", value: "person" },
     ]);
     assert.equal(result.answer, "변경안을 확인하세요.");
-    assert.equal(result.threadId, "thread");
+    assert.equal(result.threadId, undefined);
     assert.deepEqual(
       result.activity?.map((event) => event.text),
-      ["jira_search · 실패", "jira_propose_change · 완료"],
+      ["jira_search · 완료", "jira_propose_change · 완료"],
     );
     assert.ok(f.reads > 0);
     assert.equal(f.writes, 0);
@@ -256,7 +267,7 @@ test("동시 실행과 숨은 변경 도구를 차단하고 취소하면 연결�
       1,
     );
     await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.equal(f.replies.length, 0);
+    assert.equal(f.replies.length, 0, JSON.stringify(f.replies));
     assert.equal(f.assistant.approvals.pending("a".repeat(32)).length, 1);
     assert.equal(f.writes, 0);
     abort.abort();
@@ -387,7 +398,7 @@ test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다"
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
-test("원본 연결이 없는 옛 대화도 최신 요청만 보내고 과거 기록을 재전송하지 않는다", async () => {
+test("새 전용 연결은 최신 요청과 구분된 복구 자료를 전달한다", async () => {
   const f = fixture();
   try {
     await assert.rejects(
@@ -414,11 +425,12 @@ test("원본 연결이 없는 옛 대화도 최신 요청만 보내고 과거 �
       additionalContext: Record<string, { kind: string; value: string }>;
     };
     assert.equal(params.input[0]?.text, "계속");
+    assert.equal(JSON.stringify(params).includes("previousConversation"), true);
+    assert.equal(JSON.stringify(params).includes("AA-1이 있습니다."), true);
     assert.equal(
-      JSON.stringify(params).includes("previousConversation"),
-      false,
+      params.additionalContext["fast-jira-history"]?.kind,
+      "untrusted",
     );
-    assert.equal(JSON.stringify(params).includes("AA-1이 있습니다."), false);
     assert.equal(
       params.additionalContext["fast-jira-screen"]?.kind,
       "untrusted",
@@ -477,6 +489,71 @@ test("연결 도구의 승인 요청은 대화에 보류되고 사용자 응답�
     f.assistant.dispose();
   }
 });
+
+for (const approved of [true, false])
+  test(`로컬 명령은 승인 UI 응답 ${approved} 전까지 실행 권한을 반환하지 않는다`, async () => {
+    const f = fixture(),
+      requestId = "0123456789abcdef0123456789abcdef";
+    try {
+      const result = f.assistant.run({
+        prompt: "AA-1 코드를 검증해 줘",
+        context,
+        requestId,
+      });
+      await f.waitTurn();
+      f.emit(
+        "item/commandExecution/requestApproval",
+        {
+          threadId: "thread",
+          turnId: "turn",
+          itemId: "cmd",
+          command: "npm test",
+          cwd: "/project",
+          reason: "AA-1 검사",
+        },
+        44,
+      );
+      assert.equal(f.replies.length, 0);
+      const request = f.assistant.approvals.pending(requestId)[0];
+      assert(request);
+      assert.match(request.details, /npm test/);
+      f.assistant.approvals.respond({
+        requestId,
+        id: request.id,
+        approved,
+        values: {},
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.deepEqual(f.replies, [
+        { decision: approved ? "accept" : "decline" },
+      ]);
+      f.emit("item/completed", {
+        threadId: "thread",
+        item: {
+          id: "cmd",
+          type: "commandExecution",
+          status: approved ? "completed" : "declined",
+          exitCode: approved ? 1 : null,
+        },
+      });
+      f.emit("item/completed", {
+        threadId: "thread",
+        item: { id: "patch", type: "fileChange", status: "completed" },
+      });
+      f.complete();
+      const reply = await result;
+      assert.deepEqual(
+        reply.activity?.map((x) => x.text),
+        [
+          approved ? "명령 실행 · 실패" : "명령 실행 · 미실행",
+          "파일 변경 · 완료",
+        ],
+      );
+      assert.equal(f.writes, 0);
+    } finally {
+      f.assistant.dispose();
+    }
+  });
 
 test("승인 HTTP는 올바른 요청 토큰과 동일 출처 사용자 응답만 받는다", async () => {
   const f = fixture(),
@@ -957,7 +1034,7 @@ test("명시적 중단은 요청 종료까지 기다리고 잘못된 요청 ID�
   }
 });
 
-test("Codex 모델 변경·프로세스 재연결은 같은 원본 대화를 이어가고 기존 하네스를 다시 적용한다", async () => {
+test("Codex 모델 변경은 전용 세션을 재사용하고 프로세스 종료 후에는 기록으로 새 전용 연결을 만든다", async () => {
   const f = fixture(["available", "other"]);
   try {
     let pending = f.assistant.run({
@@ -973,7 +1050,6 @@ test("Codex 모델 변경·프로세스 재연결은 같은 원본 대화를 이
       context,
       model: "other",
       conversationId: reply.conversationId,
-      threadId: reply.threadId,
     });
     await f.waitTurn(2);
     f.complete();
@@ -982,10 +1058,11 @@ test("Codex 모델 변경·프로세스 재연결은 같은 원본 대화를 이
       f.requests.filter((r) => r.method === "thread/start").length,
       1,
     );
+    assert.equal(reply.threadId, undefined);
     const turns = f.requests.filter((r) => r.method === "turn/start");
     assert.equal(
-      (turns[1]?.params as { model: string } | undefined)?.model,
-      "other",
+      JSON.stringify(turns[1]?.params).includes("previousConversation"),
+      false,
     );
     f.client.close();
     pending = f.assistant.run({
@@ -993,61 +1070,69 @@ test("Codex 모델 변경·프로세스 재연결은 같은 원본 대화를 이
       context,
       model: "other",
       conversationId: reply.conversationId,
-      threadId: reply.threadId,
       history: [{ role: "user", text: "이전 내용" }],
     });
     await f.waitTurn(3);
     f.complete();
     reply = await pending;
-    assert.equal(reply.threadId, "thread");
-    assert.equal(reply.reconnected, false);
-    const resume = f.requests.find((r) => r.method === "thread/resume")
-      ?.params as {
-      threadId: string;
-      sandbox: string;
-      approvalPolicy: string;
-      developerInstructions: string;
-    };
-    assert.equal(resume.threadId, "thread");
-    assert.equal(resume.sandbox, "read-only");
-    assert.equal(resume.approvalPolicy, "on-request");
-    assert.match(resume.developerInstructions, /Jira/);
+    assert.equal(reply.reconnected, true);
+    const starts = f.requests.filter((r) => r.method === "thread/start");
+    assert.equal(starts.length, 2);
+    for (const start of starts) {
+      const params = start.params as {
+        ephemeral: boolean;
+        config: Record<string, unknown>;
+        developerInstructions: string;
+        dynamicTools: unknown[];
+      };
+      assert.equal(params.ephemeral, true);
+      assert.match(params.developerInstructions, /connected.*Slack\/Notion/);
+      assert.equal(params.config.mcp_servers, undefined);
+      assert.ok(params.dynamicTools.length);
+    }
     assert.equal(
-      f.requests.filter((r) => r.method === "thread/start").length,
-      1,
-    );
-    assert.equal(
-      JSON.stringify(turns[1]?.params).includes("previousConversation"),
+      f.requests.some((r) => r.method === "thread/resume"),
       false,
+    );
+    assert.match(
+      JSON.stringify(
+        f.requests.filter((r) => r.method === "turn/start").at(-1)?.params,
+      ),
+      /이전 내용/,
     );
     assert.equal(f.writes, 0);
   } finally {
     f.assistant.dispose();
   }
 });
-test("화면 연결 ID가 없어도 같은 연결에서 열린 원본 대화를 다시 resume하지 않는다", async () => {
-  const f = fixture();
+test("오래된 세션이어도 현재 요청한 원본은 해제·재연결하지 않고 기존 연결을 재사용한다", async () => {
+  const f = fixture(),
+    now = Date.now;
   try {
     let pending = f.assistant.run({
-      prompt: "첫 요청",
+      prompt: "처음",
       context,
       model: "available",
     });
     await f.waitTurn();
     f.complete();
     const reply = await pending;
+    Date.now = () => now() + 31 * 60_000;
     pending = f.assistant.run({
       prompt: "계속",
       context,
       model: "available",
+      conversationId: reply.conversationId,
       threadId: reply.threadId,
     });
     await f.waitTurn(2);
     f.complete();
-    const next = await pending;
-    assert.equal(next.conversationId, reply.conversationId);
+    const continued = await pending;
+    assert.equal(continued.threadId, reply.threadId);
     assert.equal(
-      f.requests.filter((r) => r.method === "thread/resume").length,
+      f.requests.filter((r) =>
+        ["thread/resume", "thread/unsubscribe"].includes(r.method),
+      ).length,
       0,
     );
     assert.equal(
@@ -1055,62 +1140,50 @@ test("화면 연결 ID가 없어도 같은 연결에서 열린 원본 대화를 
       1,
     );
   } finally {
+    Date.now = now;
     f.assistant.dispose();
   }
 });
-test("다른 Codex 연결의 원본 점유는 충돌로 안내하고 턴 실행·대화 복제를 하지 않는다", async () => {
+test("이전 Codex 원본이 점유되어 있어도 이를 다시 열지 않고 전용 임시 연결로 이어간다", async () => {
   const f = fixture();
   const original = f.client.request;
   f.client.request = async (method, params) => {
     if (method === "thread/resume")
-      throw new Error("thread thread already has an active writer");
+      throw new Error("already has an active writer");
     return original(method, params);
   };
   try {
-    await assert.rejects(
-      f.assistant.run({
-        prompt: "계속",
-        context,
-        model: "available",
-        threadId: "thread",
-      }),
-      (error: unknown) =>
-        error instanceof Error &&
-        "status" in error &&
-        error.status === 409 &&
-        /다른 Codex/.test(error.message),
-    );
+    const pending = f.assistant.run({
+      prompt: "계속",
+      context,
+      model: "available",
+      threadId: "old-thread",
+      history: [{ role: "assistant", text: "작업 결과를 확인했어요" }],
+    });
+    await f.waitTurn();
+    f.complete();
+    const reply = await pending;
+    assert.equal(reply.reconnected, true);
+    assert.equal(reply.threadId, undefined);
     assert.equal(
-      f.requests.some((r) => ["turn/start", "thread/start"].includes(r.method)),
+      f.requests.some((r) => r.method === "thread/resume"),
       false,
     );
-    assert.equal(f.writes, 0);
-    assert.equal(f.closed, false);
-  } finally {
-    f.assistant.dispose();
-  }
-});
-test("잘못되거나 사라진 Codex 원본은 새 대화로 조용히 대체하지 않는다", async () => {
-  const f = fixture();
-  try {
-    await assert.rejects(
-      f.assistant.run({ prompt: "계속", context, threadId: "../other" }),
-      /원본 대화/,
-    );
-    await assert.rejects(
-      f.assistant.run({ prompt: "계속", context, threadId: "missing" }),
-      /원본 대화/,
-    );
     assert.equal(
-      f.requests.some((r) => r.method === "thread/start"),
-      false,
+      (
+        f.requests.find((r) => r.method === "thread/start")?.params as
+          | {
+              ephemeral: boolean;
+            }
+          | undefined
+      )?.ephemeral,
+      true,
     );
     assert.equal(f.writes, 0);
   } finally {
     f.assistant.dispose();
   }
 });
-
 test("Codex 공개 중간 답변과 도구 상태는 완료 전 전달하고 내부 추론은 노출하지 않는다", async () => {
   const f = fixture();
   const events: AssistantProgress[] = [];
@@ -1175,8 +1248,7 @@ test("동일 출처 AI HTTP 스트림은 최종 응답 전에 중간 메시지�
       "",
       "available",
       new AbortController().signal,
-      [],
-      undefined,
+      [{ role: "user", text: "가".repeat(45000) }],
       undefined,
       (event) => events.push(event),
     );
