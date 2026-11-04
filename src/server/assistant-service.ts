@@ -54,6 +54,51 @@ export function createAssistantService(
   let connection: Promise<CodexClient> | undefined,
     disposed = false,
     busy = false;
+  let activeRequest:
+    | {
+        id: string;
+        service: JiraService;
+        stop: () => void;
+        done: Promise<void>;
+        steer?: (prompt: string) => Promise<void>;
+      }
+    | undefined;
+  async function control(value: unknown) {
+    const input = record(value);
+    if (
+      typeof input.requestId !== "string" ||
+      !/^[a-f0-9]{32}$/.test(input.requestId) ||
+      !["stop", "steer"].includes(String(input.action))
+    )
+      throw new JiraError("진행 중인 요청을 확인하세요.", 400);
+    const active = activeRequest;
+    if (!active) {
+      if (input.action === "stop") return;
+      throw new JiraError(
+        "이미 답변이 끝났어요. 다음 요청으로 보내 주세요.",
+        409,
+      );
+    }
+    if (active.id !== input.requestId || active.service !== getService())
+      throw new JiraError("현재 대화의 요청만 제어할 수 있어요.", 409);
+    if (input.action === "stop") {
+      active.stop();
+      await active.done;
+      return;
+    }
+    if (
+      typeof input.prompt !== "string" ||
+      !input.prompt.trim() ||
+      input.prompt.length > 10000
+    )
+      throw new JiraError("요청을 1~10,000자 입력하세요.", 400);
+    if (!active.steer)
+      throw new JiraError(
+        "아직 연결을 준비하고 있어요. 대기열로 보관해 주세요.",
+        409,
+      );
+    await active.steer(input.prompt);
+  }
   const sessions = new Map<
     string,
     {
@@ -181,7 +226,7 @@ export function createAssistantService(
   }
   async function run(
     value: unknown,
-    signal?: AbortSignal,
+    upstream?: AbortSignal,
   ): Promise<AssistantReply> {
     const input = record(value);
     if (
@@ -213,9 +258,24 @@ export function createAssistantService(
       throw new JiraError("대화를 확인하세요.", 400);
     if (busy)
       throw new JiraError("이전 AI 요청이 끝난 뒤 다시 요청하세요.", 409);
-    if (signal?.aborted) throw new JiraError("AI 요청을 취소했어요.", 499);
+    if (upstream?.aborted) throw new JiraError("AI 요청을 취소했어요.", 499);
     const approvalScope = approvals.open(input.requestId);
     busy = true;
+    const controller = new AbortController(),
+      signal = controller.signal;
+    const cancel = () => controller.abort();
+    upstream?.addEventListener("abort", cancel, { once: true });
+    if (upstream?.aborted) cancel();
+    let completed!: () => void;
+    const active = {
+      id: approvalScope.id,
+      service: getService(),
+      stop: cancel,
+      done: new Promise<void>((resolve) => {
+        completed = resolve;
+      }),
+    };
+    activeRequest = active;
     try {
       const requested = typeof input.model === "string" ? input.model : "";
       const available = requested
@@ -337,6 +397,35 @@ export function createAssistantService(
           pendingWork = 0,
           answer = "",
           deltas = "";
+        let activeTurnId = "";
+        activeRequest = {
+          ...active,
+          steer: async (prompt) => {
+            if (ended || !activeTurnId || signal.aborted)
+              throw new JiraError(
+                "이미 답변이 끝났거나 아직 준비 중이에요.",
+                409,
+              );
+            await native.request("turn/steer", {
+              threadId,
+              expectedTurnId: activeTurnId,
+              input: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    request: prompt,
+                    context: {
+                      ...context,
+                      site: service.site,
+                      now: new Date().toISOString(),
+                    },
+                  }),
+                  text_elements: [],
+                },
+              ],
+            });
+          },
+        };
         const proposals: ChangeProposal[] = [];
         const creations: IssueDraft[] = [];
         const items = new Map<string, unknown>();
@@ -399,6 +488,12 @@ export function createAssistantService(
             }
             const params = isRecord(message.params) ? message.params : {};
             if (params.threadId !== threadId) return;
+            if (
+              message.method === "turn/started" &&
+              isRecord(params.turn) &&
+              typeof params.turn.id === "string"
+            )
+              activeTurnId = params.turn.id;
             if (
               message.method === "item/started" &&
               isRecord(params.item) &&
@@ -626,17 +721,26 @@ export function createAssistantService(
               },
             ],
           })
+          .then((value) => {
+            const turn = record(value).turn;
+            if (isRecord(turn) && typeof turn.id === "string")
+              activeTurnId = turn.id;
+          })
           .catch(finish);
       });
     } finally {
+      upstream?.removeEventListener("abort", cancel);
       approvalScope.close();
+      activeRequest = undefined;
       busy = false;
+      completed();
     }
   }
   return {
     voice,
     approvals,
     status,
+    control,
     run,
     dispose() {
       disposed = true;

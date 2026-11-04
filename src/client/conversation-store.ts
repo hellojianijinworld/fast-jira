@@ -1,4 +1,4 @@
-import type { ChatSendMode } from "../domain/chat-input.ts";
+import type { ChatFollowupMode, ChatSendMode } from "../domain/chat-input.ts";
 import {
   type Conversation,
   decodeConversations,
@@ -10,7 +10,18 @@ export function createConversationStore(storage: LocalStore, scope: string) {
   let readable = true;
   const modelKey = `fastJira:assistant-model:${scope}`;
   const sendModeKey = `fastJira:assistant-send-mode:${scope}`;
+  const followupKey = `fastJira:assistant-followup-mode:${scope}`;
   const store = {
+    followupMode(): ChatFollowupMode {
+      try {
+        return storage.getItem(followupKey) === "steer" ? "steer" : "queue";
+      } catch {
+        return "queue";
+      }
+    },
+    setFollowupMode(mode: ChatFollowupMode) {
+      storage.setItem(followupKey, mode);
+    },
     sendMode(): ChatSendMode {
       try {
         return storage.getItem(sendModeKey) === "shortcut"

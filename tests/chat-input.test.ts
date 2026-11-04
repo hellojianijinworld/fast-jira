@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createConversationStore } from "../src/client/conversation-store.ts";
-import { sendsChatMessage } from "../src/domain/chat-input.ts";
+import {
+  chatKeyboardAction,
+  chatShortcutHints,
+  sendsChatMessage,
+} from "../src/domain/chat-input.ts";
 
 const enter = {
   key: "Enter",
@@ -52,4 +56,66 @@ test("AI 보내기 방식은 브라우저 계정별로 기억하며 잘못된 �
   );
   values.set("fastJira:assistant-send-mode:site:one", "invalid");
   assert.equal(one.sendMode(), "enter");
+});
+
+test("추가 요청의 기본·반대 동작을 두 전송 모드와 OS에서 구분한다", () => {
+  for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
+    assert.equal(chatKeyboardAction("enter", "queue", true, enter), "queue");
+    assert.equal(
+      chatKeyboardAction("enter", "queue", true, { ...enter, ...modifier }),
+      "steer",
+    );
+    assert.equal(
+      chatKeyboardAction("enter", "steer", true, { ...enter, ...modifier }),
+      "queue",
+    );
+    assert.equal(chatKeyboardAction("shortcut", "queue", true, enter), null);
+    assert.equal(
+      chatKeyboardAction("shortcut", "queue", true, { ...enter, ...modifier }),
+      "queue",
+    );
+    assert.equal(
+      chatKeyboardAction("shortcut", "queue", true, {
+        ...enter,
+        ...modifier,
+        shiftKey: true,
+      }),
+      "steer",
+    );
+    assert.equal(
+      chatKeyboardAction("shortcut", "steer", true, {
+        ...enter,
+        ...modifier,
+        shiftKey: true,
+      }),
+      "queue",
+    );
+    assert.equal(
+      chatKeyboardAction("shortcut", "queue", false, { ...enter, ...modifier }),
+      "send",
+    );
+    assert.equal(
+      chatKeyboardAction("shortcut", "queue", true, {
+        ...enter,
+        ...modifier,
+        shiftKey: true,
+        isComposing: true,
+      }),
+      null,
+    );
+  }
+});
+test("단축키 안내는 전송 설정·OS·진행 상태와 일치한다", () => {
+  assert.equal(
+    chatShortcutHints("enter", "queue", true, true).composer,
+    "Enter 대기열 · ⌘Enter 즉시 전달 · Shift+Enter 줄바꿈",
+  );
+  assert.equal(
+    chatShortcutHints("shortcut", "steer", true, false).composer,
+    "Ctrl+Enter 즉시 전달 · Ctrl+Shift+Enter 대기열 · Enter 줄바꿈",
+  );
+  assert.equal(
+    chatShortcutHints("shortcut", "queue", false, true).composer,
+    "⌘Enter 전송 · Enter 줄바꿈",
+  );
 });

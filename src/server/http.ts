@@ -441,9 +441,11 @@ export function createHttpServer(
           req,
           url.pathname === "/api/sync"
             ? 2000000
-            : ["/api/assistant/run", "/api/assistant/voice/start"].includes(
-                  url.pathname,
-                )
+            : [
+                  "/api/assistant/run",
+                  "/api/assistant/control",
+                  "/api/assistant/voice/start",
+                ].includes(url.pathname)
               ? 120000
               : [
                     "/api/create-issue",
@@ -470,6 +472,9 @@ export function createHttpServer(
           } finally {
             res.off("close", cancel);
           }
+        } else if (url.pathname === "/api/assistant/control" && assistant) {
+          await assistant.control(input);
+          json(res, {});
         } else if (url.pathname === "/api/assistant/approve" && assistant) {
           assistant.approvals.respond(input);
           json(res, {});

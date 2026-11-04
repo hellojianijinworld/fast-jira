@@ -77,6 +77,7 @@ let localItems = [issue],
   holdSearch = false,
   failSearch = false;
 let releaseSearch: (() => void) | undefined;
+const controls: { action: string; prompt?: string }[] = [];
 let prompt = "",
   searchQuery = "",
   fail = false,
@@ -186,6 +187,12 @@ const api = createApi(async (input, init) => {
     pendingApproval = false;
     approvalAccepted = JSON.parse(String(init?.body)).approved === true;
     releaseApproval?.();
+    return Response.json({});
+  }
+  if (path.pathname === "/api/assistant/control") {
+    const input = JSON.parse(String(init?.body));
+    controls.push(input);
+    if (input.action === "stop") releaseAnswer?.();
     return Response.json({});
   }
   if (path.pathname === "/api/assistant/run") {
@@ -805,11 +812,17 @@ await check(
         "원본 대화 링크 누락",
       );
       button("대화 시작").click();
-      assert(button("대화 링크 복사").disabled, "새 대화에 잘못된 링크가 있음");
+      assert(
+        button("대화 링크 복사").hidden,
+        "링크 없는 대화에 복사 버튼이 표시됨",
+      );
       dialog()
         .querySelector<HTMLButtonElement>(".chat-conversation-open")
         ?.click();
-      assert(!button("대화 링크 복사").disabled, "기록 복원 후 복사 비활성");
+      assert(
+        !button("대화 링크 복사").hidden && !button("대화 링크 복사").disabled,
+        "기록 복원 후 복사 비활성",
+      );
     } finally {
       if (descriptor) Object.defineProperty(navigator, "clipboard", descriptor);
       else Reflect.deleteProperty(navigator, "clipboard");
@@ -1173,6 +1186,10 @@ await check(
     const panel = dialog().querySelector<HTMLElement>(".ai-chat-help");
     assert(panel?.matches(":popover-open"), "도움말 열기");
     assert(
+      panel && Number.parseFloat(getComputedStyle(panel).paddingLeft) >= 12,
+      "옵션 목록 스타일이 도움말 안쪽 여백을 덮어씀",
+    );
+    assert(
       panel?.textContent?.includes("보관 안내") &&
         panel?.textContent?.includes("연결 및 지원 상태"),
       "도움말 내용",
@@ -1196,37 +1213,19 @@ await check(
     );
     settings.click();
     await tick();
-    const trigger = dialog().querySelector<HTMLButtonElement>(
-      ".ai-chat-settings .select-trigger",
+    const option = dialog().querySelector<HTMLInputElement>(
+      '[aria-label="메시지 보내기 방식"] input[value="shortcut"]',
     );
-    assert(trigger, "보내기 설정 버튼");
-    trigger?.click();
-    await tick();
-    const popup = dialog().querySelector<HTMLElement>(
-      ".ai-chat-settings .select-options:popover-open",
+    const settingsPanel =
+      dialog().querySelector<HTMLElement>(".ai-chat-settings");
+    assert(
+      settingsPanel &&
+        Number.parseFloat(getComputedStyle(settingsPanel).paddingLeft) >= 12,
+      "설정 내용이 팝오버 가장자리에 붙음",
     );
-    if (trigger && popup) {
-      const anchor = trigger.getBoundingClientRect(),
-        bounds = popup.getBoundingClientRect();
-      assert(
-        Math.min(
-          Math.abs(bounds.bottom - anchor.top),
-          Math.abs(bounds.top - anchor.bottom),
-        ) <= 12,
-        "보내기 메뉴가 버튼에서 떨어져 있다",
-      );
-    }
-    const option = [
-      ...dialog().querySelectorAll<HTMLButtonElement>(
-        ".ai-chat-settings .select-options:popover-open button",
-      ),
-    ].find((button) => button.textContent?.startsWith("Enter로 줄바꿈"));
-    assert(option, "Enter 줄바꿈 선택지");
+    assert(option, "Enter 줄바꿈 라디오 선택지");
     option?.click();
-    const select = dialog().querySelector<HTMLSelectElement>(
-      'select[aria-label="메시지 보내기 방식"]',
-    );
-    assert(select?.value === "shortcut", "모드 변경");
+    assert(option?.checked, "모드 변경");
     input().value = "보내기 방식 검사";
     const before = prompt;
     const enter = new KeyboardEvent("keydown", {
@@ -1253,13 +1252,12 @@ await check(
     palette = makePalette();
     palette.open("ai");
     await tick();
-    const restored = dialog().querySelector<HTMLSelectElement>(
-      'select[aria-label="메시지 보내기 방식"]',
+    const restored = dialog().querySelector<HTMLInputElement>(
+      '[aria-label="메시지 보내기 방식"] input:checked',
     );
     assert(restored?.value === "shortcut", "모드 복원");
     if (restored) {
-      restored.value = "enter";
-      restored.dispatchEvent(new Event("change"));
+      chooseChatSetting("메시지 보내기 방식", "enter");
     }
     input().value = "기본 Enter 검사";
     input().dispatchEvent(
@@ -1534,6 +1532,224 @@ await check(
     }
     palette.destroy();
     assert(!host.querySelector(".faq-dialog"), "FAQ 정리 누락");
+  },
+);
+function chooseChatSetting(label: string, value: string) {
+  const radio = dialog().querySelector<HTMLInputElement>(
+    `[aria-label="${label}"] input[value="${value}"]`,
+  );
+  assert(radio, `설정 선택지 누락: ${label} ${value}`);
+  radio?.click();
+}
+async function openControlChat(modelId = "test") {
+  palette = makePalette();
+  palette.open("ai");
+  await tick();
+  const model = dialog().querySelector<HTMLSelectElement>(
+    '[aria-label="대화 모델"]',
+  );
+  if (model) {
+    model.value = modelId;
+    model.dispatchEvent(new Event("change"));
+  }
+  chooseChatSetting("답변 중 추가 요청", "queue");
+}
+function endControlChat() {
+  holdAnswer = false;
+  releaseAnswer?.();
+  palette.destroy();
+}
+await check(
+  "답변 중 요청은 대기열에 보관하고 완료 후 순서대로 실행한다",
+  async () => {
+    await openControlChat();
+    try {
+      holdAnswer = true;
+      const before = assistantCalls;
+      input().value = "첫 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      input().value = "다음 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      assert(
+        assistantCalls === before + 1 &&
+          dialog().querySelector(".chat-queue-text")?.textContent ===
+            "다음 요청",
+        "대기열이 즉시 실행되거나 표시되지 않음",
+      );
+      holdAnswer = false;
+      releaseAnswer?.();
+      for (let n = 0; n < 100 && assistantCalls < before + 2; n++) await tick();
+      assert(
+        assistantCalls === before + 2 && prompt === "다음 요청",
+        "다음 요청 자동 실행 누락",
+      );
+      await tick();
+    } finally {
+      endControlChat();
+    }
+  },
+);
+await check(
+  "상단 전송 설정의 즉시 전달은 진행 중 Codex에 지시를 추가한다",
+  async () => {
+    await openControlChat();
+    try {
+      holdAnswer = true;
+      input().value = "진행 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      button("AI 대화 설정").click();
+      const settings = dialog().querySelector(".ai-chat-settings");
+      assert(settings?.matches(":popover-open"), "상단 전송 설정 누락");
+      chooseChatSetting("답변 중 추가 요청", "steer");
+      const before = assistantCalls;
+      input().value = "수정하지 말고 조회만 해";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      assert(
+        controls.at(-1)?.action === "steer" &&
+          controls.at(-1)?.prompt === "수정하지 말고 조회만 해" &&
+          assistantCalls === before,
+        "즉시 전달이 새 요청으로 실행됨",
+      );
+    } finally {
+      endControlChat();
+    }
+  },
+);
+await check(
+  "답변 중단은 대기 요청을 보존하고 직접 재개할 때만 실행한다",
+  async () => {
+    await openControlChat();
+    try {
+      holdAnswer = true;
+      input().value = "중단할 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      input().value = "중단 뒤 실행할 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      const before = assistantCalls;
+      button("답변 중단").click();
+      for (
+        let n = 0;
+        n < 100 && !dialog().textContent?.includes("계속 보내기");
+        n++
+      )
+        await tick();
+      assert(controls.at(-1)?.action === "stop", "서버 중단 요청 누락");
+      assert(
+        assistantCalls === before && dialog().textContent?.includes("일시정지"),
+        "중단이 대기열을 실행하거나 삭제함",
+      );
+      holdAnswer = false;
+      button("계속 보내기").click();
+      for (let n = 0; n < 100 && assistantCalls === before; n++) await tick();
+      assert(
+        assistantCalls === before + 1 && prompt === "중단 뒤 실행할 요청",
+        "대기열 재개 누락",
+      );
+      await tick();
+    } finally {
+      endControlChat();
+    }
+  },
+);
+await check(
+  "Claude 즉시 전달은 중단을 확인한 뒤 최근 대화로 이어서 실행한다",
+  async () => {
+    await openControlChat("claude:sonnet");
+    try {
+      holdAnswer = true;
+      input().value = "기존 Claude 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      chooseChatSetting("답변 중 추가 요청", "steer");
+      assert(
+        dialog()
+          .querySelector(".ai-chat-settings")
+          ?.textContent?.includes("Claude의 즉시 전달"),
+        "Claude 동작 차이 안내 누락",
+      );
+      const before = assistantCalls;
+      holdAnswer = false;
+      input().value = "새 Claude 지시";
+      dialog().querySelector("form")?.requestSubmit();
+      for (let n = 0; n < 100 && assistantCalls === before; n++) await tick();
+      assert(
+        controls.at(-1)?.action === "stop" &&
+          assistantCalls === before + 1 &&
+          prompt === "새 Claude 지시",
+        "Claude 중단·이어서 실행 순서 오류",
+      );
+      await tick();
+    } finally {
+      endControlChat();
+    }
+  },
+);
+await check(
+  "대기열·즉시 전달 키 안내와 실제 키 동작이 일치하고 기본값을 바꾸지 않는다",
+  async () => {
+    await openControlChat();
+    try {
+      chooseChatSetting("메시지 보내기 방식", "enter");
+      assert(
+        dialog()
+          .querySelector(".chat-input-shortcuts")
+          ?.textContent?.includes("Enter 전송"),
+        "대기 상태 전송 키 안내 없음",
+      );
+      holdAnswer = true;
+      input().value = "단축키 검사";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      assert(
+        dialog()
+          .querySelector(".chat-input-shortcuts")
+          ?.textContent?.includes("Enter 대기열"),
+        "답변 중 큐 단축키 안내 없음",
+      );
+      input().value = "단축키로 즉시 전달";
+      const key = new KeyboardEvent("keydown", {
+        key: "Enter",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      input().dispatchEvent(key);
+      await tick();
+      assert(
+        key.defaultPrevented &&
+          controls.at(-1)?.action === "steer" &&
+          controls.at(-1)?.prompt === "단축키로 즉시 전달",
+        "보조 키가 즉시 전달하지 않음",
+      );
+      assert(
+        dialog().querySelector<HTMLInputElement>(
+          '[aria-label="답변 중 추가 요청"] input:checked',
+        )?.value === "queue",
+        "일회성 키가 기본 설정을 바꿈",
+      );
+      input().value = "기본 키로 대기열";
+      input().dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await tick();
+      assert(
+        dialog().querySelector(".chat-queue-text")?.textContent ===
+          "기본 키로 대기열",
+        "기본 키 대기열 동작 누락",
+      );
+    } finally {
+      endControlChat();
+    }
   },
 );
 document.body.dataset.result = failures ? "failed" : "passed";

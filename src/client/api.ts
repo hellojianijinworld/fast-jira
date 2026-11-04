@@ -140,6 +140,20 @@ export function createApi(fetcher: typeof fetch = fetch) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ requestId, id, approved, values }),
       }),
+    assistantControl: (
+      requestId: string,
+      action: "stop" | "steer",
+      prompt?: string,
+    ) =>
+      request("/api/assistant/control", record, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          action,
+          ...(prompt === undefined ? {} : { prompt }),
+        }),
+      }),
     assistantRun: (
       prompt: string,
       context: AssistantContext,

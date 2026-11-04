@@ -324,6 +324,15 @@ test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다"
       },
       body: JSON.stringify({ prompt: "조회", context }),
     });
+    const forbiddenControl = await fetch(`${origin}/api/assistant/control`, {
+      method: "POST",
+      headers: {
+        Origin: "https://other.example",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ requestId: "a".repeat(32), action: "stop" }),
+    });
+    assert.equal(forbiddenControl.status, 403);
     assert.equal(forbidden.status, 403);
     assert.equal(f.requests.length, 0);
     const status = await fetch(`${origin}/api/assistant/status`).then((res) =>
@@ -830,6 +839,87 @@ test("사용할 수 없는 모델 행만 반환되면 대화 연결 완료로 �
       state.providers?.find((provider) => provider.id === "codex")?.ready,
       false,
     );
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+test("진행 중 추가 지시는 현재 요청·턴에만 전달하고 새 턴이나 Jira 쓰기를 만들지 않는다", async () => {
+  const f = fixture(),
+    requestId = "a".repeat(32);
+  try {
+    const pending = f.assistant.run({
+      prompt: "AA-1을 확인해줘",
+      context,
+      requestId,
+    });
+    await f.waitTurn();
+    await assert.rejects(
+      f.assistant.control({
+        requestId: "b".repeat(32),
+        action: "steer",
+        prompt: "다른 요청",
+      }),
+      /현재 대화/,
+    );
+    await assert.rejects(
+      f.assistant.control({ requestId, action: "steer", prompt: " " }),
+      /1~10,000/,
+    );
+    await assert.rejects(
+      f.assistant.control({ requestId, action: "steer", prompt: "추가 지시" }),
+      /준비/,
+    );
+    f.emit("turn/started", { threadId: "thread", turn: { id: "live-turn" } });
+    await f.assistant.control({
+      requestId,
+      action: "steer",
+      prompt: "상태만 확인하고 수정하지 마",
+    });
+    const steering = f.requests.find((x) => x.method === "turn/steer")
+      ?.params as {
+      threadId: string;
+      expectedTurnId: string;
+      input: { text: string }[];
+    };
+    assert.equal(steering.expectedTurnId, "live-turn");
+    assert.equal(steering.threadId, "thread");
+    assert.equal(
+      JSON.parse(steering.input[0]!.text).request,
+      "상태만 확인하고 수정하지 마",
+    );
+    assert.equal(f.requests.filter((x) => x.method === "turn/start").length, 1);
+    assert.equal(f.writes, 0);
+    f.complete();
+    await pending;
+    await assert.rejects(
+      f.assistant.control({ requestId, action: "steer", prompt: "늦은 요청" }),
+      /이미 답변/,
+    );
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("명시적 중단은 요청 종료까지 기다리고 잘못된 요청 ID나 입력을 거부한다", async () => {
+  const f = fixture(),
+    requestId = "c".repeat(32);
+  try {
+    const pending = f.assistant.run({ prompt: "조회", context, requestId });
+    const stopped = assert.rejects(pending, /취소/);
+    await f.waitTurn();
+    await assert.rejects(
+      f.assistant.control({ requestId: "d".repeat(32), action: "stop" }),
+      /현재 대화/,
+    );
+    await assert.rejects(
+      f.assistant.control({ requestId, action: "execute" }),
+      /진행 중/,
+    );
+    await f.assistant.control({ requestId, action: "stop" });
+    await stopped;
+    assert.equal(f.closed, true);
+    await f.assistant.control({ requestId, action: "stop" });
+    assert.equal(f.writes, 0);
   } finally {
     f.assistant.dispose();
   }
