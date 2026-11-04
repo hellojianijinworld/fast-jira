@@ -2612,3 +2612,90 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
     gap: var(--space-3);
   }
 }
+
+/* 대화는 작업 화면을 가리지 않는 왼쪽 패널로 유지한다. */
+.assistant-workspace {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.assistant-workspace-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.assistant-workspace-chat {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+.assistant-workspace[data-chat-open="true"] .assistant-workspace-chat {
+  display: flex;
+}
+.assistant-workspace[data-chat-open="true"] .assistant-workspace-body {
+  display: grid;
+  grid-template-columns: minmax(0, 34fr) 1px minmax(0, 66fr);
+}
+.assistant-workspace .assistant-splitter {
+  display: none;
+}
+.assistant-workspace[data-chat-open="true"][data-mobile="false"]
+  .assistant-splitter {
+  display: grid;
+}
+
+.assistant-workspace-navigation {
+  justify-content: flex-end;
+  padding: var(--space-1) var(--density-space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.assistant-workspace-navigation [aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--blue);
+}
+.workspace.assistant-single-pane {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.assistant-single-pane > .splitter,
+.assistant-single-pane[data-pane="list"] > .detail-pane,
+.assistant-single-pane[data-pane="detail"] > .browse {
+  display: none;
+}
+.assistant-single-pane > .browse,
+.assistant-single-pane[data-pane="detail"] > .detail-pane {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 0;
+}
+.assistant-single-pane[data-pane="detail"] > .detail-pane {
+  display: block;
+}
+.assistant-workspace[data-mobile="true"][data-chat-open="true"]
+  .assistant-workspace-body {
+  display: flex;
+  flex-direction: column;
+}
+.assistant-workspace[data-mobile="true"][data-chat-open="true"]
+  .assistant-workspace-chat {
+  flex: 1;
+  border: 0;
+}
+.assistant-workspace[data-mobile="true"][data-chat-open="true"][data-pane="chat"]
+  .workspace,
+.assistant-workspace[data-mobile="true"][data-chat-open="true"]:not(
+    [data-pane="chat"]
+  )
+  .assistant-workspace-chat {
+  display: none;
+}
+.assistant-workspace[data-mobile="true"] .assistant-workspace-navigation {
+  justify-content: center;
+}

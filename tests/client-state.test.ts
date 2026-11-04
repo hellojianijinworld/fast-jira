@@ -910,3 +910,93 @@ test("초기 메타정보 캐시는 계정별로 구분하고 만료·손상된 
   );
   assert.equal(mine.bootstrap(), null);
 });
+
+test("Codex 요청은 브라우저의 과거 대화 본문을 보내지 않고 Claude의 기존 맥락 전달은 유지한다", async () => {
+  const sent: Record<string, unknown>[] = [];
+  const api = createApi(async (_url, init) => {
+    sent.push(JSON.parse(String(init?.body)));
+    return Response.json({
+      conversationId: "session",
+      answer: "확인",
+      proposals: [],
+    });
+  });
+  const history = [{ role: "user" as const, text: "이전의 긴 작업 지시" }];
+  await api.assistantRun(
+    "833 개발 진행 중으로 바꿔",
+    { projects: ["CLIPO"], issue: "", keys: [] },
+    "session",
+    "codex-model",
+    new AbortController().signal,
+    history,
+  );
+  assert.equal(sent[0]?.prompt, "833 개발 진행 중으로 바꿔");
+  assert.equal(sent[0]?.history, undefined);
+  assert.equal(sent[0]?.hasHistory, true);
+  assert.equal(JSON.stringify(sent[0]).includes("이전의 긴 작업 지시"), false);
+  await api.assistantRun(
+    "계속",
+    { projects: [], issue: "", keys: [] },
+    "",
+    "claude:sonnet",
+    new AbortController().signal,
+    history,
+  );
+  assert.deepEqual(sent[1]?.history, history);
+});
+
+test("AI 스트림은 한글과 프레임이 바이트 경계에서 나뉘어도 복원하고 조기 종료는 실패한다", async () => {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(
+    `data: ${JSON.stringify({ type: "message", id: "a", text: "중간 답변", replace: false })}\n\n: keep-alive\n\ndata: ${JSON.stringify({ type: "result", value: { conversationId: "s", answer: "완료", proposals: [] } })}\n\n`,
+  );
+  const api = createApi(
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            for (let index = 0; index < bytes.length; index += 2)
+              controller.enqueue(bytes.slice(index, index + 2));
+            controller.close();
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+  );
+  const events: unknown[] = [];
+  const reply = await api.assistantRun(
+    "조회",
+    { projects: [], issue: "", keys: [] },
+    "",
+    "model",
+    new AbortController().signal,
+    [],
+    undefined,
+    undefined,
+    (event) => events.push(event),
+  );
+  assert.equal(reply.answer, "완료");
+  assert.deepEqual(events, [
+    { type: "message", id: "a", text: "중간 답변", replace: false },
+  ]);
+  const broken = createApi(
+    async () =>
+      new Response('data: {"type":"activity","text":"조회 중"}\n\n', {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+  );
+  await assert.rejects(
+    broken.assistantRun(
+      "조회",
+      { projects: [], issue: "", keys: [] },
+      "",
+      "model",
+      new AbortController().signal,
+      [],
+      undefined,
+      undefined,
+      () => {},
+    ),
+    /연결이 끊겼어요/,
+  );
+});

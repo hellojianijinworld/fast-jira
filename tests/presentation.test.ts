@@ -53,16 +53,25 @@ test("동적 상태 개수와 순서가 바뀌어도 같은 색상 경로를 균
   );
 });
 
-test("분할 너비는 작은 창과 초광폭에서도 유효한 최소·최대 범위를 유지한다", () => {
-  for (const available of [640, 1262, 2200, 3000]) {
-    for (const ratio of [0, 0.5, 1]) {
-      const value = splitDimensions(available, 16, ratio);
-      assert.ok(value.minimum <= value.maximum);
-      assert.ok(value.width >= value.minimum && value.width <= value.maximum);
-      assert.ok(value.width <= available);
+test("공통 분할은 양쪽 20%와 읽을 수 있는 최소 폭을 함께 보장한다", () => {
+  for (const available of [300, 640, 1012, 1262, 1920, 3000]) {
+    for (const rem of [16, 20]) {
+      const minimum = Math.min(
+        available / 2,
+        Math.max(available * 0.2, 20 * rem),
+      );
+      for (const ratio of [-0.1, 0, 0.2, 0.34, 0.5, 0.8, 1, 1.1]) {
+        const value = splitDimensions(available, rem, ratio);
+        assert.equal(value.minimum, minimum);
+        assert.equal(value.maximum, available - minimum);
+        assert.ok(value.width >= minimum);
+        assert.ok(available - value.width >= minimum - 0.0001);
+      }
     }
   }
-  assert.equal(splitDimensions(1262, 16, 0).width, 384);
-  assert.equal(splitDimensions(1262, 16, 1).width, 878);
-  assert.equal(splitDimensions(3000, 16, 0.8).width, 1500);
+  assert.equal(splitDimensions(1012, 16, 0).width, 320);
+  assert.equal(splitDimensions(1012, 16, 1).width, 692);
+  assert.equal(splitDimensions(1920, 16, 0).ratio, 0.2);
+  assert.equal(splitDimensions(1920, 16, 1).ratio, 0.8);
+  assert.equal(splitDimensions(300, 16, 1).width, 150);
 });

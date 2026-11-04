@@ -6,6 +6,7 @@ export interface GlobalSettings {
   version: 1;
   display: Preferences;
   history: { diffLayout: "split" | "inline" };
+  layout: { assistantRatio: number };
 }
 /** DOM을 읽지 않는 브라우저 저장소 어댑터. 접근 제한은 각 읽기·쓰기에서 처리한다. */
 export const browserSettingsStorage: LocalStore = {
@@ -22,6 +23,7 @@ export function readGlobalSettings(storage: LocalStore): GlobalSettings {
       viewNamesExpanded: false,
     },
     history: { diffLayout: "split" },
+    layout: { assistantRatio: 0.34 },
   };
   try {
     const legacyTheme = storage.getItem("fastJira:theme");
@@ -46,6 +48,7 @@ export function readGlobalSettings(storage: LocalStore): GlobalSettings {
       return { ...defaults, display: legacy };
     const display = isRecord(value.display) ? value.display : {};
     const history = isRecord(value.history) ? value.history : {};
+    const layout = isRecord(value.layout) ? value.layout : {};
     return {
       version: 1,
       display: {
@@ -68,6 +71,14 @@ export function readGlobalSettings(storage: LocalStore): GlobalSettings {
       history: {
         diffLayout: history.diffLayout === "inline" ? "inline" : "split",
       },
+      layout: {
+        assistantRatio:
+          typeof layout.assistantRatio === "number" &&
+          layout.assistantRatio > 0 &&
+          layout.assistantRatio < 1
+            ? layout.assistantRatio
+            : defaults.layout.assistantRatio,
+      },
     };
   } catch {
     return defaults;
@@ -79,6 +90,7 @@ export function updateGlobalSettings(
   patch: {
     display?: Partial<Preferences>;
     history?: Partial<GlobalSettings["history"]>;
+    layout?: Partial<GlobalSettings["layout"]>;
   },
 ) {
   const current = readGlobalSettings(storage);
@@ -86,6 +98,7 @@ export function updateGlobalSettings(
     version: 1,
     display: { ...current.display, ...patch.display },
     history: { ...current.history, ...patch.history },
+    layout: { ...current.layout, ...patch.layout },
   };
   storage.setItem(GLOBAL_SETTINGS_KEY, JSON.stringify(next));
   return next;

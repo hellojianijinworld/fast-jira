@@ -38,6 +38,7 @@
     "diff": "9.0.0",
     "emoji-picker-element": "^1.29.1",
     "emoji-picker-element-data": "^1.8.0",
-    "fflate": "0.8.3"
+    "fflate": "0.8.3",
+    "markdown-it": "15.0.3"
   }
 }

@@ -34,9 +34,33 @@ export interface AssistantStatus {
   providers?: AssistantProviderStatus[];
 }
 
+import { type ChatMessage, isChatMessage } from "./conversation.ts";
 import type { Issue } from "./issue.ts";
 import { decodeIssue, wireArray } from "./wire.ts";
+export type AssistantProgress =
+  | { type: "message"; id: string; text: string; replace: boolean }
+  | { type: "activity"; text: string };
+export function assistantProgress(value: unknown): AssistantProgress {
+  const data = record(value);
+  if (typeof data.text !== "string")
+    throw new Error("AI 진행 응답을 확인하세요.");
+  if (data.type === "activity") return { type: "activity", text: data.text };
+  if (
+    data.type === "message" &&
+    typeof data.id === "string" &&
+    typeof data.replace === "boolean"
+  )
+    return {
+      type: "message",
+      id: data.id,
+      text: data.text,
+      replace: data.replace,
+    };
+  throw new Error("AI 진행 응답을 확인하세요.");
+}
 export interface AssistantReply {
+  intermediate?: string[];
+  activity?: ChatMessage[];
   issues?: Issue[];
   conversationId: string;
   threadId?: string;
@@ -145,6 +169,32 @@ export function assistantReply(value: unknown): AssistantReply {
       ? {}
       : { issues: wireArray(data.issues, decodeIssue) }),
     answer: data.answer,
+    ...(data.intermediate === undefined
+      ? {}
+      : {
+          intermediate: (() => {
+            if (
+              !Array.isArray(data.intermediate) ||
+              !data.intermediate.every((item) => typeof item === "string")
+            )
+              throw new Error("AI 중간 응답을 확인하세요.");
+            return data.intermediate as string[];
+          })(),
+        }),
+    ...(data.activity === undefined
+      ? {}
+      : {
+          activity: (() => {
+            if (
+              !Array.isArray(data.activity) ||
+              !data.activity.every(
+                (item) => isChatMessage(item) && item.role === "event",
+              )
+            )
+              throw new Error("AI 작업 기록을 확인하지 못했어요.");
+            return data.activity as ChatMessage[];
+          })(),
+        }),
     ...(data.execution === undefined
       ? {}
       : { execution: decodeExecutions(data.execution) }),

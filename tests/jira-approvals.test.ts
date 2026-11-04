@@ -19,6 +19,7 @@ function fixture() {
       "jira_description",
       "jira_edit_issue",
       "jira_update_issues",
+      "jira_comment",
     ].map((name) => ({
       name,
       description: "",
@@ -75,7 +76,7 @@ test("작업마다 순서대로 묻고 진행한 작업만 고정된 원본으�
     input,
     async (request) => {
       asked++;
-      assert.match(request.title, /진행할까요/);
+      assert.ok(request.title.endsWith("까요?"));
       assert.equal(request.fields.length, 1);
       fields.summary = "변경된 원본";
       return { approved: asked !== 2, values: {} };
@@ -179,5 +180,58 @@ test("잘못된 도구·재귀 묶음·초과 요청은 확인 전에 차단한�
       execute(f.tools, "jira_apply_changes", { actions }, ask),
     );
   assert.equal(asked, false);
+  assert.equal(f.writes.length, 0);
+});
+
+test("짧은 필드 변경은 실제 대상과 전후 값을 질문 한 문장으로 보여준다", async () => {
+  const f = fixture();
+  await execute(
+    f.tools,
+    "jira_edit_issue",
+    {
+      key: "AA-833",
+      field: "status",
+      value: "개발 진행 중",
+      expected: "개발 대기중",
+    },
+    async (question) => {
+      assert.equal(
+        question.title,
+        "AA-833의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
+      );
+      assert.equal(question.description, "");
+      assert.equal(question.details, "");
+      return { approved: false, values: {} };
+    },
+  );
+  assert.equal(f.writes.length, 0);
+});
+test("긴 변경값은 생략하지 않고 질문 아래에 원문을 유지한다", async () => {
+  const f = fixture();
+  const value = "긴 제목 ".repeat(40);
+  await execute(
+    f.tools,
+    "jira_edit_issue",
+    { key: "AA-1", field: "summary", value },
+    async (question) => {
+      assert.equal(question.title, "AA-1의 제목을 바꿀까요?");
+      assert.ok(question.details.includes(value));
+      return { approved: false, values: {} };
+    },
+  );
+});
+
+test("댓글 편집 질문은 생성으로 안내하지 않고 원문을 보존한다", async () => {
+  const f = fixture();
+  await execute(
+    f.tools,
+    "jira_comment",
+    { key: "AA-1", action: "edit", id: "comment-1", text: "수정할 댓글" },
+    async (question) => {
+      assert.equal(question.title, "AA-1의 댓글을 수정할까요?");
+      assert.ok(question.details.includes("수정할 댓글"));
+      return { approved: false, values: {} };
+    },
+  );
   assert.equal(f.writes.length, 0);
 });

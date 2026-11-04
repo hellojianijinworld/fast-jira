@@ -12,6 +12,7 @@ const host = document.querySelector<HTMLElement>("#fixture"),
   results = document.querySelector("#results");
 if (!host || !results) throw new Error("fixture 누락");
 let failures = 0;
+let requestedThread = "";
 const assert = (condition: unknown, message: string) => {
   if (!condition) throw new Error(message);
 };
@@ -77,6 +78,8 @@ let localItems = [issue],
   holdSearch = false,
   failSearch = false;
 let releaseSearch: (() => void) | undefined;
+let streamReply = false;
+let emitProgress: ((event: unknown) => void) | undefined;
 const controls: { action: string; prompt?: string }[] = [];
 let prompt = "",
   searchQuery = "",
@@ -86,13 +89,13 @@ let prompt = "",
 let voiceTranscript: ((text: string) => void) | undefined;
 function mockVoice(callbacks: VoiceCallbacks) {
   let active = false;
-  voiceTranscript = callbacks.transcript;
   const stop = () => {
     active = false;
     callbacks.state(false, "");
   };
   return {
     start() {
+      voiceTranscript = callbacks.transcript;
       active = !active;
       callbacks.state(active, "");
     },
@@ -168,9 +171,10 @@ const api = createApi(async (input, init) => {
         ? [
             {
               id: "approval",
-              title: "이 작업을 진행할까요?",
-              description: "요청하신 내용을 수정하려고 합니다.",
-              details: "대상: AA-1\n제목: 가운뎃점 처리 기준 정리",
+              title:
+                "AA-1의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
+              description: "",
+              details: "",
               fields: [
                 {
                   key: "feedback",
@@ -197,6 +201,7 @@ const api = createApi(async (input, init) => {
   }
   if (path.pathname === "/api/assistant/run") {
     assistantCalls++;
+    requestedThread = JSON.parse(String(init?.body)).threadId ?? "";
     if (networkFailure) throw new TypeError("Failed to fetch");
     if (holdApproval) {
       approvalToken = JSON.parse(String(init?.body)).requestId;
@@ -207,6 +212,22 @@ const api = createApi(async (input, init) => {
     }
     prompt = JSON.parse(String(init?.body)).prompt;
     conversation = JSON.parse(String(init?.body)).conversationId;
+    if (streamReply) {
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            emitProgress = (event) =>
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`),
+              );
+          },
+          cancel() {
+            emitProgress = undefined;
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    }
     if (holdAnswer)
       await new Promise<void>((resolve) => {
         releaseAnswer = resolve;
@@ -239,6 +260,19 @@ const api = createApi(async (input, init) => {
         conversationId: "test",
         threadId: "01a1804c-6b69-7621-aa0f-83a2a66d2959",
         answer: "남은 작업의 상위는 모의 창체 개선(AA-1)이 맞나요?",
+        activity: [
+          {
+            role: "event",
+            text: "jira_create_issue · 완료",
+            created: Date.now(),
+          },
+          {
+            role: "event",
+            text: "jira_description · 실패",
+            created: Date.now(),
+            details: "모의 권한 오류",
+          },
+        ],
         execution,
         proposals: [],
       });
@@ -537,7 +571,7 @@ await check(
   },
 );
 await check(
-  "AI 단축키는 별도 대화를 열고 반복해도 초안을 유지하며 입력창에 초점을 둔다",
+  "AI 단축키는 같은 대화를 열고 닫으며 초안과 포커스를 유지한다",
   async () => {
     palette.open("search");
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -562,6 +596,10 @@ await check(
     );
     input().value = "단축키 초안";
     press();
+    await tick();
+    assert(!chat.open, "같은 단축키로 AI 대화가 닫히지 않음");
+    press();
+    await tick();
     assert(
       dialog() === chat && input().value === "단축키 초안",
       "단축키 반복으로 새 대화가 생성되거나 초안 유실",
@@ -813,8 +851,20 @@ await check(
       );
       button("대화 시작").click();
       assert(
-        button("대화 링크 복사").hidden,
-        "링크 없는 대화에 복사 버튼이 표시됨",
+        !dialog().querySelector(".command-head [aria-label='대화 링크 복사']"),
+        "대화 복사 버튼이 모달 상단에 남아 있음",
+      );
+      assert(
+        dialog().querySelectorAll(
+          ".chat-conversation [aria-label='대화 링크 복사']",
+        ).length === 1,
+        "원본 링크가 있는 대화에만 복사 버튼을 제공해야 함",
+      );
+      button("대화 링크 복사").click();
+      await tick();
+      assert(
+        copied === "codex://threads/01a1804c-6b69-7621-aa0f-83a2a66d2959",
+        "선택하지 않은 대화의 원본 링크 복사 실패",
       );
       dialog()
         .querySelector<HTMLButtonElement>(".chat-conversation-open")
@@ -834,10 +884,30 @@ await check(
   async () => {
     const select = dialog().querySelector<HTMLSelectElement>("select");
     if (!select) throw Error("모델 누락");
+    const proposalCount = dialog().querySelectorAll(".command-proposal").length;
     select.value = "other";
     select.dispatchEvent(new Event("change"));
+    assert(
+      dialog().querySelectorAll(".command-proposal").length === proposalCount,
+      "모델 변경이 변경안 UI를 지웠다",
+    );
     const currentMessages = dialog().querySelectorAll(".chat-message").length;
     assert(currentMessages > 0, "모델 변경이 대화를 초기화했다");
+    assert(
+      dialog().querySelector(".chat-event")?.textContent?.includes("모델을"),
+      "모델 변경 이력 누락",
+    );
+    assert(
+      !button("대화 링크 복사").hidden,
+      "모델 변경으로 원본 링크가 사라짐",
+    );
+    input().value = "다른 모델로 이어가기";
+    dialog().querySelector("form")?.requestSubmit();
+    await tick();
+    assert(
+      requestedThread === "01a1804c-6b69-7621-aa0f-83a2a66d2959",
+      "모델 변경 뒤 원본 대화를 전달하지 않음",
+    );
     const existing = [
       ...dialog().querySelectorAll<HTMLButtonElement>(
         ".chat-conversation-open",
@@ -849,10 +919,22 @@ await check(
     );
     button("대화 시작").click();
     assert(select.value === "other", "선택한 기본 모델 미반영");
+    assert(
+      input().placeholder === "어떤 작업을 도와드릴까요?",
+      "새 대화 입력 안내 누락",
+    );
     select.value = "test";
     select.dispatchEvent(new Event("change"));
     existing[0]?.click();
     assert(select.value === "other", "이전 대화 모델 복원 누락");
+    assert(
+      dialog().querySelector(".chat-event")?.textContent?.includes("모델을"),
+      "다시 연 대화의 모델 변경 이력 누락",
+    );
+    assert(
+      input().placeholder === "메시지를 입력하세요",
+      "이어가는 대화 입력 안내 누락",
+    );
     button("대화 시작").click();
     assert(select.value === "test", "대화 열기가 기본값을 덮어썼다");
     palette.destroy();
@@ -904,23 +986,41 @@ await check(
   },
 );
 await check(
-  "실패한 요청은 입력을 복구하고 좁은 명령창에서 가로로 넘치지 않는다",
+  "실패한 요청은 대화에 남기고 입력란을 다시 채우지 않으며 새 초안도 보존한다",
   async () => {
     fail = true;
     input().value = "실패할 요청";
     dialog().querySelector("form")?.requestSubmit();
     await tick();
     assert(
-      input().value === "실패할 요청" &&
-        dialog().textContent?.includes("모의 연결 실패"),
-      "실패 입력·안내 누락",
+      input().value === "" && dialog().textContent?.includes("모의 연결 실패"),
+      "보낸 메시지를 입력란에 다시 채우거나 실패 안내 누락",
     );
     assert(
       dialog()
-        .querySelector(".chat-message:last-child .chat-execution-note")
+        .querySelector(".chat-error:last-child .chat-execution-note")
         ?.textContent?.includes("다시 실행하기 전에"),
       "연결 실패의 불확실한 실행 결과를 안내하지 않음",
     );
+    assert(
+      dialog().textContent?.includes("실패할 요청"),
+      "실패한 요청이 대화에서 사라짐",
+    );
+    const failure = dialog().querySelector(".chat-error:last-child");
+    assert(
+      failure?.getAttribute("role") === "alert" &&
+        !failure.querySelector(".chat-message-actions"),
+      "오류가 답변으로 표시되거나 복사 동작이 붙음",
+    );
+    holdAnswer = true;
+    input().value = "다시 보낼 요청";
+    dialog().querySelector("form")?.requestSubmit();
+    await tick();
+    input().value = "새로 작성 중인 내용";
+    releaseAnswer?.();
+    await tick();
+    holdAnswer = false;
+    assert(input().value === "새로 작성 중인 내용", "실패로 새 초안을 덮어씀");
     dialog().style.width = "300px";
     await tick();
     assert(
@@ -928,6 +1028,16 @@ await check(
       "좁은 명령창 가로 넘침",
     );
     dialog().style.width = "";
+    palette.destroy();
+    palette = makePalette();
+    palette.open("ai");
+    await tick();
+    const restoredError = dialog().querySelector(".chat-error:last-child");
+    assert(
+      restoredError?.getAttribute("aria-label") === "요청 오류" &&
+        !restoredError.querySelector("button"),
+      "복원한 오류가 답변으로 표시됨",
+    );
     dialog().close();
   },
 );
@@ -953,6 +1063,80 @@ await check(
         "https://example.com/",
       "안전한 링크 표시 실패",
     );
+  },
+);
+await check(
+  "마크다운 표·목록은 구조로 렌더링하고 표 안의 Jira 링크도 내부 상세로 연다",
+  async () => {
+    let opened = "";
+    const source =
+      "| 이슈 | 상태 | 근거 |\n| --- | --- | --- |\n| [AA-853 · 자료 등록 개선](https://fixture.atlassian.net/browse/AA-853) | **PR 대기중** | PR 병합 확인 |\n| AA-787 | 개발 중 | 값 A\\|B |\n\n1. 상태 확인\n2. 다음 작업\n\n> 완료 기준을 확인하세요.";
+    const row = chatMessage("assistant", source, "검사 모델", {
+      site: "fixture.atlassian.net",
+      select: (key) => {
+        opened = key;
+      },
+    });
+    assert(
+      row.querySelectorAll("table thead th").length === 3 &&
+        row.querySelectorAll("table tbody tr").length === 2,
+      "표 구조가 생성되지 않음",
+    );
+    assert(
+      row.querySelector("tbody strong")?.textContent === "PR 대기중",
+      "셀 안 서식 누락",
+    );
+    assert(
+      row.querySelector("tbody tr:last-child td:last-child")?.textContent ===
+        "값 A|B",
+      "셀 안 이스케이프된 파이프 처리 실패",
+    );
+    assert(
+      row.querySelectorAll("ol li").length === 2 &&
+        row.querySelector("blockquote"),
+      "목록·인용문 서식 누락",
+    );
+    row.querySelector<HTMLAnchorElement>("tbody a")?.click();
+    assert(opened === "AA-853", "표 안의 내부 이슈 링크 연결 실패");
+    const box = element("div");
+    box.style.width = "300px";
+    box.append(row);
+    host.append(box);
+    const wrap = row.querySelector<HTMLElement>(".chat-table-wrap");
+    assert(
+      wrap &&
+        wrap.scrollWidth > wrap.clientWidth &&
+        box.scrollWidth <= box.clientWidth + 1,
+      "표가 좁은 패널 전체를 밀어냄",
+    );
+    box.remove();
+    const user = chatMessage("user", source);
+    assert(
+      !user.querySelector("table") && user.textContent === source,
+      "사용자 입력을 마크다운으로 변환함",
+    );
+    for (let n = 1; n <= source.length; n += 7)
+      chatMessage("assistant", source.slice(0, n));
+  },
+);
+await check(
+  "마크다운으로 HTML·외부 이미지·위험한 URL을 실행하지 않는다",
+  async () => {
+    const row = chatMessage(
+      "assistant",
+      "<script>alert(1)</script>\n<img src=x onerror=alert(1)>\n![외부 이미지](https://example.com/tracker.png)\n[위험](javascript:alert(1))\n[데이터](data:text/html,hello)\n[메일](mailto:test@example.com)",
+    );
+    assert(
+      !row.querySelector("script,img,iframe,svg,[onerror]"),
+      "신뢰하지 않은 요소를 생성함",
+    );
+    assert(
+      [...row.querySelectorAll<HTMLAnchorElement>("a")].every((link) =>
+        ["https:", "http:"].includes(new URL(link.href).protocol),
+      ),
+      "허용하지 않은 프로토콜의 링크를 생성함",
+    );
+    assert(row.textContent?.includes("<script>"), "HTML 원문 표시 누락");
   },
 );
 await check(
@@ -1143,6 +1327,21 @@ await check(
     assert(
       !dialog().textContent?.includes("생각하고 있어요"),
       "응답 후 생각 중 상태 잔존",
+    );
+    assert(
+      [...dialog().querySelectorAll(".chat-event")].some((event) =>
+        event.textContent?.includes("건너뛸게요"),
+      ),
+      "승인 거절 기록 누락",
+    );
+    dialog().close();
+    palette.open("ai");
+    await tick();
+    assert(
+      [...dialog().querySelectorAll(".chat-event")].some((event) =>
+        event.textContent?.includes("건너뛸게요"),
+      ),
+      "대화를 다시 연 뒤 승인 기록 유실",
     );
   },
 );
@@ -1345,7 +1544,7 @@ await check(
   },
 );
 await check(
-  "연결 유실은 결과 불확실성을 알리고 입력을 보존하며 자동 재실행하지 않는다",
+  "연결 유실은 결과 불확실성을 알리고 보낸 메시지를 기록하며 자동 재실행하지 않는다",
   async () => {
     networkFailure = true;
     try {
@@ -1354,7 +1553,7 @@ await check(
       dialog().querySelector("form")?.requestSubmit();
       await tick();
       await tick();
-      const result = dialog().querySelector(".chat-message:last-child");
+      const result = dialog().querySelector(".chat-error:last-child");
       assert(result?.textContent?.includes("연결이 끊"), "연결 오류 안내 누락");
       assert(
         result?.textContent?.includes("저장됐을 수"),
@@ -1365,8 +1564,9 @@ await check(
         "기술 오류만 표시됨",
       );
       assert(
-        input().value === "연결 유실을 재현할 모의 요청",
-        "실패 입력 유실",
+        input().value === "" &&
+          dialog().textContent?.includes("연결 유실을 재현할 모의 요청"),
+        "보낸 메시지를 다시 채우거나 대화 기록을 지움",
       );
       assert(assistantCalls === before + 1, "생성 요청을 자동 재실행함");
     } finally {
@@ -1592,6 +1792,118 @@ await check(
   },
 );
 await check(
+  "빈 입력창의 즉시 전달 단축키는 첫 대기 요청만 전달한다",
+  async () => {
+    for (const mode of ["enter", "shortcut"]) {
+      await openControlChat();
+      try {
+        chooseChatSetting("메시지 보내기 방식", mode);
+        holdAnswer = true;
+        input().value = "진행 요청";
+        dialog().querySelector("form")?.requestSubmit();
+        await tick();
+        for (const text of ["먼저 전달할 요청", "남겨둘 요청"]) {
+          input().value = text;
+          dialog().querySelector("form")?.requestSubmit();
+          await tick();
+        }
+        const before = assistantCalls;
+        input().dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            metaKey: true,
+            shiftKey: mode === "shortcut",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        await tick();
+        assert(
+          controls.at(-1)?.action === "steer" &&
+            controls.at(-1)?.prompt === "먼저 전달할 요청",
+          "빈 입력창에서 첫 대기 요청을 전달하지 않음",
+        );
+        assert(
+          assistantCalls === before &&
+            dialog().querySelector(".chat-queue-text")?.textContent ===
+              "남겨둘 요청",
+          "대기열 전체를 보내거나 새 답변을 시작함",
+        );
+      } finally {
+        endControlChat();
+        await tick();
+      }
+    }
+  },
+);
+await check(
+  "공개 중간 답변은 완료 전에 보이고 최종 답변은 중복되지 않는다",
+  async () => {
+    await openControlChat();
+    try {
+      streamReply = true;
+      input().value = "중간 응답 확인";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      emitProgress?.({
+        type: "message",
+        id: "comment",
+        text: "대상 작업을 먼저 확인하겠습니다.",
+        replace: true,
+      });
+      for (
+        let n = 0;
+        n < 30 &&
+        !dialog().textContent?.includes("대상 작업을 먼저 확인하겠습니다.");
+        n++
+      )
+        await tick();
+      assert(
+        dialog().textContent?.includes("대상 작업을 먼저 확인하겠습니다."),
+        "완료 전 중간 응답 누락",
+      );
+      emitProgress?.({
+        type: "activity",
+        text: "Jira 정보를 확인하고 있어요…",
+      });
+      await tick();
+      assert(
+        dialog().textContent?.includes("Jira 정보를 확인하고 있어요…"),
+        "진행 상태 누락",
+      );
+      emitProgress?.({
+        type: "message",
+        id: "final",
+        text: "작업 확인을 마쳤습니다.",
+        replace: false,
+      });
+      emitProgress?.({
+        type: "result",
+        value: {
+          conversationId: "test",
+          answer: "작업 확인을 마쳤습니다.",
+          proposals: [],
+        },
+      });
+      for (let n = 0; n < 10; n++) await tick();
+      assert(
+        [...dialog().querySelectorAll(".command-answer")].filter((row) =>
+          row.textContent?.includes("작업 확인을 마쳤습니다."),
+        ).length === 1,
+        "최종 답변이 중복됨",
+      );
+      assert(
+        dialog().textContent?.includes("대상 작업을 먼저 확인하겠습니다."),
+        "최종 응답 후 중간 응답 유실",
+      );
+    } finally {
+      streamReply = false;
+      emitProgress = undefined;
+      palette.destroy();
+    }
+  },
+);
+await check(
   "상단 전송 설정의 즉시 전달은 진행 중 Codex에 지시를 추가한다",
   async () => {
     await openControlChat();
@@ -1760,7 +2072,7 @@ results.append(
     failures ? `${failures}개 실패` : "전체 검사 통과 · 실제 Jira 변경 없음",
   ),
 );
-fail = false;
+fail = new URLSearchParams(location.search).has("failure");
 const previewNoticeHost = element("div");
 host.append(previewNoticeHost);
 const previewNotice = createNotice(previewNoticeHost);
@@ -1788,10 +2100,22 @@ if (new URLSearchParams(location.search).has("preview")) {
   holdAnswer = new URLSearchParams(location.search).has("thinking");
   holdApproval = new URLSearchParams(location.search).has("approval");
   executionPreview = new URLSearchParams(location.search).has("result");
+  streamReply = new URLSearchParams(location.search).has("stream");
   preview.open("ai");
   await tick();
   input().value = holdApproval
     ? "제목과 본문을 수정하고 하위 작업을 만들어줘"
     : "내가 맡은 진행 중 작업을 모의 사용자에게 넘겨줘";
   dialog().querySelector("form")?.requestSubmit();
+}
+
+if (new URLSearchParams(location.search).has("stream")) {
+  await tick();
+  emitProgress?.({
+    type: "message",
+    id: "intro",
+    text: "담당한 작업을 확인한 뒤, 마감이 가까운 순서로 정리하겠습니다.",
+    replace: true,
+  });
+  emitProgress?.({ type: "activity", text: "Jira 정보를 확인하고 있어요…" });
 }

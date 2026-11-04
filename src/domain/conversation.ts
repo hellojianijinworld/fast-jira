@@ -1,6 +1,8 @@
 import { isRecord } from "./validation.ts";
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "event" | "error";
+  details?: string;
+  created?: number;
   text: string;
   model?: string;
   executionNote?: string;
@@ -17,14 +19,23 @@ export interface Conversation {
 export function isChatMessage(value: unknown): value is ChatMessage {
   return (
     isRecord(value) &&
-    (value.role === "user" || value.role === "assistant") &&
+    (value.role === "user" ||
+      value.role === "assistant" ||
+      value.role === "event" ||
+      value.role === "error") &&
     typeof value.text === "string" &&
+    (value.details === undefined || typeof value.details === "string") &&
+    (value.created === undefined ||
+      (typeof value.created === "number" && Number.isFinite(value.created))) &&
     (value.model === undefined || typeof value.model === "string") &&
     (value.executionNote === undefined ||
       typeof value.executionNote === "string") &&
     (value.executionSummary === undefined ||
       typeof value.executionSummary === "string")
   );
+}
+function legacyFailure(message: ChatMessage) {
+  return message.role === "assistant" && message.text.startsWith("요청 실패: ");
 }
 export function decodeConversations(value: unknown): Conversation[] {
   if (!Array.isArray(value))
@@ -48,7 +59,15 @@ export function decodeConversations(value: unknown): Conversation[] {
       ...(item.threadId ? { threadId: item.threadId } : {}),
       model: item.model,
       updated: item.updated,
-      messages: item.messages,
+      messages: item.messages.map((message) =>
+        legacyFailure(message)
+          ? {
+              ...message,
+              role: "error" as const,
+              text: message.text.slice("요청 실패: ".length),
+            }
+          : message,
+      ),
     };
   });
 }
@@ -58,7 +77,14 @@ export function conversationContext(
 ): ChatMessage[] {
   const result: ChatMessage[] = [];
   let remaining = 20_000;
-  for (const message of messages.slice(-20).reverse()) {
+  for (const message of messages
+    .filter(
+      (message) =>
+        (message.role === "user" || message.role === "assistant") &&
+        !legacyFailure(message),
+    )
+    .slice(-20)
+    .reverse()) {
     if (remaining <= 0) break;
     const text = [message.executionSummary, message.text]
       .filter(Boolean)

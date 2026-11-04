@@ -33,12 +33,9 @@ export function popoverPosition(rect: PopoverRect, bounds: PopoverBounds) {
 }
 
 export function splitDimensions(available: number, rem: number, ratio: number) {
-  // 창이 작으면 양쪽 최소 폭을 절반으로 줄여 가로 넘침을 만들지 않는다.
-  const minimumPane = Math.min(24 * rem, available / 2);
-  // 두 영역을 모두 70rem 이하로 채울 수 없는 초광폭 화면은 중앙 분할로 제한한다.
-  const maximumPane = Math.max(70 * rem, available / 2);
-  const minimum = Math.max(minimumPane, available - maximumPane);
-  const maximum = Math.min(maximumPane, available - minimumPane);
+  // 비율만 제한하면 작은 창의 입력·카드가 지나치게 좁아진다.
+  const minimum = Math.min(available / 2, Math.max(available * 0.2, 20 * rem));
+  const maximum = available - minimum;
   const width = Math.max(minimum, Math.min(maximum, available * ratio));
   return { minimum, maximum, width, ratio: width / available };
 }

@@ -19,6 +19,7 @@ import {
 import { activityFeed } from "../ui/activity-feed.ts";
 import { createAppMenu } from "../ui/app-menu.ts";
 import type { AppUpdateUi } from "../ui/app-update.ts";
+import { createAssistantWorkspace } from "../ui/assistant-workspace.ts";
 import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
@@ -160,6 +161,7 @@ export async function createApp(
   const noticeHost = element("div"),
     notice = createNotice(noticeHost);
   workspace.append(browse, splitter, side);
+  const assistantWorkspace = createAssistantWorkspace(workspace, storage);
   nav.setAttribute("aria-busy", "true");
   for (const button of nav.querySelectorAll("button")) button.disabled = true;
   const checking = element("p", "empty", "연결을 확인하는 중…");
@@ -178,7 +180,13 @@ export async function createApp(
     throw new Error("연결 계정이 바뀌었어요. 새로고침해 주세요.");
   await initialAssistant;
   aiToggle.hidden = !assistantConnection.snapshot.chat;
-  root.replaceChildren(nav, workspace, noticeHost, mobile, popup);
+  root.replaceChildren(
+    nav,
+    assistantWorkspace.element,
+    noticeHost,
+    mobile,
+    popup,
+  );
   let preferences = readPreferences(storage),
     selectedKey = "",
     detailRevision = 0,
@@ -303,7 +311,8 @@ export async function createApp(
   const positions = new Map<string, ViewportAnchor[]>();
   let positionQuery = listCacheKey(initialFilters);
   let restoredPosition = cached ? store.position(positionQuery) : [];
-  const listScroller = () => (layout.matches ? workspace : browse);
+  const listScroller = () =>
+    layout.matches && !assistantWorkspace.chatOpen ? workspace : browse;
   function persistPosition() {
     if (list.cacheDenied) return;
     const anchors = captureViewportAnchor(listHost, listScroller());
@@ -323,6 +332,7 @@ export async function createApp(
     api,
     order: () => catalog.statuses.map((status) => status.name),
     render: () => {
+      assistantWorkspace.setDetailSelected(bulk.active || Boolean(selectedKey));
       placeDetail();
       render();
     },
@@ -485,8 +495,10 @@ export async function createApp(
     renderDashboard(entries);
   }
   function placeDetail() {
-    const commandOpen = Boolean(root.querySelector(".command-modal[open]"));
-    if (layout.matches) {
+    const commandOpen = Boolean(
+      root.querySelector(".command-modal[open]:not(.is-docked)"),
+    );
+    if (layout.matches && !assistantWorkspace.chatOpen) {
       if (detailHost.parentElement !== mobile) mobile.append(detailHost);
       if (!commandOpen && noticeHost.parentElement !== mobile)
         mobile.append(noticeHost);
@@ -503,6 +515,7 @@ export async function createApp(
     detailView?.destroy();
     detailView = null;
     selectedKey = "";
+    assistantWorkspace.setDetailSelected(false);
     detailRevision++;
     detailLoading = false;
     detailHost.hidden = true;
@@ -546,6 +559,7 @@ export async function createApp(
     const version = ++detailRevision;
     const displayedIssue = detailView?.issue;
     selectedKey = key;
+    if (!silent) assistantWorkspace.setDetailSelected(true);
     detailHost.hidden = false;
     dashboard.hidden = true;
     detailLoading = true;
@@ -748,7 +762,8 @@ export async function createApp(
   });
   const treeContext = createTreeContext(browse, listHost, {
     leading: () => workspaceNavigation?.switcher,
-    scroller: () => (layout.matches ? workspace : browse),
+    scroller: () =>
+      layout.matches && !assistantWorkspace.chatOpen ? workspace : browse,
     items: list.visibleItems,
     projects: () => catalog.projects,
     select: (key) => {
@@ -916,6 +931,12 @@ export async function createApp(
     void list.load({ ...list.filters, q: "" });
   }
   const commands = createCommandPalette({
+    chatHost: assistantWorkspace.chatHost,
+    chatVisibility: (open) => {
+      assistantWorkspace.setChatOpen(open);
+      aiToggle.setAttribute("aria-pressed", String(open));
+      placeDetail();
+    },
     create: (draft) => {
       void creator.open(draft ? { draft } : {});
     },
@@ -970,7 +991,7 @@ export async function createApp(
     if (!state.checking) commands.refreshAvailability();
   });
   searchToggle.addEventListener("click", () => commands.open("search"));
-  aiToggle.addEventListener("click", () => commands.open("ai"));
+  aiToggle.addEventListener("click", commands.toggleAI);
   const guide = gettingStarted({
     view: () => workspaceNavigation?.editCurrent(),
     display: () => showSettings(),
@@ -1261,6 +1282,7 @@ export async function createApp(
       treeContext.destroy();
       tree.destroy();
       split.destroy();
+      assistantWorkspace.destroy();
       notice.destroy();
       if (popup.open) popup.close();
       if (mobile.open) mobile.close();

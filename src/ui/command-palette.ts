@@ -16,6 +16,7 @@ import type { LocalStore } from "../client/preferences.ts";
 import type { ChangeProposal } from "../domain/agent.ts";
 import type {
   AssistantContext,
+  AssistantProgress,
   AssistantProviderStatus,
 } from "../domain/assistant.ts";
 import type { BulkResult } from "../domain/bulk.ts";
@@ -32,13 +33,14 @@ import {
   matchingCommands,
 } from "../domain/commands.ts";
 import {
+  type ChatMessage,
   type Conversation,
   conversationContext,
   conversationLink,
 } from "../domain/conversation.ts";
 import type { Issue } from "../domain/issue.ts";
 import { createAssistantApprovalPanel } from "./assistant-approvals.ts";
-import { chatMessage } from "./chat-message.ts";
+import { chatError, chatEvent, chatMessage } from "./chat-message.ts";
 import { createChatSidebar } from "./chat-sidebar.ts";
 import { copyText } from "./clipboard.ts";
 import {
@@ -67,6 +69,8 @@ const errorText = (error: unknown) =>
 /** 검색·대화 UI만 관리한다. 조회와 변경 후 목록 처리는 주입된 기존 API와 콜백을 쓴다. */
 export function createCommandPalette(config: {
   host: HTMLElement;
+  chatHost?: HTMLElement;
+  chatVisibility?: (open: boolean) => void;
   api: Pick<
     Api,
     | "issues"
@@ -107,6 +111,7 @@ export function createCommandPalette(config: {
     head = element("div", "command-head"),
     title = element("h2", "", "AI 대화"),
     close = iconButton("명령창 닫기", "x"),
+    historyToggle = iconButton("대화 목록", "history", { size: "sm" }),
     pickerDialog = element("dialog", "command-modal command-picker-modal"),
     pickerHead = element("div", "command-head"),
     pickerTitle = element("h2", "", "명령 팔레트"),
@@ -147,7 +152,6 @@ export function createCommandPalette(config: {
       compact: true,
       wrap: false,
     }),
-    copyConversation = iconButton("대화 링크 복사", "copy", { size: "sm" }),
     sendGroup = element("div", "chat-send-group"),
     sendModeField = element("fieldset", "setting-group ai-chat-setting-group"),
     welcome = element("div", "chat-welcome"),
@@ -175,11 +179,17 @@ export function createCommandPalette(config: {
   const queue = createChatQueue();
   let reportedStorageError = "";
   const sidebar = createChatSidebar({
+    copy: (item) => {
+      const url = conversationLink(item);
+      if (url) void copyText(url, notify, "Codex 대화 링크를 복사했어요.");
+    },
     create: () => {
+      closeHistory();
       if (!busy && !steering && !stopping && !applying && !recording)
         newConversation();
     },
     choose: (item) => {
+      closeHistory();
       if (busy || steering || stopping || applying || recording) return;
       current = item;
       conversationId = item.conversationId;
@@ -246,13 +256,10 @@ export function createCommandPalette(config: {
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   send.type = "submit";
-  heading.append(title, helpToggle, settingsToggle);
-  headActions.append(copyConversation, close);
+  historyToggle.hidden = !config.chatHost;
+  heading.append(historyToggle, title, helpToggle, settingsToggle);
+  headActions.append(close);
   head.append(heading, headActions);
-  copyConversation.addEventListener("click", () => {
-    const url = conversationLink(current);
-    if (url) void copyText(url, notify, "Codex 대화 링크를 복사했어요.");
-  });
   sendModeField.setAttribute("aria-label", "메시지 보내기 방식");
   followupField.setAttribute("aria-label", "답변 중 추가 요청");
   const sendShortcut = /Mac|iPhone|iPad/.test(navigator.platform)
@@ -460,7 +467,66 @@ export function createCommandPalette(config: {
     }
     sync();
   });
-  config.host.append(dialog, pickerDialog);
+  let historyResize: ResizeObserver | undefined;
+  if (config.chatHost) {
+    dialog.classList.add("is-docked");
+    close.setAttribute("aria-label", "AI 대화 닫기");
+    close.title = "AI 대화 닫기";
+    config.chatHost.append(dialog);
+    sidebar.root.popover = "auto";
+    sidebar.root.classList.add("chat-history-popover");
+    sidebar.root.id = elementId("chat-history");
+    historyToggle.setAttribute("aria-haspopup", "dialog");
+    historyToggle.setAttribute("aria-controls", sidebar.root.id);
+    historyToggle.setAttribute("aria-expanded", "false");
+    historyToggle.addEventListener("click", () => {
+      if (sidebar.root.matches(":popover-open")) closeHistory();
+      else {
+        sidebar.root.showPopover();
+        Object.assign(
+          sidebar.root.style,
+          popoverPosition(historyToggle.getBoundingClientRect(), {
+            width: sidebar.root.offsetWidth,
+            maxHeight: Math.min(480, innerHeight * 0.7),
+            viewportWidth: innerWidth,
+            viewportHeight: innerHeight,
+          }),
+        );
+      }
+    });
+    sidebar.root.addEventListener("toggle", () =>
+      historyToggle.setAttribute(
+        "aria-expanded",
+        String(sidebar.root.matches(":popover-open")),
+      ),
+    );
+    let inlineHistory = false;
+    historyResize = new ResizeObserver(() => {
+      // 목록 14rem과 대화 본문 38rem을 함께 확보할 때만 나란히 둔다.
+      const wide =
+        dialog.clientWidth >=
+        52 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+      if (wide === inlineHistory) return;
+      closeHistory();
+      inlineHistory = wide;
+      sidebar.root.classList.toggle("chat-history-inline", wide);
+      sidebar.root.classList.toggle("chat-history-popover", !wide);
+      historyToggle.hidden = wide;
+      for (const property of ["left", "top", "width", "max-height"])
+        sidebar.root.style.removeProperty(property);
+      if (wide) sidebar.root.removeAttribute("popover");
+      else sidebar.root.popover = "auto";
+    });
+    historyResize.observe(dialog);
+  } else config.host.append(dialog);
+  config.host.append(pickerDialog);
+  function closeHistory() {
+    if (sidebar.root.matches(":popover-open")) sidebar.root.hidePopover();
+  }
+  function selectIssue(key: string) {
+    if (!config.chatHost) dialog.close();
+    config.select(key);
+  }
   const faqDialog = createFaqDialog(config.host);
   let alive = true,
     busy = false,
@@ -490,6 +556,7 @@ export function createCommandPalette(config: {
     const modal = searchDialog.dialog.open ? searchDialog.dialog : dialog;
     if (
       modal.open &&
+      !(config.chatHost && modal === dialog) &&
       config.noticeHost &&
       config.noticeHost.parentElement !== modal
     ) {
@@ -542,20 +609,50 @@ export function createCommandPalette(config: {
         ...voiceCallbacks,
       });
   let awaitingApproval = false;
-  const approvalPanel = createAssistantApprovalPanel(config.api, (waiting) => {
-    if (!alive) return;
-    awaitingApproval = waiting;
-    dialog.classList.toggle("awaiting-approval", waiting);
-    if (waiting) {
-      hideThinking();
-      status.textContent = "";
-      if (!dialog.open) config.unread?.(true);
-      else scrollConversation();
-    } else if (busy) {
-      showThinking();
+  const approvalPanel = createAssistantApprovalPanel(
+    config.api,
+    (waiting) => {
+      if (!alive) return;
+      awaitingApproval = waiting;
+      dialog.classList.toggle("awaiting-approval", waiting);
+      if (waiting) {
+        hideThinking();
+        status.textContent = "";
+        if (!dialog.open || !dialog.getClientRects().length)
+          config.unread?.(true);
+        else scrollConversation();
+      } else if (busy) {
+        showThinking();
+        if (dialog.open) scrollConversation();
+      }
+    },
+    (approval, answer) => {
+      if (!current) return;
+      const text = `${approval.title} · ${answer.feedback ? "의견을 전달했어요" : answer.response || (answer.approved ? "승인했어요" : "건너뛰었어요")}`;
+      const details = [approval.description, approval.details, answer.feedback]
+        .filter(Boolean)
+        .join("\n\n");
+      const created = Date.now();
+      current.messages.push({ role: "event", text, details, created });
+      aiResults.append(chatEvent({ text, details, created }));
+      saveConversation();
       if (dialog.open) scrollConversation();
-    }
-  });
+    },
+    {
+      voice: (callbacks) =>
+        config.voice
+          ? config.voice(callbacks)
+          : createCodexVoice({
+              api: config.api,
+              subscribe: subscribeVoice,
+              ...callbacks,
+            }),
+      ...(config.voiceAvailable
+        ? { voiceAvailable: config.voiceAvailable }
+        : {}),
+      notice: notify,
+    },
+  );
   transcript.insertBefore(approvalPanel.element, status);
   function renderQueue() {
     const id = current?.id ?? "",
@@ -629,7 +726,16 @@ export function createCommandPalette(config: {
     else sync();
   }
   async function sendImmediately(prompt: string, queuedId?: number) {
-    if (!current || steering || stopping || applying) return;
+    if (
+      !current ||
+      steering ||
+      stopping ||
+      applying ||
+      recording ||
+      !ready ||
+      model.selectedOptions[0]?.disabled
+    )
+      return;
     const active = current;
     steering = true;
     sync();
@@ -664,7 +770,9 @@ export function createCommandPalette(config: {
       ? !config.voiceAvailable() && !recording
       : false;
     input.rows = 3;
-    input.placeholder = "예: 내 진행 중 이슈를 찾아 담당자를 변경해 줘";
+    input.placeholder = current?.messages.length
+      ? "메시지를 입력하세요"
+      : "어떤 작업을 도와드릴까요?";
     model.disabled =
       busy || steering || stopping || loadingModels || applying || recording;
     sendModeField.disabled = applying || recording;
@@ -752,10 +860,6 @@ export function createCommandPalette(config: {
     reportedStorageError = storageError;
     helpToggle.classList.toggle("error", Boolean(storageError));
     policy.classList.toggle("error", Boolean(storageError));
-    const link = conversationLink(current);
-    copyConversation.hidden = !link;
-    copyConversation.disabled = !link;
-    copyConversation.title = link ? "Codex 원본 대화 링크 복사" : "";
     const keys = chatShortcutHints(
       sendMode,
       followupMode,
@@ -973,13 +1077,17 @@ export function createCommandPalette(config: {
   function renderConversation() {
     aiResults.replaceChildren(
       ...(current?.messages ?? []).map((message) =>
-        renderMessage(
-          message.role,
-          message.text,
-          message.model ?? current?.model ?? selectedModel,
-          message.executionNote,
-          message.executionSummary,
-        ),
+        message.role === "event"
+          ? chatEvent(message)
+          : message.role === "error"
+            ? chatError(message)
+            : renderMessage(
+                message.role,
+                message.text,
+                message.model ?? current?.model ?? selectedModel,
+                message.executionNote,
+                message.executionSummary,
+              ),
       ),
     );
   }
@@ -1031,7 +1139,7 @@ export function createCommandPalette(config: {
         ],
         [
           "연결 유지",
-          "Codex는 30분 동안 사용하지 않거나 서버를 다시 시작하면 연결이 만료돼요. 대화 기록은 남고, 최근 내용을 참고해 새 연결로 이어가요.",
+          "Codex 원본 대화가 있으면 같은 대화를 다시 연결해요. 모델을 바꿔도 기록은 이어져요. 제공자를 바꾸면 각 서비스의 대화로 연결해요.",
         ],
         [
           "이전 대화",
@@ -1058,15 +1166,23 @@ export function createCommandPalette(config: {
       model,
       {
         site: config.site,
-        select: (key) => {
-          dialog.close();
-          config.select(key);
-        },
+        select: selectIssue,
       },
       executionSummary,
     );
     if (executionNote)
       message.append(element("p", "chat-execution-note", executionNote));
+    if (role === "assistant" && text) {
+      const actions = buttonGroup(element("div", "chat-message-actions"), {
+        size: "sm",
+      });
+      const copy = iconButton("답변 복사", "copy", { size: "sm" });
+      copy.addEventListener("click", () => {
+        void copyText(text, notify, "답변을 복사했어요.");
+      });
+      actions.append(copy);
+      message.append(actions);
+    }
     return message;
   }
   let thinkingMessage: HTMLElement | undefined;
@@ -1074,19 +1190,24 @@ export function createCommandPalette(config: {
     thinkingMessage?.remove();
     thinkingMessage = undefined;
   }
-  function showThinking() {
-    if (thinkingMessage || !busy || awaitingApproval) return;
-    thinkingMessage = renderMessage(
-      "assistant",
-      "생각하고 있어요…",
-      selectedModel,
-    );
+  function showThinking(text = "생각하고 있어요…") {
+    if (!busy || awaitingApproval) return;
+    if (thinkingMessage) {
+      const body = thinkingMessage.querySelector(".command-answer p");
+      if (body) body.textContent = text;
+      return;
+    }
+    const follow =
+      transcript.scrollHeight - transcript.scrollTop <
+      transcript.clientHeight + 80;
+    thinkingMessage = chatMessage("assistant", text, selectedModel);
     thinkingMessage.classList.add("chat-pending");
     thinkingMessage.setAttribute("role", "status");
     thinkingMessage
       .querySelector(".command-answer p")
       ?.classList.add("chat-thinking");
     aiResults.append(thinkingMessage);
+    if (follow) scrollConversation();
   }
   function scrollConversation() {
     transcript.scrollTop = transcript.scrollHeight;
@@ -1140,6 +1261,64 @@ export function createCommandPalette(config: {
     activeRequestId = requestId;
     const stopApprovals = approvalPanel.start(requestId, controller.signal);
     let succeeded = false;
+    const streamed = new Map<
+      string,
+      { message: ChatMessage; row: HTMLElement }
+    >();
+    const dirty = new Set<string>();
+    let progressFrame = 0;
+    function flushProgress(final = false) {
+      cancelAnimationFrame(progressFrame);
+      progressFrame = 0;
+      const follow =
+        transcript.scrollHeight - transcript.scrollTop <
+        transcript.clientHeight + 80;
+      for (const [id, entry] of streamed) {
+        if (!final && !dirty.has(id)) continue;
+        const row = final
+          ? renderMessage("assistant", entry.message.text, selectedModel)
+          : chatMessage("assistant", entry.message.text, selectedModel, {
+              site: config.site,
+              select: selectIssue,
+            });
+        entry.row.replaceWith(row);
+        entry.row = row;
+      }
+      dirty.clear();
+      if (follow) scrollConversation();
+    }
+    function receiveProgress(event: AssistantProgress) {
+      if (!alive || controller.signal.aborted) return;
+      if (event.type === "activity") {
+        showThinking(event.text);
+        return;
+      }
+      const follow =
+        transcript.scrollHeight - transcript.scrollTop <
+        transcript.clientHeight + 80;
+      hideThinking();
+      let entry = streamed.get(event.id);
+      if (!entry) {
+        const message: ChatMessage = {
+          role: "assistant",
+          text: "",
+          model: selectedModel,
+        };
+        const row = chatMessage("assistant", "", selectedModel);
+        entry = { message, row };
+        streamed.set(event.id, entry);
+        active.messages.push(message);
+        aiResults.append(row);
+      }
+      entry.message.text = event.replace
+        ? event.text
+        : entry.message.text + event.text;
+      dirty.add(event.id);
+      if (!progressFrame)
+        progressFrame = requestAnimationFrame(() => flushProgress());
+      if (event.replace) saveConversation();
+      if (follow) scrollConversation();
+    }
     try {
       const reply = await config.api.assistantRun(
         prompt,
@@ -1149,6 +1328,8 @@ export function createCommandPalette(config: {
         controller.signal,
         history,
         requestId,
+        selectedModel.startsWith("claude:") ? undefined : active.threadId,
+        receiveProgress,
       );
       if (!alive || controller.signal.aborted) return;
       succeeded = true;
@@ -1161,7 +1342,15 @@ export function createCommandPalette(config: {
       if (!alive || controller.signal.aborted) return;
       conversationId = active.conversationId = reply.conversationId;
       if (reply.threadId) active.threadId = reply.threadId;
-      else delete active.threadId;
+      if (reply.reconnected && !selectedModel.startsWith("claude:")) {
+        const event = {
+          role: "event" as const,
+          text: "원본 연결 정보가 없어 새 Codex 대화로 이어가요. 이전 화면 기록은 유지해요.",
+          created: Date.now(),
+        };
+        active.messages.push(event);
+        aiResults.append(chatEvent(event));
+      }
       const answer =
         reply.answer ||
         (reply.execution?.length
@@ -1174,13 +1363,41 @@ export function createCommandPalette(config: {
         reply.execution?.length === 0 && !reply.proposals.length
           ? "이 답변에는 확인된 Jira 실행 결과가 없어요."
           : undefined;
-      active.messages.push({
-        role: "assistant",
+      const activity = reply.activity?.length
+        ? {
+            role: "event" as const,
+            text: `도구 ${reply.activity.length}개 사용`,
+            details: reply.activity
+              .map((event) =>
+                [event.text, event.details].filter(Boolean).join("\n"),
+              )
+              .join("\n\n"),
+            created: reply.activity[0]?.created ?? Date.now(),
+          }
+        : undefined;
+      if (activity) active.messages.push(activity);
+      if (!streamed.size)
+        for (const text of reply.intermediate ?? []) {
+          active.messages.push({
+            role: "assistant",
+            text,
+            model: selectedModel,
+          });
+          aiResults.append(renderMessage("assistant", text, selectedModel));
+        }
+      flushProgress(true);
+      const finalEntry = [...streamed.values()]
+        .reverse()
+        .find((entry) => entry.message.text === answer);
+      const finalMessage = {
+        role: "assistant" as const,
         text: answer,
         model: selectedModel,
         ...(executionNote ? { executionNote } : {}),
         ...(executionSummary ? { executionSummary } : {}),
-      });
+      };
+      if (finalEntry) Object.assign(finalEntry.message, finalMessage);
+      else active.messages.push(finalMessage);
       if (reply.proposals.length)
         active.messages.push({
           role: "assistant",
@@ -1190,14 +1407,20 @@ export function createCommandPalette(config: {
         transcript.scrollHeight - transcript.scrollTop <
         transcript.clientHeight + 80;
       hideThinking();
+      const finalRow = renderMessage(
+        "assistant",
+        answer,
+        selectedModel,
+        executionNote,
+        executionSummary,
+      );
+      if (finalEntry) {
+        finalEntry.row.replaceWith(finalRow);
+        finalEntry.row = finalRow;
+      }
       aiResults.append(
-        renderMessage(
-          "assistant",
-          answer,
-          selectedModel,
-          executionNote,
-          executionSummary,
-        ),
+        ...(activity ? [chatEvent(activity)] : []),
+        ...(!finalEntry ? [finalRow] : []),
         ...reply.proposals.map(proposal),
       );
       saveConversation();
@@ -1205,7 +1428,8 @@ export function createCommandPalette(config: {
       status.textContent = reply.proposals.length
         ? "아직 저장하지 않았어요. 대상과 값을 확인하고 적용하세요."
         : "";
-      if (!dialog.open) config.unread?.(true);
+      if (!dialog.open || !dialog.getClientRects().length)
+        config.unread?.(true);
     } catch (error) {
       if (alive && !controller.signal.aborted) {
         conversationId = active.conversationId = "";
@@ -1215,30 +1439,25 @@ export function createCommandPalette(config: {
           (error.status === 0 || (error.status >= 400 && error.status < 500))
             ? undefined
             : "실행 결과를 확인하지 못했어요. 일부 변경은 저장됐을 수 있으니 다시 실행하기 전에 결과를 확인해 주세요.";
-        active.messages.push({
-          role: "assistant",
-          text: `요청 실패: ${message}`,
+        const failure: ChatMessage = {
+          role: "error",
+          text: message,
           ...(executionNote ? { executionNote } : {}),
-        });
+        };
+        active.messages.push(failure);
         const follow =
           transcript.scrollHeight - transcript.scrollTop <
           transcript.clientHeight + 80;
         hideThinking();
-        aiResults.append(
-          renderMessage(
-            "assistant",
-            `요청 실패: ${message}`,
-            selectedModel,
-            executionNote,
-          ),
-        );
+        aiResults.append(chatError(failure));
         status.textContent = "";
-        if (!input.value) input.value = prompt;
         saveConversation();
         if (follow) scrollConversation();
-        if (!dialog.open) config.unread?.(true);
+        if (!dialog.open || !dialog.getClientRects().length)
+          config.unread?.(true);
       }
     } finally {
+      flushProgress();
       if (request === controller) {
         request = undefined;
         activeRequestId = "";
@@ -1264,22 +1483,31 @@ export function createCommandPalette(config: {
     faqDialog.close();
     if (next === "search") {
       voice.stop();
-      dialog.close();
+      if (!config.chatHost) dialog.close();
       searchDialog.open();
     } else {
       searchDialog.close();
-      if (!dialog.open) dialog.showModal();
+      if (!dialog.open) {
+        if (config.chatHost) dialog.show();
+        else dialog.showModal();
+      }
+      config.chatVisibility?.(true);
       config.unread?.(false);
       sync();
       void loadModels();
       input.focus();
     }
   }
+  function toggleAI() {
+    if (!alive) return;
+    if (dialog.open && dialog.getClientRects().length) dialog.close();
+    else open("ai");
+  }
   function openFaq(id?: string) {
     if (!alive) return;
     pickerDialog.close();
     searchDialog.close();
-    dialog.close();
+    if (!config.chatHost) dialog.close();
     voice.stop();
     faqDialog.open(id);
   }
@@ -1317,7 +1545,7 @@ export function createCommandPalette(config: {
     if (!alive) return;
     searchDialog.close();
     faqDialog.close();
-    dialog.close();
+    if (!config.chatHost) dialog.close();
     voice.stop();
     commandQuery.value = "";
     renderCommands();
@@ -1353,7 +1581,10 @@ export function createCommandPalette(config: {
     const action = chatKeyboardAction(sendMode, followupMode, busy, event);
     if (!action) return;
     event.preventDefault();
-    if (action === "send") form.requestSubmit();
+    if (action === "steer" && !input.value.trim() && current) {
+      const first = queue.list(current.id)[0];
+      if (first) void sendImmediately(first.text, first.id);
+    } else if (action === "send") form.requestSubmit();
     else void ask(undefined, action);
   });
   form.addEventListener("submit", (event) => {
@@ -1371,10 +1602,20 @@ export function createCommandPalette(config: {
       storageError = errorText(error);
     }
     if (current) {
-      current.model = selectedModel;
-      current.conversationId = conversationId = "";
-      delete current.threadId;
-      saveConversation();
+      const previous = current.model;
+      if (previous !== selectedModel) {
+        if (
+          previous.startsWith("claude:") !== selectedModel.startsWith("claude:")
+        )
+          current.conversationId = conversationId = "";
+        current.model = selectedModel;
+        const text = `모델을 ${model.selectedOptions[0]?.dataset.label ?? selectedModel}로 변경했어요.`;
+        const created = Date.now();
+        current.messages.push({ role: "event", text, created });
+        aiResults.append(chatEvent({ text, created }));
+        saveConversation();
+        scrollConversation();
+      }
     }
     sync();
   });
@@ -1422,11 +1663,14 @@ export function createCommandPalette(config: {
   cancel.addEventListener("click", () => void stopRequest());
   close.addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => {
-    if (dialog.open) return;
+    if (!alive || dialog.open) return;
+    config.chatVisibility?.(false);
+    closeHistory();
     restoreNotice(dialog);
     closeHelp();
     closeSettings();
     voice.stop();
+    approvalPanel.stopVoice();
   });
   for (const modal of [dialog, pickerDialog])
     modal.addEventListener("click", (event) => {
@@ -1442,10 +1686,14 @@ export function createCommandPalette(config: {
     });
   const shortcut = (event: KeyboardEvent) => {
     const command = commandForShortcut(event, navigator.platform);
-    if (!command || (command === "ai" && config.aiAvailable?.() === false))
+    if (
+      !command ||
+      (command === "ai" && config.aiAvailable?.() === false && !dialog.open)
+    )
       return;
     event.preventDefault();
     if (command === "palette") openCommands();
+    else if (command === "ai") toggleAI();
     else open(command);
   };
   updateCapabilities("미확인");
@@ -1453,6 +1701,7 @@ export function createCommandPalette(config: {
   sync();
   return {
     open,
+    toggleAI,
     openCommands,
     openFaq,
     get busy() {
@@ -1469,6 +1718,8 @@ export function createCommandPalette(config: {
       alive = false;
       request?.abort();
       voice.destroy();
+      historyResize?.disconnect();
+      closeHistory();
       closeHelp();
       closeSettings();
       approvalPanel.destroy();

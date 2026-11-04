@@ -194,3 +194,51 @@ test("AI를 사용할 수 없으면 명령 팔레트에서 AI 항목만 제외�
   assert.equal(matchingCommands("AI", false).length, 0);
   assert.equal(matchingCommands("검색", false)[0]?.id, "search");
 });
+
+test("모델·작업 이력은 저장과 복원을 거쳐 남고 모델에게는 발언만 전달한다", () => {
+  const messages = [
+    { role: "user" as const, text: "조회" },
+    { role: "event" as const, text: "모델을 변경했어요.", created: 100 },
+    {
+      role: "event" as const,
+      text: "승인했어요.",
+      details: "상태 변경",
+      created: 110,
+    },
+    { role: "assistant" as const, text: "완료", model: "other" },
+  ];
+  const restored = decodeConversations(
+    JSON.parse(JSON.stringify([{ ...chat, threadId: "native", messages }])),
+  );
+  assert.deepEqual(restored[0]?.messages, messages);
+  assert.deepEqual(conversationContext(messages), [
+    { role: "user", text: "조회" },
+    { role: "assistant", text: "완료" },
+  ]);
+  assert.throws(() =>
+    decodeConversations([
+      { ...chat, messages: [{ role: "event", text: "x", created: "bad" }] },
+    ]),
+  );
+});
+
+test("요청 오류는 기록에 보존하되 AI 대화 문맥에는 포함하지 않는다", () => {
+  const messages = [
+    { role: "user" as const, text: "작업 확인" },
+    {
+      role: "error" as const,
+      text: "연결 충돌",
+      executionNote: "이번 요청은 실행하지 않았어요.",
+    },
+    { role: "assistant" as const, text: "요청 실패: 이전 연결 오류" },
+    { role: "assistant" as const, text: "정상 답변" },
+  ];
+  const restored = decodeConversations([{ ...chat, messages }])[0];
+  assert.equal(restored?.messages[1]?.role, "error");
+  assert.equal(restored?.messages[2]?.role, "error");
+  assert.equal(restored?.messages[2]?.text, "이전 연결 오류");
+  assert.deepEqual(conversationContext(messages), [
+    { role: "user", text: "작업 확인" },
+    { role: "assistant", text: "정상 답변" },
+  ]);
+});

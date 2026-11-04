@@ -1,0 +1,88 @@
+.assistant-approval {
+  display: grid;
+  gap: var(--density-space-3);
+  margin-block: var(--density-space-3);
+  padding: var(--density-space-3-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.assistant-approval h3,
+.assistant-approval p {
+  margin: 0;
+}
+.assistant-approval h3 {
+  font-size: var(--font-size-14);
+  line-height: var(--line-height-prose);
+}
+.assistant-question-context {
+  color: var(--muted);
+  font-size: var(--font-size-12);
+}
+.assistant-approval pre {
+  margin: 0;
+  padding: var(--density-space-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: var(--font-size-12);
+  line-height: var(--line-height-prose);
+  background: var(--page);
+  border-radius: var(--radius-8);
+}
+.assistant-approval-field {
+  display: grid;
+  gap: var(--density-space-1-5);
+}
+.assistant-answer-options {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: var(--density-space-1);
+}
+.assistant-answer-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--density-space-2);
+  padding-block: var(--density-space-1-5);
+  cursor: pointer;
+  font-size: var(--font-size-13);
+  line-height: var(--line-height-label);
+}
+.assistant-answer-choice input {
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  flex: none;
+}
+.assistant-feedback {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--density-space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-12);
+  padding: var(--density-space-2);
+  background: var(--surface);
+}
+.assistant-feedback:focus-within {
+  border-color: var(--blue);
+}
+.assistant-feedback textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--sm-button-height);
+  border: 0;
+  padding: var(--density-space-1);
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  resize: vertical;
+  font-size: var(--font-size-13);
+}
+.assistant-approval-actions {
+  flex: none;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}

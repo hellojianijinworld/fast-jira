@@ -65,36 +65,40 @@ export async function answerCodexApproval(
     const questions = Array.isArray(params.questions)
       ? params.questions.map(record)
       : [];
-    const result = await confirm({
-      title: "AI가 추가 확인을 요청했어요",
-      description,
-      details: "",
-      fields: questions.map((question) => ({
-        key: String(question.id),
-        label: String(question.question),
-        type: "text",
-        required: true,
-        ...(Array.isArray(question.options)
-          ? {
-              options: question.options
-                .map(record)
-                .map((option) => String(option.label)),
-            }
-          : {}),
-      })),
-    });
-    return {
-      answers: Object.fromEntries(
-        questions.map((question) => [
-          String(question.id),
+    const answers: Record<string, { answers: string[] }> = {};
+    for (const [index, question] of questions.entries()) {
+      const key = String(question.id);
+      const result = await confirm({
+        title: String(question.question),
+        description:
+          questions.length > 1 ? `${index + 1}/${questions.length}` : "",
+        details: "",
+        fields: [
           {
-            answers: result.approved
-              ? [String(result.values[String(question.id)] ?? "")]
-              : [],
+            key,
+            label: String(question.question),
+            type: "text",
+            required: true,
+            ...(Array.isArray(question.options)
+              ? {
+                  options: question.options
+                    .map(record)
+                    .map((option) => String(option.label)),
+                }
+              : {}),
           },
-        ]),
-      ),
-    };
+        ],
+      });
+      answers[key] = {
+        answers: result.approved ? [String(result.values[key] ?? "")] : [],
+      };
+      if (!result.approved) {
+        for (const remaining of questions.slice(index + 1))
+          answers[String(remaining.id)] = { answers: [] };
+        break;
+      }
+    }
+    return { answers };
   }
   if (method === "mcpServer/elicitation/request") {
     if (params.mode === "openai/userVerification") {
@@ -105,10 +109,22 @@ export async function answerCodexApproval(
     const confirmation =
       isRecord(params._meta) && params._meta["fast-jira/confirmation"] === true;
     const fields = approvalFields(params.requestedSchema);
+    const metadata = isRecord(params._meta) ? params._meta : {};
+    const question =
+      confirmation && isRecord(metadata["fast-jira/question"])
+        ? metadata["fast-jira/question"]
+        : {};
     const answer = await confirm({
-      title: `${String(params.serverName ?? "연결 도구")} 실행 확인`,
-      description,
-      details,
+      title:
+        typeof question.title === "string"
+          ? question.title
+          : `${String(params.serverName ?? "연결 도구")} 실행 확인`,
+      description:
+        typeof question.description === "string"
+          ? question.description
+          : description,
+      details:
+        typeof question.details === "string" ? question.details : details,
       fields,
       ...(params.mode === "url" && typeof params.url === "string"
         ? { url: params.url }

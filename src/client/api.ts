@@ -3,6 +3,8 @@ import { type AdfDocument, decodeAdfDocument } from "../domain/adf.ts";
 import { type AppRelease, decodeUpdateStatus } from "../domain/app-update.ts";
 import {
   type AssistantContext,
+  type AssistantProgress,
+  assistantProgress,
   assistantReply,
   assistantStatus,
 } from "../domain/assistant.ts";
@@ -61,7 +63,12 @@ export function createApi(fetcher: typeof fetch = fetch) {
     decode: (value: unknown) => T,
     init?: RequestInit,
   ): Promise<T> {
-    const response = await fetcher(path, init);
+    return decodeResponse(await fetcher(path, init), decode);
+  }
+  async function decodeResponse<T>(
+    response: Response,
+    decode: (value: unknown) => T,
+  ): Promise<T> {
     let value: unknown;
     try {
       value = await response.json();
@@ -79,6 +86,55 @@ export function createApi(fetcher: typeof fetch = fetch) {
         response.status,
       );
     return decode(value);
+  }
+  async function readAssistantStream(
+    response: Response,
+    progress: (event: AssistantProgress) => void,
+  ) {
+    if (
+      !response.ok ||
+      !response.headers.get("content-type")?.includes("text/event-stream")
+    )
+      return decodeResponse(response, assistantReply);
+    const reader = response.body?.getReader();
+    if (!reader) throw new ApiError("AI 응답 연결을 읽지 못했어요.", 0);
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        buffer = buffer.replace(/\r\n/g, "\n");
+        while (true) {
+          const end = buffer.indexOf("\n\n");
+          if (end < 0) break;
+          const frame = buffer.slice(0, end);
+          buffer = buffer.slice(end + 2);
+          const data = frame
+            .split("\n")
+            .find((line) => line.startsWith("data: "))
+            ?.slice(6);
+          if (!data) continue;
+          const event = record(JSON.parse(data));
+          if (event.type === "result") return assistantReply(event.value);
+          if (event.type === "error")
+            throw new ApiError(
+              typeof event.message === "string"
+                ? event.message
+                : "AI 요청에 실패했어요.",
+              typeof event.status === "number" ? event.status : 502,
+            );
+          progress(assistantProgress(event));
+        }
+        if (done)
+          throw new ApiError(
+            "답변이 끝나기 전에 연결이 끊겼어요. 실행 결과를 확인해 주세요.",
+            0,
+          );
+      }
+    } finally {
+      await reader.cancel().catch(() => {});
+    }
   }
   const decodeConnection = (value: unknown): ConnectionSettings => {
     const data = record(value);
@@ -162,28 +218,42 @@ export function createApi(fetcher: typeof fetch = fetch) {
       signal: AbortSignal,
       history: import("../domain/conversation.ts").ChatMessage[] = [],
       requestId?: string,
+      threadId?: string,
+      progress?: (event: AssistantProgress) => void,
     ) => {
       const started = Date.now();
-      return request("/api/assistant/run", assistantReply, {
+      return fetcher("/api/assistant/run", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(progress ? { Accept: "text/event-stream" } : {}),
+        },
         body: JSON.stringify({
           prompt,
           context,
           conversationId,
           model,
-          history,
+          ...(model.startsWith("claude:")
+            ? { history }
+            : { hasHistory: history.length > 0 }),
           ...(requestId ? { requestId } : {}),
+          ...(threadId ? { threadId } : {}),
         }),
         signal,
-      }).catch((error) => {
-        if (error instanceof TypeError && !signal.aborted)
-          throw new ApiError(
-            `로컬 서버와 연결이 끊어졌어요 (${Math.round((Date.now() - started) / 1000)}초 대기). 변경이 저장됐을 수 있으니 Jira의 실제 내역을 확인한 뒤 다시 요청해 주세요.`,
-            0,
-          );
-        throw error;
-      });
+      })
+        .then((response) =>
+          progress
+            ? readAssistantStream(response, progress)
+            : decodeResponse(response, assistantReply),
+        )
+        .catch((error) => {
+          if (error instanceof TypeError && !signal.aborted)
+            throw new ApiError(
+              `로컬 서버와 연결이 끊어졌어요 (${Math.round((Date.now() - started) / 1000)}초 대기). 변경이 저장됐을 수 있으니 Jira의 실제 내역을 확인한 뒤 다시 요청해 주세요.`,
+              0,
+            );
+          throw error;
+        });
     },
     activity: (projects: readonly string[]) =>
       request(

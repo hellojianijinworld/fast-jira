@@ -1,5 +1,13 @@
+import MarkdownIt from "markdown-it";
+import type { ChatMessage } from "../domain/conversation.ts";
 import { parseIssueKey } from "../domain/validation.ts";
-import { element, externalLink, safeHref, uiIcon } from "./dom.ts";
+import { element, safeHref } from "./dom.ts";
+
+const markdown = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+}).disable("image");
 /** AI 본문은 HTML을 실행하지 않는다. 대화와 복원 기록에 같은 표시를 사용한다. */
 export function chatMessage(
   role: "user" | "assistant",
@@ -9,30 +17,33 @@ export function chatMessage(
   executionSummary = "",
 ) {
   const row = element("article", `chat-message chat-message-${role}`),
-    author = element("div", "chat-author", role === "user" ? "나" : "AI"),
     body = element("div", role === "user" ? "command-user" : "command-answer");
-  if (role === "assistant") {
-    author.prepend(uiIcon("sparkles"));
-    if (model) author.append(element("small", "", model));
-  }
-  function link(url: string, label: string) {
-    if (navigation) {
-      let key = "";
-      try {
-        key = parseIssueKey(url, navigation.site);
-      } catch {
-        /* 외부 링크는 원래 주소로 연다. */
+  row.setAttribute("aria-label", role === "user" ? "내 메시지" : "AI 답변");
+  if (role === "assistant" && model)
+    row.setAttribute("aria-description", model);
+  function renderMarkdown(container: HTMLElement, source: string) {
+    // 원문 HTML과 이미지 문법을 끄고, 라이브러리가 이스케이프한 결과만 삽입한다.
+    container.innerHTML = markdown.render(source);
+    for (const anchor of container.querySelectorAll<HTMLAnchorElement>("a")) {
+      const raw = anchor.getAttribute("href") ?? "";
+      const url = safeHref(raw);
+      if (!url) {
+        anchor.replaceWith(...anchor.childNodes);
+        continue;
       }
-      if (key) {
-        const anchor = element(
-          "a",
-          "chat-issue-link",
-          label === url
-            ? key
-            : label.includes(key)
-              ? label
-              : `${label} (${key})`,
-        );
+      let key = "";
+      if (navigation) {
+        try {
+          key = parseIssueKey(url, navigation.site);
+        } catch {
+          /* 일반 외부 링크는 새 탭에서 연다. */
+        }
+      }
+      if (key && navigation) {
+        const label = anchor.textContent ?? "";
+        if (label === raw || label === url) anchor.textContent = key;
+        else if (!label.includes(key)) anchor.append(` (${key})`);
+        anchor.classList.add("chat-issue-link");
         anchor.href = `?issue=${encodeURIComponent(key)}`;
         anchor.addEventListener("click", (event) => {
           if (
@@ -46,73 +57,65 @@ export function chatMessage(
           event.preventDefault();
           navigation.select(key);
         });
-        return anchor;
+      } else {
+        anchor.href = url;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
       }
     }
-    return externalLink(url, label);
-  }
-  function inline(block: HTMLElement, value: string) {
-    for (const part of value.split(
-      /(\[(?:[^[\]\n]|\[[^[\]\n]*\])+\]\(https?:\/\/[^\s<>)]+\)|\*\*[^*]+\*\*|`[^`]+`|https?:\/\/[^\s<>()]+)/g,
-    )) {
-      const markdown = part.match(
-        /^\[((?:[^[\]\n]|\[[^[\]\n]*\])+)\]\((https?:\/\/[^\s<>)]+)\)$/,
-      );
-      if (markdown?.[1] && markdown[2] && safeHref(markdown[2]))
-        block.append(link(markdown[2], markdown[1]));
-      else if (part.startsWith("**") && part.endsWith("**")) {
-        const strong = element("strong");
-        inline(strong, part.slice(2, -2));
-        block.append(strong);
-      } else if (part.startsWith("`") && part.endsWith("`"))
-        block.append(element("code", "", part.slice(1, -1)));
-      else if (/^https?:\/\//.test(part) && safeHref(part))
-        block.append(link(part, part));
-      else block.append(document.createTextNode(part));
+    for (const table of container.querySelectorAll("table")) {
+      const wrap = element("div", "chat-table-wrap");
+      wrap.tabIndex = 0;
+      wrap.setAttribute("role", "region");
+      wrap.setAttribute("aria-label", "답변 표");
+      table.replaceWith(wrap);
+      wrap.append(table);
     }
   }
   if (role === "user") body.textContent = text;
   else {
-    let code: HTMLElement | undefined;
-    for (const line of text.split("\n")) {
-      if (line.startsWith("```")) {
-        if (code) code = undefined;
-        else {
-          code = element("code");
-          const pre = element("pre");
-          pre.append(code);
-          body.append(pre);
-        }
-        continue;
-      }
-      if (code) {
-        code.textContent += `${line}\n`;
-        continue;
-      }
-      const block = element(/^#{1,3}\s/.test(line) ? "h3" : "p");
-      const value = line.replace(/^#{1,3}\s/, "");
-      if (!line.trim()) {
-        block.className = "chat-break";
-        body.append(block);
-        continue;
-      }
-      inline(block, value);
-      body.append(block);
-    }
+    body.classList.add("chat-markdown");
+    renderMarkdown(body, text);
   }
-  row.append(author);
   if (executionSummary) {
     const result = element("section", "chat-execution-result");
     result.setAttribute("aria-label", "실행 결과");
     result.append(element("strong", "", "실행 결과"));
-    for (const line of executionSummary.split("\n")) {
-      const paragraph = element("p");
-      inline(paragraph, line);
-      result.append(paragraph);
-    }
+    const content = element("div", "chat-markdown");
+    renderMarkdown(content, executionSummary);
+    result.append(content);
     row.append(result);
   }
   body.hidden = !text;
   row.append(body);
+  return row;
+}
+
+export function chatEvent({
+  text,
+  details,
+  created,
+}: Pick<ChatMessage, "text" | "details" | "created">) {
+  const event = element(details ? "details" : "div", "chat-event");
+  event.append(element(details ? "summary" : "span", "", text));
+  if (details) event.append(element("pre", "", details));
+  if (created) event.title = new Date(created).toLocaleString();
+  return event;
+}
+
+/** 전송·연결 오류는 AI 답변이나 모델 출력으로 표시하지 않는다. */
+export function chatError({
+  text,
+  executionNote,
+}: Pick<ChatMessage, "text" | "executionNote">) {
+  const row = element("section", "chat-error");
+  row.setAttribute("role", "alert");
+  row.setAttribute("aria-label", "요청 오류");
+  row.append(
+    element("strong", "", "요청을 완료하지 못했어요"),
+    element("p", "", text),
+  );
+  if (executionNote)
+    row.append(element("p", "chat-execution-note", executionNote));
   return row;
 }

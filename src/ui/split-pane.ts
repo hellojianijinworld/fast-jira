@@ -7,10 +7,19 @@ export function createSplitPane(
   handle: HTMLElement,
   mobile: MediaQueryList,
   storage: LocalStore,
+  options: {
+    label?: string;
+    defaultRatio?: number;
+    readRatio?: () => number;
+    saveRatio?: (ratio: number) => void;
+    disabled?: () => boolean;
+  } = {},
 ) {
-  let ratio = 0.5;
+  const defaultRatio = options.defaultRatio ?? 0.5;
+  let ratio = defaultRatio;
   try {
-    const value = Number(storage.getItem("fastJira:splitRatio"));
+    const value =
+      options.readRatio?.() ?? Number(storage.getItem("fastJira:splitRatio"));
     if (value > 0 && value < 1) ratio = value;
   } catch {
     /* 저장소를 쓸 수 없어도 현재 폭은 조절한다. */
@@ -18,9 +27,13 @@ export function createSplitPane(
   handle.tabIndex = 0;
   handle.setAttribute("role", "separator");
   handle.setAttribute("aria-orientation", "vertical");
-  handle.setAttribute("aria-label", "목록과 상세 영역 너비");
+  handle.setAttribute("aria-label", options.label ?? "목록과 상세 영역 너비");
   function apply(next = ratio) {
-    if (mobile.matches) {
+    if (
+      mobile.matches ||
+      options.disabled?.() ||
+      workspace.classList.contains("assistant-single-pane")
+    ) {
       workspace.style.removeProperty("grid-template-columns");
       return;
     }
@@ -45,7 +58,8 @@ export function createSplitPane(
   }
   function save() {
     try {
-      storage.setItem("fastJira:splitRatio", String(ratio));
+      if (options.saveRatio) options.saveRatio(ratio);
+      else storage.setItem("fastJira:splitRatio", String(ratio));
     } catch {
       /* 현재 폭은 유지한다. */
     }
@@ -53,7 +67,7 @@ export function createSplitPane(
   const stop = dragHandle(
     handle,
     (event) => {
-      if (!mobile.matches)
+      if (!mobile.matches && !options.disabled?.())
         apply(
           (event.clientX -
             workspace.getBoundingClientRect().left -
@@ -64,6 +78,7 @@ export function createSplitPane(
     (event) => {
       if (
         mobile.matches ||
+        options.disabled?.() ||
         !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
       )
         return;
@@ -85,7 +100,8 @@ export function createSplitPane(
     save,
   );
   const reset = () => {
-    apply(0.5);
+    if (mobile.matches || options.disabled?.()) return;
+    apply(defaultRatio);
     save();
   };
   handle.addEventListener("dblclick", reset);
@@ -95,6 +111,7 @@ export function createSplitPane(
   mobile.addEventListener("change", update);
   apply();
   return {
+    refresh: update,
     destroy() {
       stop();
       resize.disconnect();

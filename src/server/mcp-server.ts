@@ -48,7 +48,14 @@ export function createToolServer(
             );
           const response = await server.elicitInput({
             mode: "form",
-            _meta: { "fast-jira/confirmation": true },
+            _meta: {
+              "fast-jira/confirmation": true,
+              "fast-jira/question": {
+                title: confirmation.title,
+                description: confirmation.description,
+                details: confirmation.details,
+              },
+            },
             message: `${confirmation.title}\n${confirmation.description}\n${confirmation.details}`,
             requestedSchema: {
               type: "object",

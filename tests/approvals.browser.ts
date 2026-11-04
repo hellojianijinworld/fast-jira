@@ -1,4 +1,5 @@
 import "../src/client/styles.css";
+import type { VoiceCallbacks } from "../src/client/codex-voice.ts";
 import type { AssistantApproval } from "../src/domain/assistant-approval.ts";
 import { createAssistantApprovalPanel } from "../src/ui/assistant-approvals.ts";
 import { element } from "../src/ui/dom.ts";
@@ -18,6 +19,8 @@ const question = (id: string): AssistantApproval => ({
 let pending = [question("one"), question("two")],
   waiting = false,
   rejectNext = false;
+let speech: VoiceCallbacks | undefined;
+let recording = false;
 const answers: { id: string; approved: boolean; values: unknown }[] = [];
 const panel = createAssistantApprovalPanel(
   {
@@ -34,6 +37,24 @@ const panel = createAssistantApprovalPanel(
   },
   (value) => {
     waiting = value;
+  },
+  undefined,
+  {
+    voice: (callbacks) => {
+      speech = callbacks;
+      const stop = () => {
+        recording = false;
+        callbacks.state(false, "");
+      };
+      return {
+        start() {
+          recording = !recording;
+          callbacks.state(recording, "");
+        },
+        stop,
+        destroy: stop,
+      };
+    },
   },
 );
 host.append(panel.element);
@@ -85,16 +106,16 @@ await check(
       "변경 내용이 접혀 있거나 누락됨",
     );
     assert(
-      panel.element.querySelectorAll("input[type=radio]").length === 3,
+      panel.element.querySelectorAll("input[type=radio]").length === 2,
       "객관식 선택지",
     );
   },
 );
 await check("진행을 고르면 실행 승인하고 다음 질문을 표시한다", async () => {
   assert(
-    panel.element.querySelector<HTMLElement>(".assistant-approval-actions")
-      ?.hidden,
-    "단순 확인에 제출 버튼이 남음",
+    panel.element.querySelector<HTMLTextAreaElement>("textarea")
+      ?.placeholder === "다른 의견을 입력하세요",
+    "의견 입력을 바로 제공하지 않음",
   );
   choose("allow");
   await tick();
@@ -102,10 +123,9 @@ await check("진행을 고르면 실행 승인하고 다음 질문을 표시한�
   assert(panel.element.textContent?.includes("요청 two"), "다음 질문");
 });
 await check("다른 의견은 실행 승인 없이 모델에 전달한다", async () => {
-  choose("other");
   assert(answers.length === 1, "의견 입력 전에 자동 전송됨");
   const note = panel.element.querySelector("textarea");
-  assert(note && !note.closest("label")?.hidden, "의견 입력");
+  assert(note && note.offsetHeight > 0, "의견 입력");
   if (note) {
     note.value = "이 내용은 다시 제안해주세요";
     note.dispatchEvent(new Event("input", { bubbles: true }));
@@ -189,5 +209,150 @@ await check(
     signal.abort();
   },
 );
+await check(
+  "선택형 질문은 선택지를 바로 전송하고 값이 원래 필드에 연결된다",
+  async () => {
+    pending = [
+      {
+        ...question("options"),
+        title: "어느 상위에 만들까요?",
+        description: "",
+        details: "",
+        fields: [
+          {
+            key: "parent",
+            label: "어느 상위에 만들까요?",
+            type: "text",
+            required: true,
+            options: ["상위 A", "상위 B"],
+          },
+        ],
+      },
+    ];
+    const signal = new AbortController();
+    panel.start("f".repeat(32), signal.signal);
+    await tick();
+    assert(
+      !panel.element.querySelector("select"),
+      "선택형 질문에 셀렉트가 남음",
+    );
+    choose("option-1");
+    await tick();
+    assert(
+      JSON.stringify(answers.at(-1)?.values) ===
+        JSON.stringify({ parent: "상위 B" }),
+      "선택값의 실제 필드 연결 실패",
+    );
+    signal.abort();
+  },
+);
+await check(
+  "음성은 의견란에만 입력하고 중지·명시 전송 전에는 승인하지 않는다",
+  async () => {
+    pending = [question("voice")];
+    const signal = new AbortController();
+    panel.start("1".repeat(32), signal.signal);
+    await tick();
+    const before = answers.length;
+    const mic = panel.element.querySelector<HTMLButtonElement>(
+      '[aria-label="의견 음성 입력"]',
+    );
+    assert(mic && !mic.hidden, "의견 마이크 누락");
+    mic?.click();
+    speech?.transcript("이 작업은 내일 진행해 주세요");
+    await tick();
+    assert(
+      recording && answers.length === before,
+      "음성이 답변을 자동 전송했다",
+    );
+    assert(
+      panel.element.querySelector("textarea")?.value ===
+        "이 작업은 내일 진행해 주세요",
+      "의견 전사 누락",
+    );
+    assert(
+      panel.element.querySelector<HTMLButtonElement>('[type="submit"]')
+        ?.disabled,
+      "녹음 중 전송 가능",
+    );
+    mic?.click();
+    submit();
+    await tick();
+    assert(
+      answers.at(-1)?.approved === false &&
+        JSON.stringify(answers.at(-1)?.values).includes("내일 진행"),
+      "음성 의견을 승인으로 처리함",
+    );
+    signal.abort();
+  },
+);
+await check(
+  "자유 답변 질문은 중복 입력 없이 답변을 전달하고 취소하면 마이크를 정리한다",
+  async () => {
+    pending = [
+      {
+        ...question("text"),
+        title: "어떤 제목으로 만들까요?",
+        description: "",
+        details: "",
+        fields: [
+          {
+            key: "summary",
+            label: "어떤 제목으로 만들까요?",
+            type: "text",
+            required: true,
+          },
+        ],
+      },
+    ];
+    const signal = new AbortController();
+    panel.start("2".repeat(32), signal.signal);
+    await tick();
+    assert(
+      panel.element.querySelectorAll("textarea").length === 1 &&
+        !panel.element.querySelector('input[type="radio"]'),
+      "자유 질문의 중복 폼",
+    );
+    const note = panel.element.querySelector("textarea");
+    if (note) {
+      note.value = "새 제목";
+      note.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    submit();
+    await tick();
+    assert(
+      answers.at(-1)?.approved === true &&
+        JSON.stringify(answers.at(-1)?.values) ===
+          JSON.stringify({ summary: "새 제목" }),
+      "자유 답변 전달 실패",
+    );
+    pending = [question("cancel-voice")];
+    panel.start("3".repeat(32), signal.signal);
+    await tick();
+    panel.element
+      .querySelector<HTMLButtonElement>('[aria-label="의견 음성 입력"]')
+      ?.click();
+    assert(recording, "녹음 시작 실패");
+    const late = speech;
+    signal.abort();
+    assert(!recording, "취소 후 마이크 유지");
+    late?.transcript("늦은 전사");
+    assert(!panel.element.childElementCount, "취소 후 음성으로 폼 복원됨");
+  },
+);
 panel.destroy();
 document.title = failures ? `실패 ${failures}개` : "검사 통과";
+
+if (new URLSearchParams(location.search).has("preview")) {
+  pending = [
+    {
+      ...question("preview"),
+      title:
+        "CLIPO-833의 상태를 ‘개발 대기중’에서 ‘개발 진행 중’으로 바꿀까요?",
+      description: "",
+      details: "",
+    },
+  ];
+  host.append(panel.element);
+  panel.start("4".repeat(32), new AbortController().signal);
+}

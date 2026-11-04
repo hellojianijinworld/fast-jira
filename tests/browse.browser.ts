@@ -483,7 +483,7 @@ checks.push([
     const fold = root.querySelector<HTMLDetailsElement>(".dashboard-fold");
     assert(fold, "보조 정보 접힘 영역 누락");
     const workspace = root.querySelector<HTMLElement>(".workspace");
-    const split = root.querySelector<HTMLElement>(".splitter");
+    const split = root.querySelector<HTMLElement>(".workspace > .splitter");
     assert(workspace && split, "화면 분할 영역 누락");
     assert(
       getComputedStyle(workspace).display ===
@@ -1867,7 +1867,7 @@ checks.push([
 checks.push([
   "분할 구분선은 키보드·제한 폭·로컬 저장을 지원하고 모바일에서는 숨긴다",
   async () => {
-    const split = root.querySelector<HTMLElement>(".splitter");
+    const split = root.querySelector<HTMLElement>(".workspace > .splitter");
     assert(split, "구분선 누락");
     if (matchMedia("(max-width:600px)").matches) {
       assert(!split.getClientRects().length, "모바일 구분선 노출");

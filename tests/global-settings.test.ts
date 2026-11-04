@@ -61,6 +61,7 @@ test("손상되거나 잘못된 설정은 필드별 기본값으로 복구한다
       viewNamesExpanded: false,
     },
     history: { diffLayout: "split" },
+    layout: { assistantRatio: 0.34 },
   });
 });
 
@@ -74,4 +75,26 @@ test("뷰 표시 설정은 전역 저장·복원을 거치며 Diff 설정과 다
   writePreferences(storage, { ...readPreferences(storage), theme: "dark" });
   assert.equal(readPreferences(storage).viewNamesExpanded, true);
   assert.equal(readGlobalSettings(storage).history.diffLayout, "inline");
+});
+
+test("AI 너비는 전역 레이아웃에 저장하고 다른 설정 변경과 잘못된 값에 안전하다", () => {
+  const storage = store();
+  updateGlobalSettings(storage, { layout: { assistantRatio: 0.62 } });
+  updateGlobalSettings(storage, {
+    history: { diffLayout: "inline" },
+    display: { theme: "dark" },
+  });
+  assert.equal(readGlobalSettings(storage).layout.assistantRatio, 0.62);
+  assert.equal(
+    JSON.parse(storage.getItem(GLOBAL_SETTINGS_KEY) ?? "null").layout
+      .assistantRatio,
+    0.62,
+  );
+  for (const value of [-1, 0, 1, 2, "0.6", null]) {
+    storage.setItem(
+      GLOBAL_SETTINGS_KEY,
+      JSON.stringify({ version: 1, layout: { assistantRatio: value } }),
+    );
+    assert.equal(readGlobalSettings(storage).layout.assistantRatio, 0.34);
+  }
 });

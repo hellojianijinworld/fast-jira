@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { test } from "node:test";
+import { createApi } from "../src/client/api.ts";
+import type { AssistantProgress } from "../src/domain/assistant.ts";
 import {
   assistantContext,
   assistantReply,
@@ -19,7 +21,7 @@ import { createHttpServer } from "../src/server/http.ts";
 import { createJiraService } from "../src/server/jira-service.ts";
 
 const context = { projects: ["AA"], issue: "AA-1", keys: [] };
-function fixture() {
+function fixture(models = ["available"]) {
   let writes = 0,
     reads = 0,
     closed = false,
@@ -49,9 +51,11 @@ function fixture() {
       if (method === "account/read") return { account: { type: "chatgpt" } };
       if (method === "model/list")
         return {
-          data: [
-            { model: "available", displayName: "검사 모델", isDefault: true },
-          ],
+          data: models.map((model, index) => ({
+            model,
+            displayName: model,
+            isDefault: index === 0,
+          })),
         };
       if (method === "config/read")
         return {
@@ -61,6 +65,11 @@ function fixture() {
         return { data: [{ name: "unrelated" }], nextCursor: null };
       if (method === "app/installed") return { apps: [] };
       if (method === "thread/start") return { thread: { id: "thread" } };
+      if (method === "thread/resume") {
+        if ((params as { threadId: string }).threadId !== "thread")
+          throw new Error("원본 대화를 찾지 못했어요.");
+        return { thread: { id: "thread" } };
+      }
       if (method === "turn/steer") return {};
       if (method === "turn/start") {
         turns++;
@@ -96,10 +105,10 @@ function fixture() {
     },
     async () => false,
   );
-  const waitTurn = async () => {
-    for (let i = 0; i < 30 && !turns; i++)
+  const waitTurn = async (count = 1) => {
+    for (let i = 0; i < 30 && turns < count; i++)
       await new Promise((resolve) => setTimeout(resolve, 5));
-    assert.equal(turns, 1);
+    assert.equal(turns, count);
   };
   const complete = (text = "변경안을 확인하세요.") => {
     emit("item/completed", {
@@ -198,6 +207,10 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
     ]);
     assert.equal(result.answer, "변경안을 확인하세요.");
     assert.equal(result.threadId, "thread");
+    assert.deepEqual(
+      result.activity?.map((event) => event.text),
+      ["jira_search · 실패", "jira_propose_change · 완료"],
+    );
     assert.ok(f.reads > 0);
     assert.equal(f.writes, 0);
     assert.equal(JSON.stringify(f.replies).includes("fake-secret"), false);
@@ -374,7 +387,7 @@ test("AI HTTP 요청도 동일 출처 JSON 검사와 요청 취소를 따른다"
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
-test("서버 연결이 만료된 대화는 검증한 최근 기록을 참고해 새 연결에서 계속한다", async () => {
+test("원본 연결이 없는 옛 대화도 최신 요청만 보내고 과거 기록을 재전송하지 않는다", async () => {
   const f = fixture();
   try {
     await assert.rejects(
@@ -396,8 +409,25 @@ test("서버 연결이 만료된 대화는 검증한 최근 기록을 참고해 
     });
     await f.waitTurn();
     const turn = f.requests.find((x) => x.method === "turn/start");
-    assert.ok(JSON.stringify(turn?.params).includes("previousConversation"));
-    assert.ok(JSON.stringify(turn?.params).includes("AA-1이 있습니다."));
+    const params = turn?.params as {
+      input: { text: string }[];
+      additionalContext: Record<string, { kind: string; value: string }>;
+    };
+    assert.equal(params.input[0]?.text, "계속");
+    assert.equal(
+      JSON.stringify(params).includes("previousConversation"),
+      false,
+    );
+    assert.equal(JSON.stringify(params).includes("AA-1이 있습니다."), false);
+    assert.equal(
+      params.additionalContext["fast-jira-screen"]?.kind,
+      "untrusted",
+    );
+    assert.equal(
+      JSON.parse(params.additionalContext["fast-jira-screen"]?.value ?? "{}")
+        .site,
+      "fixture.atlassian.net",
+    );
     f.complete();
     const reply = await pending;
     assert.equal(reply.reconnected, true);
@@ -880,14 +910,16 @@ test("진행 중 추가 지시는 현재 요청·턴에만 전달하고 새 턴�
       ?.params as {
       threadId: string;
       expectedTurnId: string;
+      additionalContext: Record<string, { kind: string }>;
       input: { text: string }[];
     };
     assert.equal(steering.expectedTurnId, "live-turn");
     assert.equal(steering.threadId, "thread");
     assert.equal(
-      JSON.parse(steering.input[0]!.text).request,
-      "상태만 확인하고 수정하지 마",
+      steering.additionalContext["fast-jira-screen"]?.kind,
+      "untrusted",
     );
+    assert.equal(steering.input[0]?.text, "상태만 확인하고 수정하지 마");
     assert.equal(f.requests.filter((x) => x.method === "turn/start").length, 1);
     assert.equal(f.writes, 0);
     f.complete();
@@ -922,5 +954,264 @@ test("명시적 중단은 요청 종료까지 기다리고 잘못된 요청 ID�
     assert.equal(f.writes, 0);
   } finally {
     f.assistant.dispose();
+  }
+});
+
+test("Codex 모델 변경·프로세스 재연결은 같은 원본 대화를 이어가고 기존 하네스를 다시 적용한다", async () => {
+  const f = fixture(["available", "other"]);
+  try {
+    let pending = f.assistant.run({
+      prompt: "조회",
+      context,
+      model: "available",
+    });
+    await f.waitTurn();
+    f.complete();
+    let reply = await pending;
+    pending = f.assistant.run({
+      prompt: "계속",
+      context,
+      model: "other",
+      conversationId: reply.conversationId,
+      threadId: reply.threadId,
+    });
+    await f.waitTurn(2);
+    f.complete();
+    reply = await pending;
+    assert.equal(
+      f.requests.filter((r) => r.method === "thread/start").length,
+      1,
+    );
+    const turns = f.requests.filter((r) => r.method === "turn/start");
+    assert.equal(
+      (turns[1]?.params as { model: string } | undefined)?.model,
+      "other",
+    );
+    f.client.close();
+    pending = f.assistant.run({
+      prompt: "다시 계속",
+      context,
+      model: "other",
+      conversationId: reply.conversationId,
+      threadId: reply.threadId,
+      history: [{ role: "user", text: "이전 내용" }],
+    });
+    await f.waitTurn(3);
+    f.complete();
+    reply = await pending;
+    assert.equal(reply.threadId, "thread");
+    assert.equal(reply.reconnected, false);
+    const resume = f.requests.find((r) => r.method === "thread/resume")
+      ?.params as {
+      threadId: string;
+      sandbox: string;
+      approvalPolicy: string;
+      developerInstructions: string;
+    };
+    assert.equal(resume.threadId, "thread");
+    assert.equal(resume.sandbox, "read-only");
+    assert.equal(resume.approvalPolicy, "on-request");
+    assert.match(resume.developerInstructions, /Jira/);
+    assert.equal(
+      f.requests.filter((r) => r.method === "thread/start").length,
+      1,
+    );
+    assert.equal(
+      JSON.stringify(turns[1]?.params).includes("previousConversation"),
+      false,
+    );
+    assert.equal(f.writes, 0);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("화면 연결 ID가 없어도 같은 연결에서 열린 원본 대화를 다시 resume하지 않는다", async () => {
+  const f = fixture();
+  try {
+    let pending = f.assistant.run({
+      prompt: "첫 요청",
+      context,
+      model: "available",
+    });
+    await f.waitTurn();
+    f.complete();
+    const reply = await pending;
+    pending = f.assistant.run({
+      prompt: "계속",
+      context,
+      model: "available",
+      threadId: reply.threadId,
+    });
+    await f.waitTurn(2);
+    f.complete();
+    const next = await pending;
+    assert.equal(next.conversationId, reply.conversationId);
+    assert.equal(
+      f.requests.filter((r) => r.method === "thread/resume").length,
+      0,
+    );
+    assert.equal(
+      f.requests.filter((r) => r.method === "thread/start").length,
+      1,
+    );
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("다른 Codex 연결의 원본 점유는 충돌로 안내하고 턴 실행·대화 복제를 하지 않는다", async () => {
+  const f = fixture();
+  const original = f.client.request;
+  f.client.request = async (method, params) => {
+    if (method === "thread/resume")
+      throw new Error("thread thread already has an active writer");
+    return original(method, params);
+  };
+  try {
+    await assert.rejects(
+      f.assistant.run({
+        prompt: "계속",
+        context,
+        model: "available",
+        threadId: "thread",
+      }),
+      (error: unknown) =>
+        error instanceof Error &&
+        "status" in error &&
+        error.status === 409 &&
+        /다른 Codex/.test(error.message),
+    );
+    assert.equal(
+      f.requests.some((r) => ["turn/start", "thread/start"].includes(r.method)),
+      false,
+    );
+    assert.equal(f.writes, 0);
+    assert.equal(f.closed, false);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("잘못되거나 사라진 Codex 원본은 새 대화로 조용히 대체하지 않는다", async () => {
+  const f = fixture();
+  try {
+    await assert.rejects(
+      f.assistant.run({ prompt: "계속", context, threadId: "../other" }),
+      /원본 대화/,
+    );
+    await assert.rejects(
+      f.assistant.run({ prompt: "계속", context, threadId: "missing" }),
+      /원본 대화/,
+    );
+    assert.equal(
+      f.requests.some((r) => r.method === "thread/start"),
+      false,
+    );
+    assert.equal(f.writes, 0);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+
+test("Codex 공개 중간 답변과 도구 상태는 완료 전 전달하고 내부 추론은 노출하지 않는다", async () => {
+  const f = fixture();
+  const events: AssistantProgress[] = [];
+  try {
+    const pending = f.assistant.run(
+      { prompt: "조회", context },
+      undefined,
+      (event) => events.push(event),
+    );
+    await f.waitTurn();
+    f.emit("item/agentMessage/delta", {
+      threadId: "thread",
+      itemId: "comment",
+      delta: "현재 상태를 확인할게요.",
+    });
+    f.emit("item/completed", {
+      threadId: "thread",
+      item: {
+        id: "comment",
+        type: "agentMessage",
+        text: "현재 상태를 확인할게요.",
+      },
+    });
+    f.emit("item/reasoning/summaryTextDelta", {
+      threadId: "thread",
+      delta: "내부 추론",
+    });
+    assert.ok(
+      events.some(
+        (event) => event.type === "message" && event.text.includes("현재 상태"),
+      ),
+    );
+    assert.equal(JSON.stringify(events).includes("내부 추론"), false);
+    f.complete("조회 결과입니다.");
+    const result = await pending;
+    assert.equal(result.answer, "조회 결과입니다.");
+    assert.deepEqual(result.intermediate, ["현재 상태를 확인할게요."]);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("동일 출처 AI HTTP 스트림은 최종 응답 전에 중간 메시지를 전달한다", async () => {
+  const f = fixture();
+  const server = createHttpServer(f.service, undefined, undefined, f.assistant);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const events: AssistantProgress[] = [];
+  const api = createApi((path, init) =>
+    fetch(`${origin}${path}`, {
+      ...init,
+      headers: { ...init?.headers, Origin: origin },
+    }),
+  );
+  try {
+    let finished = false;
+    const pending = api.assistantRun(
+      "조회",
+      context,
+      "",
+      "available",
+      new AbortController().signal,
+      [],
+      undefined,
+      undefined,
+      (event) => events.push(event),
+    );
+    void pending.then(
+      () => {
+        finished = true;
+      },
+      () => {},
+    );
+    await f.waitTurn();
+    f.emit("item/agentMessage/delta", {
+      threadId: "thread",
+      itemId: "answer",
+      delta: "먼저 확인합니다.",
+    });
+    for (
+      let n = 0;
+      n < 50 && !events.some((event) => event.type === "message");
+      n++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "message" && event.text === "먼저 확인합니다.",
+      ),
+    );
+    assert.equal(finished, false);
+    f.complete("먼저 확인합니다. 결과입니다.");
+    const reply = await pending;
+    assert.equal(reply.answer, "먼저 확인합니다. 결과입니다.");
+    assert.equal(f.writes, 0);
+  } finally {
+    f.assistant.dispose();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

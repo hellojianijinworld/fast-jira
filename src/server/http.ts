@@ -502,13 +502,49 @@ export function createHttpServer(
             }
           };
           res.once("close", cancel);
+          const streaming =
+            req.headers.accept?.includes("text/event-stream") === true;
+          const emit = (event: unknown) => {
+            if (res.destroyed || res.writableEnded) return;
+            if (!res.headersSent)
+              res.writeHead(200, {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-store",
+                "X-Accel-Buffering": "no",
+              });
+            res.write(`data: ${JSON.stringify(event)}\n\n`);
+          };
+          const heartbeat = streaming
+            ? setInterval(() => {
+                if (!res.destroyed && !res.writableEnded)
+                  res.write(": keep-alive\n\n");
+              }, 15000)
+            : undefined;
           try {
-            const reply = await assistant.run(input, controller.signal);
+            if (streaming)
+              emit({ type: "activity", text: "AI를 연결하고 있어요…" });
+            const reply = await assistant.run(
+              input,
+              controller.signal,
+              streaming ? emit : undefined,
+            );
             if (!res.destroyed) {
-              json(res, reply);
+              if (streaming) {
+                emit({ type: "result", value: reply });
+                res.end();
+              } else json(res, reply);
               outcome = "completed";
             }
+          } catch (error) {
+            if (!streaming) throw error;
+            emit({
+              type: "error",
+              message: messageOf(error),
+              status: error instanceof JiraError ? error.status : 502,
+            });
+            res.end();
           } finally {
+            clearInterval(heartbeat);
             res.off("close", cancel);
             console.info(
               "Fast Jira AI",

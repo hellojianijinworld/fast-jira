@@ -272,3 +272,64 @@ test("공식 tool/requestUserInput 질문도 UI 응답만 원래 선택지로 �
   );
   assert.deepEqual(result, { answers: { target: { answers: ["모의 상위"] } } });
 });
+
+test("여러 AI 질문도 실제 질문을 제목으로 하나씩 받고 원래 선택값만 전달한다", async () => {
+  const titles: string[] = [];
+  const result = await answerCodexApproval(
+    "tool/requestUserInput",
+    {
+      questions: [
+        {
+          id: "parent",
+          question: "어느 상위에 만들까요?",
+          options: [{ label: "상위 A" }],
+        },
+        {
+          id: "date",
+          question: "언제까지 할까요?",
+          options: [{ label: "내일" }],
+        },
+      ],
+    },
+    async (request) => {
+      titles.push(request.title);
+      const field = request.fields[0];
+      assert.ok(field);
+      return {
+        approved: true,
+        values: { [field.key]: field.options?.[0] ?? "" },
+      };
+    },
+  );
+  assert.deepEqual(titles, ["어느 상위에 만들까요?", "언제까지 할까요?"]);
+  assert.deepEqual(result, {
+    answers: { parent: { answers: ["상위 A"] }, date: { answers: ["내일"] } },
+  });
+});
+
+test("Fast Jira MCP 승인도 자연어 질문을 그대로 표시하고 원시 인자를 반복하지 않는다", async () => {
+  const question = {
+    title: "AA-1의 상태를 ‘완료’로 바꿀까요?",
+    description: "",
+    details: "",
+  };
+  await answerCodexApproval(
+    "mcpServer/elicitation/request",
+    {
+      serverName: "fast_jira",
+      mode: "form",
+      message: question.title,
+      _meta: { "fast-jira/confirmation": true, "fast-jira/question": question },
+      requestedSchema: {
+        type: "object",
+        properties: { feedback: { type: "string" } },
+      },
+    },
+    async (request) => {
+      assert.equal(request.title, question.title);
+      assert.equal(request.description, "");
+      assert.equal(request.details, "");
+      return { approved: false, values: {} };
+    },
+  );
+});

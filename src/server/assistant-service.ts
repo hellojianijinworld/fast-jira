@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { ChangeProposal } from "../domain/agent.ts";
 import { agentIssueKeys, changeProposal } from "../domain/agent.ts";
 import {
+  type AssistantProgress,
   type AssistantReply,
   type AssistantStatus,
   assistantContext,
@@ -10,7 +11,7 @@ import {
   type AssistantExecution,
   decodeExecutions,
 } from "../domain/assistant-execution.ts";
-import { isChatMessage } from "../domain/conversation.ts";
+import { type ChatMessage, isChatMessage } from "../domain/conversation.ts";
 import { type IssueDraft, issueDraft } from "../domain/create-issue.ts";
 import { isRecord, record } from "../domain/validation.ts";
 import { createAssistantApprovals } from "./assistant-approvals.ts";
@@ -18,10 +19,7 @@ import {
   AssistantUnavailableError,
   assistantFailure,
 } from "./assistant-errors.ts";
-import {
-  assistantHistoryNotice,
-  assistantInstructions as instructions,
-} from "./assistant-instructions.ts";
+import { assistantInstructions as instructions } from "./assistant-instructions.ts";
 import {
   type ClaudeAssistant,
   createClaudeAssistant,
@@ -103,7 +101,6 @@ export function createAssistantService(
     string,
     {
       threadId: string;
-      model: string;
       service: JiraService;
       updated: number;
       drafting: boolean;
@@ -227,6 +224,7 @@ export function createAssistantService(
   async function run(
     value: unknown,
     upstream?: AbortSignal,
+    progress?: (event: AssistantProgress) => void,
   ): Promise<AssistantReply> {
     const input = record(value);
     if (
@@ -239,7 +237,11 @@ export function createAssistantService(
     if (
       !Array.isArray(history) ||
       history.length > 20 ||
-      !history.every(isChatMessage) ||
+      !history.every(
+        (message) =>
+          isChatMessage(message) &&
+          (message.role === "user" || message.role === "assistant"),
+      ) ||
       history.reduce((total, message) => total + message.text.length, 0) >
         20_000
     )
@@ -256,6 +258,12 @@ export function createAssistantService(
         input.conversationId.length > 100)
     )
       throw new JiraError("대화를 확인하세요.", 400);
+    if (
+      input.threadId !== undefined &&
+      (typeof input.threadId !== "string" ||
+        !/^[a-zA-Z0-9_-]{1,100}$/.test(input.threadId))
+    )
+      throw new JiraError("원본 대화를 확인하세요.", 400);
     if (busy)
       throw new JiraError("이전 AI 요청이 끝난 뒤 다시 요청하세요.", 409);
     if (upstream?.aborted) throw new JiraError("AI 요청을 취소했어요.", 499);
@@ -323,52 +331,83 @@ export function createAssistantService(
             .request("thread/unsubscribe", { threadId: session.threadId })
             .catch(() => {});
         }
-      const previous =
-        typeof input.conversationId === "string"
-          ? sessions.get(input.conversationId)
-          : undefined;
+      const previousEntry =
+        typeof input.conversationId === "string" &&
+        sessions.has(input.conversationId)
+          ? ([
+              input.conversationId,
+              sessions.get(input.conversationId),
+            ] as const)
+          : [...sessions.entries()].find(
+              ([, candidate]) =>
+                candidate.threadId === input.threadId &&
+                candidate.service === service &&
+                candidate.drafting === Boolean(context.creation),
+            );
+      const previous = previousEntry?.[1];
       let session =
-        previous?.model === model &&
-        previous.service === service &&
+        previous?.service === service &&
         previous.drafting === Boolean(context.creation)
           ? previous
           : undefined;
-      const conversationId = session
-        ? String(input.conversationId)
-        : randomUUID();
-      const reconnected = !session && history.length > 0;
+      const conversationId =
+        session && previousEntry ? previousEntry[0] : randomUUID();
+      const resumeId =
+        session?.threadId ??
+        (typeof input.threadId === "string" ? input.threadId : "");
+      const reconnected =
+        !session &&
+        !resumeId &&
+        (input.hasHistory === true || history.length > 0);
       if (!session) {
         const toolApprovals = await codexToolApprovals(native);
         const started = record(
-          await native.request("thread/start", {
-            model,
-            ephemeral: false,
-            sandbox: "read-only",
-            approvalPolicy: "on-request",
-            approvalsReviewer: "user",
-            config: {
-              ...toolApprovals,
-              "features.shell_tool": false,
-              "features.multi_agent": false,
-              "tools.view_image": false,
-            },
-            developerInstructions: instructions,
-            dynamicTools: tools.definitions.map(
-              ({ name, description, inputSchema }) => ({
-                type: "function",
-                name,
-                description,
-                inputSchema,
-              }),
-            ),
-          }),
+          await native
+            .request(resumeId ? "thread/resume" : "thread/start", {
+              ...(resumeId
+                ? { threadId: resumeId, excludeTurns: true }
+                : { ephemeral: false }),
+              model,
+              sandbox: "read-only",
+              approvalPolicy: "on-request",
+              approvalsReviewer: "user",
+              config: {
+                ...toolApprovals,
+                "features.shell_tool": false,
+                "features.multi_agent": false,
+                "tools.view_image": false,
+              },
+              developerInstructions: instructions,
+              ...(resumeId
+                ? {}
+                : {
+                    dynamicTools: tools.definitions.map(
+                      ({ name, description, inputSchema }) => ({
+                        type: "function",
+                        name,
+                        description,
+                        inputSchema,
+                      }),
+                    ),
+                  }),
+            })
+            .catch((error: unknown) => {
+              if (
+                resumeId &&
+                /already has an active writer/i.test(messageOf(error))
+              )
+                throw new JiraError(
+                  "이 대화가 다른 Codex 연결에서 열려 있어요. 해당 대화를 사용하는 Codex 앱이나 터미널의 연결을 종료한 뒤 다시 보내 주세요. 이번 요청은 실행하지 않았어요.",
+                  409,
+                );
+              throw error;
+            }),
         );
         const threadId = record(started.thread).id;
-        if (typeof threadId !== "string")
-          throw new Error("Codex 대화를 시작하지 못했어요.");
+        if (typeof threadId !== "string" || (resumeId && threadId !== resumeId))
+          throw new Error("Codex 원본 대화를 연결하지 못했어요.");
         session = {
           threadId,
-          model,
           service,
           updated: Date.now(),
           drafting: Boolean(context.creation),
@@ -384,7 +423,20 @@ export function createAssistantService(
         }
         sessions.set(conversationId, session);
       }
+      session.updated = Date.now();
+      const activity: ChatMessage[] = [];
+      const messages = new Map<string, string>();
       const threadId = session.threadId;
+      const screenContext = () => ({
+        "fast-jira-screen": {
+          kind: "untrusted",
+          value: JSON.stringify({
+            ...context,
+            site: service.site,
+            now: new Date().toISOString(),
+          }),
+        },
+      });
       console.info(
         "Fast Jira AI thread",
         JSON.stringify({ requestId: approvalScope.id, threadId }),
@@ -409,17 +461,11 @@ export function createAssistantService(
             await native.request("turn/steer", {
               threadId,
               expectedTurnId: activeTurnId,
+              additionalContext: screenContext(),
               input: [
                 {
                   type: "text",
-                  text: JSON.stringify({
-                    request: prompt,
-                    context: {
-                      ...context,
-                      site: service.site,
-                      now: new Date().toISOString(),
-                    },
-                  }),
+                  text: prompt,
                   text_elements: [],
                 },
               ],
@@ -443,12 +489,19 @@ export function createAssistantService(
             native.close();
             reject(error);
           } else {
+            const finalAnswer =
+              prematureCompletion && execution.length
+                ? ""
+                : [...messages.values()].at(-1) || answer || deltas;
             const reply = {
               conversationId,
               threadId,
-              answer:
-                prematureCompletion && execution.length ? "" : answer || deltas,
+              answer: finalAnswer,
+              intermediate: [...messages.values()].filter(
+                (text) => text && text !== finalAnswer,
+              ),
               execution,
+              activity,
               proposals,
               reconnected,
               creations,
@@ -489,6 +542,18 @@ export function createAssistantService(
             const params = isRecord(message.params) ? message.params : {};
             if (params.threadId !== threadId) return;
             if (
+              message.method === "item/completed" &&
+              isRecord(params.item) &&
+              params.item.type === "mcpToolCall"
+            ) {
+              const item = params.item;
+              activity.push({
+                role: "event",
+                text: `${String(item.tool ?? "연결 도구")} · ${item.status === "failed" || item.error ? "실패" : "완료"}`,
+                created: Date.now(),
+              });
+            }
+            if (
               message.method === "turn/started" &&
               isRecord(params.turn) &&
               typeof params.turn.id === "string"
@@ -500,8 +565,13 @@ export function createAssistantService(
               typeof params.item.id === "string"
             ) {
               items.set(params.item.id, params.item);
-              if (params.item.type === "mcpToolCall")
+              if (params.item.type === "mcpToolCall") {
                 pendingMcp.add(params.item.id);
+                progress?.({
+                  type: "activity",
+                  text: "연결 도구를 실행하고 있어요…",
+                });
+              }
             }
             if (
               message.method === "item/completed" &&
@@ -590,6 +660,14 @@ export function createAssistantService(
               (typeof message.id === "string" || typeof message.id === "number")
             ) {
               const id = message.id;
+              progress?.({
+                type: "activity",
+                text: tools.definitions.find(
+                  (tool) => tool.name === params.tool,
+                )?.annotations.readOnlyHint
+                  ? "Jira 정보를 확인하고 있어요…"
+                  : "변경을 처리하고 있어요…",
+              });
               track(
                 (async () => {
                   let result: unknown;
@@ -638,6 +716,11 @@ export function createAssistantService(
                       )
                         proposals.push(plan);
                     }
+                    activity.push({
+                      role: "event",
+                      text: `${String(params.tool)} · 완료`,
+                      created: Date.now(),
+                    });
                     if (!ended)
                       native.respond(id, {
                         success: true,
@@ -649,6 +732,12 @@ export function createAssistantService(
                         ],
                       });
                   } catch (error) {
+                    activity.push({
+                      role: "event",
+                      text: `${String(params.tool)} · 실패`,
+                      created: Date.now(),
+                      details: messageOf(error),
+                    });
                     if (!ended)
                       native.respond(id, {
                         success: false,
@@ -663,16 +752,32 @@ export function createAssistantService(
             } else if (
               message.method === "item/agentMessage/delta" &&
               typeof params.delta === "string"
-            )
+            ) {
               deltas += params.delta;
-            else if (
+              const id = String(params.itemId ?? "answer");
+              messages.set(id, (messages.get(id) ?? "") + params.delta);
+              progress?.({
+                type: "message",
+                id,
+                text: params.delta,
+                replace: false,
+              });
+            } else if (
               message.method === "item/completed" &&
               isRecord(params.item) &&
               params.item.type === "agentMessage" &&
               typeof params.item.text === "string"
-            )
+            ) {
               answer = params.item.text;
-            else if (message.method === "turn/completed") {
+              const id = String(params.item.id ?? "answer");
+              messages.set(id, params.item.text);
+              progress?.({
+                type: "message",
+                id,
+                text: params.item.text,
+                replace: true,
+              });
+            } else if (message.method === "turn/completed") {
               const turn = record(params.turn);
               if (turn.status !== "completed")
                 throw new Error(
@@ -700,23 +805,12 @@ export function createAssistantService(
         void native
           .request("turn/start", {
             threadId,
+            model,
+            additionalContext: screenContext(),
             input: [
               {
                 type: "text",
-                text: JSON.stringify({
-                  request: input.prompt,
-                  ...(reconnected
-                    ? {
-                        previousConversation: history,
-                        historyNotice: assistantHistoryNotice,
-                      }
-                    : {}),
-                  context: {
-                    ...context,
-                    site: service.site,
-                    now: new Date().toISOString(),
-                  },
-                }),
+                text: input.prompt,
                 text_elements: [],
               },
             ],

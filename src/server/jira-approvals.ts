@@ -143,14 +143,65 @@ export async function callApprovedJiraTool(
       text: "댓글 내용",
       action: "동작",
     };
+    const editFields: Record<string, string> = {
+      status: "상태",
+      assignee: "담당자",
+      priority: "우선순위",
+      parent: "상위 이슈",
+      dueDate: "마감일",
+      summary: "제목",
+    };
+    const field = editFields[String(readable.field)];
+    const short = (value: unknown) =>
+      (typeof value === "string" || typeof value === "number") &&
+      String(value).length <= 100
+        ? String(value) || "지정 없음"
+        : null;
+    const value = short(readable.value),
+      expected = short(readable.expected);
+    const targetText = String(target);
+    const subject =
+      targetText.length <= 100
+        ? targetText
+        : `${Array.isArray(data.keys) ? data.keys.length : "여러"}개 이슈`;
+    let question = `${subject} 작업을 진행할까요?`;
+    if (
+      (action.tool === "jira_edit_issue" ||
+        action.tool === "jira_update_issues") &&
+      field
+    ) {
+      const object = field === "제목" || field === "마감일" ? "을" : "를";
+      const last = value?.charCodeAt(value.length - 1) ?? 0;
+      const ending =
+        last >= 0xac00 && last <= 0xd7a3 ? (last - 0xac00) % 28 : 0;
+      const direction = ending && ending !== 8 ? "으로" : "로";
+      question =
+        value !== null
+          ? `${subject}의 ${field}${object} ${expected !== null ? `‘${expected}’에서 ` : ""}‘${value}’${direction} 바꿀까요?`
+          : `${subject}의 ${field}${object} 바꿀까요?`;
+      if (value !== null) {
+        for (const key of ["field", "value"]) delete readable[key];
+        if (expected !== null) delete readable.expected;
+        if (subject === targetText) {
+          delete readable.key;
+          delete readable.keys;
+        }
+      }
+    } else if (action.tool === "jira_create_issue") {
+      question = `${subject}에 새 이슈를 만들까요?`;
+    } else if (action.tool === "jira_description")
+      question = `${subject}의 본문을 바꿀까요?`;
+    else if (action.tool === "jira_comment")
+      question = `${subject}의 댓글을 ${data.action === "edit" ? "수정" : "작성"}할까요?`;
+    else if (action.tool === "jira_undo") question = "이 변경을 되돌릴까요?";
     return {
-      label: `${String(target)} · ${labels[action.tool] ?? action.tool}`,
+      question,
       description: Object.entries(readable)
         .map(
           ([key, value]) =>
-            `${fieldNames[key] ?? key}\n${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`,
+            `${fieldNames[key] ?? editFields[key] ?? key}: ${typeof value === "string" ? value : JSON.stringify(value, null, 2)}`,
         )
-        .join("\n\n"),
+        .join("\n"),
     };
   });
   if (JSON.stringify(previews).length > 100000)
@@ -218,11 +269,8 @@ export async function callApprovedJiraTool(
     }
     const preview = previews[index];
     const answer = await ask({
-      title:
-        actions.length > 1
-          ? `이 작업을 진행할까요? (${index + 1}/${actions.length})`
-          : "이 작업을 진행할까요?",
-      description: preview?.label ?? "요청한 변경",
+      title: preview?.question ?? "요청한 변경을 진행할까요?",
+      description: actions.length > 1 ? `${index + 1}/${actions.length}` : "",
       details: preview?.description ?? "",
       fields: [
         { key: "feedback", label: "기타 의견", type: "text", required: false },
