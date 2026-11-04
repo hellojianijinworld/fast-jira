@@ -23,6 +23,7 @@ const definition: ViewDefinition = {
   statuses: null,
   assignees: null,
   excludeDone: false,
+  includeUnassigned: false,
 };
 const filters: Filters = { ...definition, projects: ["TEST"], q: "찾기" };
 const target = { kind: "branch" as const, key: "TEST-1" };
@@ -143,6 +144,7 @@ test("공용 수정은 연결된 묶음에 반영하고 이름만 바꿔도 조�
   const changed = updateView(state, "shared", "새 이름", {
     ...definition,
     sort: "due,priority",
+    includeUnassigned: false,
   });
   assert.equal(resolveView(changed, target).sort, "due,priority");
   assert.equal(state.saved[0]?.name, "처음 이름");
@@ -191,6 +193,7 @@ test("옛 부분 상속은 당시의 적용 조건으로 이전하고 빈 선택
         "TEST-1",
         {
           sort: "due,priority",
+          includeUnassigned: false,
           statuses: [],
           assignees: null,
           people: "all" as const,
@@ -204,6 +207,7 @@ test("옛 부분 상속은 당시의 적용 조건으로 이전하고 빈 선택
     ...definition,
     scope: "all",
     sort: "due,priority",
+    includeUnassigned: false,
     statuses: [],
     excludeDone: true,
   });
@@ -297,4 +301,20 @@ test("이전 담당자 직접 선택과 새 담당자 기준은 같은 등록 �
     kind: "saved",
     viewId: "assigned-view",
   });
+});
+
+test("미지정 포함은 뷰 저장·복원과 조건 비교에서 보존하고 옛 뷰는 꺼진 값으로 읽는다", () => {
+  const enabled = { ...definition, includeUnassigned: true };
+  assert(!sameView(enabled, definition));
+  const state = initialViews(enabled);
+  const decoded = decodeViews(JSON.parse(JSON.stringify(state)));
+  assert(decoded);
+  assert.equal(resolveView(decoded, global).includeUnassigned, true);
+  const legacy = { ...definition };
+  delete legacy.includeUnassigned;
+  assert.equal(normalizeView(legacy).includeUnassigned, false);
+  assert.equal(
+    normalizeView({ ...enabled, includeUnassigned: false }).includeUnassigned,
+    false,
+  );
 });

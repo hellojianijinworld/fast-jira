@@ -9,8 +9,8 @@ import {
   rememberParticipant,
   uniqueParticipants,
 } from "../domain/participants.ts";
-import { actionButton, element, iconButton } from "./dom.ts";
-import { personPill } from "./meta.ts";
+import { actionButton, element } from "./dom.ts";
+import { personChip, personPill } from "./meta.ts";
 import { showModal } from "./modal.ts";
 import { participantAvatars } from "./participant-avatars.ts";
 import { enhanceSelect, type SelectMenu } from "./select-menu.ts";
@@ -153,21 +153,19 @@ export function participantsField(
         function renderSelected() {
           selected.replaceChildren();
           for (const user of drafts.get(field.id) ?? []) {
-            const chip = personPill(user);
-            chip.classList.add("participant-chip");
-            const remove = iconButton(`${field.name} ${user.name} 해제`, "x", {
-              size: "sm",
-            });
-            remove.addEventListener("click", () => {
-              drafts.set(
-                field.id,
-                (drafts.get(field.id) ?? []).filter(
-                  (value) => value.id !== user.id,
-                ),
-              );
-              renderSelected();
-            });
-            chip.append(remove);
+            const chip = personChip(
+              user,
+              `${field.name} ${user.name} 해제`,
+              () => {
+                drafts.set(
+                  field.id,
+                  (drafts.get(field.id) ?? []).filter(
+                    (value) => value.id !== user.id,
+                  ),
+                );
+                renderSelected();
+              },
+            );
             selected.append(chip);
           }
           showCandidates(candidates);

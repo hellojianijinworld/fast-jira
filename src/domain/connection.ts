@@ -14,3 +14,17 @@ export type ConnectionState =
   | "checking"
   | "connected"
   | "failed";
+
+export const JIRA_CLOUD_SUFFIX = ".atlassian.net";
+export const JIRA_SITE_NAME_PATTERN =
+  "[a-zA-Z0-9](?:[a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?";
+
+/** 저장된 호스트나 사이트 URL에서 편집할 사이트 이름만 추출한다. */
+export function jiraSiteName(value: string): string {
+  const input = value.trim().toLowerCase();
+  const full =
+    /^(?:https?:\/\/)?([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.atlassian\.net(?:[/?#].*)?$/.exec(
+      input,
+    );
+  return full?.[1] ?? input;
+}

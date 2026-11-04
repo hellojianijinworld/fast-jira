@@ -1,7 +1,7 @@
 import type { ProjectOption } from "../domain/catalog.ts";
 import { dateLabel, reportedTime } from "../domain/dates.ts";
 import type { Issue, UserOption } from "../domain/issue.ts";
-import { element, safeHref, uiIcon } from "./dom.ts";
+import { element, iconButton, safeHref, uiIcon } from "./dom.ts";
 
 export function statusColor(status: string, order: readonly string[]): string {
   const index = order.indexOf(status);
@@ -44,6 +44,18 @@ export function personPill(
   name.dataset.tooltipOverflow = user.name || "미지정";
   pill.append(name);
   return pill;
+}
+export function personChip(
+  user: Pick<UserOption, "name" | "avatar">,
+  removeLabel: string,
+  onRemove: () => void,
+): HTMLSpanElement {
+  const chip = personPill(user);
+  chip.classList.add("participant-chip");
+  const remove = iconButton(removeLabel, "x", { size: "sm" });
+  remove.addEventListener("click", onRemove);
+  chip.append(remove);
+  return chip;
 }
 export function issueTypeIcon(
   issue: Pick<Issue, "issueType" | "issueTypeIcon">,

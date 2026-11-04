@@ -10,8 +10,8 @@ import type { ParticipantRecents } from "../domain/participants.ts";
 import { uniqueParticipants } from "../domain/participants.ts";
 import { isRecord } from "../domain/validation.ts";
 import { adfEditor } from "./adf-editor.ts";
-import { actionButton, element, elementId, iconButton } from "./dom.ts";
-import { personPill } from "./meta.ts";
+import { actionButton, element, elementId } from "./dom.ts";
+import { personChip, personPill } from "./meta.ts";
 import { enhanceSelect } from "./select-menu.ts";
 
 export function creationField(
@@ -111,14 +111,10 @@ export function creationField(
     function render() {
       chips.replaceChildren();
       for (const user of selected) {
-        const chip = personPill(user);
-        chip.classList.add("participant-chip");
-        const remove = iconButton(`${user.name} 해제`, "x", { size: "sm" });
-        remove.addEventListener("click", () => {
+        const chip = personChip(user, `${user.name} 해제`, () => {
           selected = selected.filter((item) => item.id !== user.id);
           render();
         });
-        chip.append(remove);
         chips.append(chip);
       }
       select.replaceChildren(

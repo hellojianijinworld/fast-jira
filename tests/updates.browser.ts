@@ -310,10 +310,13 @@ const demo = appUpdate(
   ),
   { active: () => false, reload: () => {} },
 );
-const demoNav = element("header", "top-nav");
+const demoNav = element("header", "top-nav"),
+  demoActions = element("div", "nav-actions");
+demoActions.append(demo.trigger);
 demoNav.append(
   element("h2", "", "Fast Jira · 새 버전 알림 예시"),
-  demo.trigger,
+  element("div", "nav-tools"),
+  demoActions,
 );
 fixture.append(demoNav);
 demo.trigger.addEventListener("click", () => mount(demo));

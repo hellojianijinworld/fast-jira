@@ -27,6 +27,7 @@ export function listCacheKey(filters: Filters): string {
     q: filters.q,
     statuses: filters.statuses && [...filters.statuses].sort(),
     assignees: filters.assignees && [...filters.assignees].sort(),
+    ...(filters.includeUnassigned ? { includeUnassigned: true } : {}),
   });
 }
 export function decodeListSnapshot(value: unknown): ListSnapshot {

@@ -87,6 +87,20 @@ await check(
         ),
       ];
       assert(radios.length === 7, "선택 카드 누락");
+      const themeTitle = content.element.querySelector(
+        ".setting-theme-options .setting-option-title",
+      );
+      assert(
+        themeTitle?.firstChild?.textContent === "화이트" &&
+          themeTitle.lastChild instanceof SVGElement,
+        "테마가 글자 다음 아이콘 순서가 아님",
+      );
+      assert(
+        radios
+          .slice(0, 3)
+          .every((radio) => radio.getBoundingClientRect().width > 1),
+        "테마 라디오가 표시되지 않음",
+      );
       assert(
         content.element.querySelectorAll(".setting-theme-icon").length === 3,
         "테마 아이콘 누락",
@@ -354,6 +368,56 @@ await check(
       );
     } finally {
       host.remove();
+      if (compact === undefined)
+        delete document.documentElement.dataset.compact;
+      else document.documentElement.dataset.compact = compact;
+    }
+  },
+);
+
+await check(
+  "한 줄 카드의 유형·번호와 배지는 크기별로 같은 세로 중심에 놓인다",
+  () => {
+    const compact = document.documentElement.dataset.compact;
+    document.documentElement.dataset.compact = "false";
+    try {
+      for (const size of ["md", "sm"] as const) {
+        const host = exampleCards(size);
+        host.style.width = "1100px";
+        fixture.append(host);
+        try {
+          const row = host.querySelector<HTMLElement>(".list-item");
+          const identity = row
+            ?.querySelector(".issue-identity")
+            ?.getBoundingClientRect();
+          const meta = row
+            ?.querySelector(".list-meta")
+            ?.getBoundingClientRect();
+          assert(
+            identity !== undefined && meta !== undefined && row !== null,
+            "카드 구성 누락",
+          );
+          const middle = row.getBoundingClientRect();
+          assert(
+            Math.abs(
+              identity.top + identity.height / 2 - meta.top - meta.height / 2,
+            ) < 1,
+            `${size}: 이슈 번호와 배지의 중심 불일치`,
+          );
+          assert(
+            Math.abs(
+              identity.top +
+                identity.height / 2 -
+                middle.top -
+                middle.height / 2,
+            ) < 1,
+            `${size}: 카드 중심 불일치`,
+          );
+        } finally {
+          host.remove();
+        }
+      }
+    } finally {
       if (compact === undefined)
         delete document.documentElement.dataset.compact;
       else document.documentElement.dataset.compact = compact;
@@ -1845,7 +1909,6 @@ await check(
           types: [],
           priorities: [],
         }),
-        onApply: () => {},
         views: createViewController(
           initialViews({
             scope: "all",
@@ -1861,13 +1924,16 @@ await check(
     const anchor = element("button", "", "필터 검사");
     fixture.append(anchor);
     try {
-      panel.open(anchor);
+      panel.open(anchor, "AA-1");
+      panel.element
+        .querySelector<HTMLInputElement>('[aria-label="현재 탭 필터 따라가기"]')
+        ?.click();
       assert(
         !panel.element.querySelector('[aria-label="프로젝트: A"]'),
         "프로젝트가 뷰 편집기에 남음",
       );
       assert(
-        panel.element.getAttribute("aria-label") === "필터",
+        panel.element.getAttribute("aria-label") === "하위 목록 필터",
         "필터 명칭 미반영",
       );
       await wait();
@@ -2322,8 +2388,10 @@ await check(
       "연결 정보 편집 전환 누락",
     );
     assert(
-      site.placeholder.includes(".atlassian.net") &&
-        !site.hasAttribute("aria-describedby"),
+      site.placeholder === "예: your-team" &&
+        form.querySelector(".connection-site-suffix")?.textContent ===
+          ".atlassian.net" &&
+        site.value === "example",
       "사이트 형식 안내 누락",
     );
     form.remove();
@@ -2384,7 +2452,7 @@ await check(
         site !== null && email !== null && token !== null,
         "인증 필드 누락",
       );
-      site.value = "example.atlassian.net";
+      site.value = "example";
       email.value = "fixture@example.com";
       token.value = "fixture-token";
       token.focus();
@@ -2480,7 +2548,7 @@ await check(
       );
       form.requestSubmit();
       assert(calls === 0, "비어 있는 입력으로 인증 요청");
-      site.value = "example.atlassian.net";
+      site.value = "example";
       email.value = "invalid";
       email.dispatchEvent(new Event("input", { bubbles: true }));
       assert(
@@ -2495,8 +2563,7 @@ await check(
       });
       await wait();
       assert(
-        site.value === "example.atlassian.net" &&
-          steps[0]?.dataset.state === "complete",
+        site.value === "example" && steps[0]?.dataset.state === "complete",
         "늦은 설정 응답이 사용자 입력이나 진행도를 덮음",
       );
       issueToken.addEventListener("click", (event) => event.preventDefault());
@@ -2636,7 +2703,9 @@ await check(
       onBranch: () => {},
       onTreeChange: () => {},
     });
+    const viewSwitch = element("button", "", "뷰 전환");
     const context = createTreeContext(pane, host, {
+      leading: () => viewSwitch,
       scroller: () => pane,
       items: list.visibleItems,
       projects: () => [
@@ -2669,6 +2738,10 @@ await check(
         nav?.querySelector(".tree-context-project")?.textContent ===
           "검사 프로젝트",
         "프로젝트 이름이 경로에 없다",
+      );
+      assert(
+        nav?.firstElementChild === viewSwitch,
+        "뷰 전환이 프로젝트 경로 앞에 있지 않음",
       );
       assert(
         Boolean(
@@ -2983,6 +3056,168 @@ await check(
 );
 
 await check(
+  "목록 연결 없는 상세도 자동으로 하위를 읽고 실패하면 그 자리에서 재시도한다",
+  async () => {
+    let calls = 0;
+    const detail = detailChildren(
+      {
+        parent: {
+          ...emptyIssue("TEST-900"),
+          hasChildren: true,
+          reporter: "",
+          reporterAvatar: "",
+          created: "",
+          description: null,
+          attachments: [],
+          url: "",
+        },
+        children: [],
+        deferredChildren: true,
+        dateEditing: false,
+        imageEnabled: false,
+      },
+      {
+        ...createApi(),
+        directChildren: async () => {
+          calls++;
+          if (calls === 1) throw new Error("모의 조회 실패");
+          return [{ ...emptyIssue("TEST-901"), parent: "TEST-900" }];
+        },
+      },
+      { statusOrder: [], onSelect: () => {} },
+    );
+    assert(Boolean(detail), "하위 영역 누락");
+    if (!detail) return;
+    fixture.append(detail.element);
+    try {
+      await wait();
+      assert(
+        calls === 1 && !detail.element.querySelector("details"),
+        "별도 클릭 없이 조회하지 않았다",
+      );
+      const retry =
+        detail.element.querySelector<HTMLButtonElement>(".detail-child-more");
+      assert(Boolean(retry), "실패 재시도 누락");
+      retry?.click();
+      await wait();
+      assert(
+        Number(calls) === 2 &&
+          Boolean(detail.element.querySelector(".list-item")),
+        "재시도 후 공통 카드 누락",
+      );
+      detail.refresh();
+      await wait();
+      assert(Number(calls) === 2, "표시 갱신 중 중복 조회");
+    } finally {
+      detail.destroy();
+      detail.element.remove();
+    }
+  },
+);
+
+await check(
+  "상세 하위는 별도 페이지가 비어 있어도 목록의 같은 필터에 맞는 직계 하위를 보여준다",
+  async () => {
+    const parent = { ...emptyIssue("TEST-833"), hasChildren: true };
+    const child = {
+      ...emptyIssue("TEST-847"),
+      parent: parent.key,
+      assigneeId: "me",
+    };
+    const other = {
+      ...emptyIssue("TEST-848"),
+      parent: parent.key,
+      assigneeId: "other",
+    };
+    const grandchild = {
+      ...emptyIssue("TEST-849"),
+      parent: child.key,
+      assigneeId: "me",
+    };
+    const list = createListController(
+      {
+        issues: async () => ({
+          issues: [parent, child, other, grandchild],
+          ancestors: [],
+          nextPageToken: null,
+        }),
+        children: async () => ({ issues: [], nextPageToken: null }),
+      },
+      {
+        projects: ["TEST"],
+        scope: "assigned",
+        excludeDone: false,
+        sort: "recent",
+        statuses: null,
+        assignees: null,
+        q: "",
+      },
+      "me",
+    );
+    await list.load();
+    list.childPage(parent.key).loaded = true;
+    const detail = detailChildren(
+      {
+        parent: {
+          ...parent,
+          reporter: "",
+          reporterAvatar: "",
+          created: "",
+          description: null,
+          attachments: [],
+          url: "",
+        },
+        children: [],
+        deferredChildren: true,
+        dateEditing: false,
+        imageEnabled: false,
+      },
+      createApi(),
+      { statusOrder: [], onSelect: () => {} },
+      {
+        list,
+        catalog: () => ({
+          projects: [],
+          statuses: [],
+          priorities: [],
+          types: [],
+        }),
+        onFilter: () => {},
+      },
+    );
+    assert(Boolean(detail), "하위 목록이 없다");
+    if (!detail) return;
+    fixture.append(detail.element);
+    try {
+      assert(
+        !detail.element.querySelector("details, summary"),
+        "하위 작업이 접기 UI 안에 있다",
+      );
+      assert(Boolean(detail.element.querySelector("h3")), "하위 제목 누락");
+      detail.refresh();
+      assert(
+        detail.element.querySelectorAll(".list-item").length === 1,
+        "필터에 맞는 직계 하위만 표시해야 한다",
+      );
+      assert(
+        Boolean(detail.element.textContent?.includes(child.key)),
+        "목록에 있는 하위가 상세에서 누락됐다",
+      );
+      list.update({ ...child, parent: "TEST-99" }, true);
+      detail.refresh();
+      assert(
+        !detail.element.querySelector(".list-item"),
+        "부모가 바뀐 하위가 남았다",
+      );
+    } finally {
+      detail.destroy();
+      list.destroy();
+      detail.element.remove();
+    }
+  },
+);
+
+await check(
   "일반 다음 페이지를 상세에서도 보고 있으면 트리를 접어도 반영한다",
   async () => {
     const parent = { ...emptyIssue("TEST-2000"), hasChildren: true };
@@ -3054,10 +3289,10 @@ await check(
     assert(Boolean(detail), "상세 하위 영역이 없다");
     if (!detail) return;
     fixture?.append(detail.element);
-    const root = detail.element.querySelector("details");
-    assert(Boolean(root), "아코디언이 없다");
-    if (!root) return;
-    root.open = true;
+    assert(
+      !detail.element.querySelector("details"),
+      "상세 하위는 항상 표시해야 한다",
+    );
     draw = detail.refresh;
     try {
       const pending = list.queueChildren(parent.key, () => treeOpen);
@@ -3679,6 +3914,70 @@ await check(
   },
 );
 
+await check(
+  "사이트 이름 입력은 전체 Jira 주소를 받아들이고 고정 접미사를 한 번만 전송한다",
+  async () => {
+    let submitted = "",
+      calls = 0;
+    const form = connectionForm(
+      {
+        connection: async () => ({
+          site: "example.atlassian.net",
+          email: "fixture@example.com",
+        }),
+        saveConnection: async (credentials) => {
+          calls++;
+          submitted = credentials.site;
+          return credentials;
+        },
+      },
+      () => {},
+    );
+    form.style.width = "320px";
+    fixture.append(form);
+    try {
+      await wait();
+      const site = form.querySelector<HTMLInputElement>(
+        '[aria-label="Jira 사이트"]',
+      );
+      const token = form.querySelector<HTMLInputElement>(
+        'input[type="password"]',
+      );
+      assert(site !== null && token !== null, "연결 필드 누락");
+      assert(site.value === "example", "기존 주소를 이름으로 표시하지 않음");
+      site.value = "https://My-Team.atlassian.net/jira/software/projects/TEST";
+      site.dispatchEvent(new Event("input", { bubbles: true }));
+      assert(
+        site.value === "my-team" && site.validity.valid,
+        "전체 주소 붙여넣기 변환 실패",
+      );
+      const suffix = form.querySelector<HTMLElement>(".connection-site-suffix");
+      assert(suffix?.textContent === ".atlassian.net", "고정 접미사 누락");
+      assert(
+        suffix.getBoundingClientRect().right <=
+          form.getBoundingClientRect().right + 1,
+        "좁은 폼에서 접미사 넘침",
+      );
+      site.value = "my-team.atlassian.net.evil.test";
+      site.dispatchEvent(new Event("input", { bubbles: true }));
+      token.value = "fixture-token";
+      form.requestSubmit();
+      assert(
+        calls === 0 && !site.validity.valid,
+        "다른 도메인을 사이트 이름으로 허용함",
+      );
+      site.value = "my-team";
+      form.requestSubmit();
+      await wait();
+      assert(
+        submitted === "my-team.atlassian.net" && Number(calls) === 1,
+        "접미사 중복 또는 연결 값 유실",
+      );
+    } finally {
+      form.remove();
+    }
+  },
+);
 document.body.dataset.result = failures ? "failed" : "passed";
 results.append(
   element(
@@ -3743,3 +4042,23 @@ await check(
     }
   },
 );
+
+if (new URLSearchParams(location.search).has("connection")) {
+  const preview = connectionForm(
+    {
+      connection: async () => ({
+        site: "your-team.atlassian.net",
+        email: "you@example.com",
+      }),
+      saveConnection: async () => {
+        throw new Error("미리보기에서는 연결을 저장하지 않아요.");
+      },
+    },
+    () => {},
+    { guided: true },
+  );
+  preview.style.maxWidth = "480px";
+  preview.style.margin = "24px auto";
+  fixture.replaceChildren(preview);
+  results.setAttribute("hidden", "");
+}

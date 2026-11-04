@@ -26,7 +26,10 @@ export function passesChild(
     (!settings.excludeDone || issue.statusCategory !== "done") &&
     (settings.statuses === null ||
       settings.statuses.includes(issue.statusId)) &&
-    peoplePass
+    (peoplePass ||
+      (settings.includeUnassigned === true &&
+        settings.assignees?.length !== 0 &&
+        accounts.length === 0))
   );
 }
 export function compareIssues(

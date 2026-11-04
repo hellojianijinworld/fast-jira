@@ -142,12 +142,12 @@ export function settingsContent(
       });
       const copy = element("span", "setting-option-copy");
       const optionTitle = element("span", "setting-option-title");
+      optionTitle.append(document.createTextNode(label));
       if (groupIndex === 0) {
         const icon = uiIcon(["sun", "moon", "monitor"][index] ?? "sun");
         icon.classList.add("setting-theme-icon");
         optionTitle.append(icon);
       }
-      optionTitle.append(document.createTextNode(label));
       copy.append(optionTitle);
       if (description) copy.append(description);
       card.append(radio, copy);

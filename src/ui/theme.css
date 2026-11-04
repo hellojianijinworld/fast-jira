@@ -13,9 +13,13 @@
   --space-7: 28px;
   --space-8: 32px;
   --space-10: 40px;
+  --list-header-height: 44px;
+  --focus-ring: 2px solid var(--blue);
+  --focus-ring-offset: -2px;
   --tree-indent: var(--space-4);
   --tree-gutter: var(--space-6);
   --tree-icon-size: 14px;
+  --child-row-gap: var(--space-1);
   --tree-row-gap: var(--space-1-5);
   --tree-child-gap: var(--space-2);
   --tree-branch-gap: var(--space-3);
@@ -64,6 +68,7 @@
   --opacity-disabled: 0.55;
   --text-on-accent: #fff;
   --favorite: #f1d84b;
+  --favorite-outline: #171717;
   --shadow-dialog: 0 24px 80px #0003;
   --shadow-popover: 0 12px 36px #0003;
   --shadow-panel: 0 12px 36px #0002;
@@ -80,7 +85,6 @@
 /* 색상은 용도별 의미 토큰으로 라이트·다크를 교체한다. */
 :root {
   color-scheme: light;
-  --favorite-hover: #8a7900;
   --page: #f6f7f8;
   --surface: #fff;
   --surface-alt: #fff;
@@ -117,7 +121,6 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --favorite-hover: #f4dc67;
   --page: #141a22;
   --surface: #202936;
   --surface-alt: #1c2531;

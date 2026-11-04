@@ -53,6 +53,7 @@ export type SelectionFilter = readonly string[] | null;
 export type PeopleFilter = "all" | "mine" | "assigned" | "related";
 
 export interface BranchDefaults {
+  includeUnassigned?: boolean;
   sort: string;
   people: PeopleFilter;
   excludeDone: boolean;
@@ -63,6 +64,7 @@ export interface ChildSettings extends BranchDefaults {
   projects: readonly string[];
 }
 export interface BranchOverrides {
+  includeUnassigned?: boolean;
   sort?: string;
   people?: PeopleFilter | "inherit";
   done?: "include" | "exclude" | "inherit";

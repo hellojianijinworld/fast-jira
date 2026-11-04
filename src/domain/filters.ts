@@ -7,6 +7,7 @@ export interface Filters {
   projects: string[];
   scope: "all" | "assigned" | "related";
   excludeDone: boolean;
+  includeUnassigned?: boolean;
   sort: string;
   statuses: SelectionFilter;
   assignees: SelectionFilter;
@@ -24,6 +25,7 @@ export function filterParameters(filters: Filters): URLSearchParams {
     sort: filters.sort,
     statuses: selectionParameter(filters.statuses),
     assignees: selectionParameter(filters.assignees),
+    ...(filters.includeUnassigned ? { includeUnassigned: "true" } : {}),
   });
 }
 export function branchDefaults(filters: Filters): BranchDefaults {
@@ -33,6 +35,7 @@ export function branchDefaults(filters: Filters): BranchDefaults {
     excludeDone: filters.excludeDone,
     statuses: filters.statuses,
     assignees: filters.assignees,
+    ...(filters.includeUnassigned ? { includeUnassigned: true } : {}),
   };
 }
 export function cloneFilters(filters: Filters): Filters {

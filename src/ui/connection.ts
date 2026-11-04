@@ -1,4 +1,9 @@
 import type { Api } from "../client/api.ts";
+import {
+  JIRA_CLOUD_SUFFIX,
+  JIRA_SITE_NAME_PATTERN,
+  jiraSiteName,
+} from "../domain/connection.ts";
 import { actionButton, element, externalLink, uiIcon } from "./dom.ts";
 
 /** 토큰은 전송 직후 비우며 브라우저 저장소에는 남기지 않는다. */
@@ -75,7 +80,7 @@ export function connectionForm(
     );
   });
   for (const [key, label, placeholder, type] of [
-    ["site", "Jira 사이트", "예: your-team.atlassian.net", "text"],
+    ["site", "Jira 사이트", "예: your-team", "text"],
     ["email", "Atlassian 이메일", "you@example.com", "email"],
     ["token", "API 토큰", "발급한 토큰을 붙여넣으세요", "password"],
   ] as const) {
@@ -89,7 +94,32 @@ export function connectionForm(
       key === "token" ? "new-password" : key === "email" ? "email" : "off";
     input.spellcheck = false;
     input.setAttribute("aria-label", label);
-    row.append(heading, input);
+    row.append(heading);
+    if (key === "site") {
+      const control = element("span", "connection-site-control");
+      const suffix = element(
+        "span",
+        "connection-site-suffix",
+        JIRA_CLOUD_SUFFIX,
+      );
+      suffix.setAttribute("aria-hidden", "true");
+      input.pattern = JIRA_SITE_NAME_PATTERN;
+      input.classList.add("connection-site-input");
+      input.setAttribute(
+        "aria-description",
+        ".atlassian.net 앞의 사이트 이름을 입력하세요.",
+      );
+      input.autocapitalize = "none";
+      input.addEventListener("input", () => {
+        if (input.value.toLowerCase().includes(JIRA_CLOUD_SUFFIX))
+          input.value = jiraSiteName(input.value);
+      });
+      input.addEventListener("blur", () => {
+        input.value = jiraSiteName(input.value);
+      });
+      control.append(input, suffix);
+      row.append(control);
+    } else row.append(input);
     if (key === "token") {
       heading.append(issueToken);
       row.append(
@@ -132,7 +162,9 @@ export function connectionForm(
               ? "연결하고 시작하기"
               : "연결 확인 및 저장";
     const basicReady = Boolean(
-      fields.site.value.trim() && fields.email.validity.valid,
+      fields.site.value.trim() &&
+        fields.site.validity.valid &&
+        fields.email.validity.valid,
     );
     const tokenReady =
       busy() ||
@@ -177,7 +209,7 @@ export function connectionForm(
     .connection()
     .then((settings) => {
       // 늦은 설정 응답으로 작성 중인 내용을 덮어쓰지 않는다.
-      if (!fields.site.value) fields.site.value = settings.site;
+      if (!fields.site.value) fields.site.value = jiraSiteName(settings.site);
       if (!fields.email.value) fields.email.value = settings.email;
       tokenConfigured = settings.tokenConfigured === true;
       if (
@@ -200,7 +232,7 @@ export function connectionForm(
       return;
     }
     const credentials = {
-      site: fields.site.value.trim(),
+      site: `${jiraSiteName(fields.site.value)}${JIRA_CLOUD_SUFFIX}`,
       email: fields.email.value.trim(),
       token: fields.token.value.trim(),
     };

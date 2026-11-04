@@ -60,6 +60,9 @@ export function resolveBranchSettings(
       setting?.statuses !== undefined && setting.statuses !== "inherit"
         ? setting.statuses
         : defaults.statuses,
+    ...((setting?.includeUnassigned ?? defaults.includeUnassigned)
+      ? { includeUnassigned: true }
+      : {}),
     assignees:
       setting?.assignees !== undefined && setting.assignees !== "inherit"
         ? setting.assignees

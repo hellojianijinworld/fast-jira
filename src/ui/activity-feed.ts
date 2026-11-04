@@ -10,7 +10,15 @@ export function activityFeed(select: (key: string) => void, retry: () => void) {
   const spinner = element("span", "loading-indicator");
   spinner.setAttribute("role", "status");
   spinner.setAttribute("aria-label", "최근 활동 불러오는 중");
-  heading.append(element("h2", "", "최근 활동"), spinner);
+  heading.append(
+    element("h2", "", "최근 활동"),
+    spinner,
+    element(
+      "small",
+      "activity-scope",
+      "현재 뷰의 프로젝트 기준 · 담당자·단계 무관",
+    ),
+  );
   const description = element(
     "p",
     "activity-description",

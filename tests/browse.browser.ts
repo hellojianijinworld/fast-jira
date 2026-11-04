@@ -1,5 +1,6 @@
 import { createApi } from "../src/client/api.ts";
 import { createApp } from "../src/client/app.ts";
+import { GLOBAL_SETTINGS_KEY } from "../src/client/global-settings.ts";
 import { type AdfDocument, decodeAdfDocument } from "../src/domain/adf.ts";
 import type { Comment } from "../src/domain/content.ts";
 import { record } from "../src/domain/validation.ts";
@@ -431,6 +432,52 @@ const tick = () =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
 checks.push([
+  "상단 도구 세 개는 중앙 그룹에 있고 앱 메뉴는 오른쪽에서 분리된다",
+  () => {
+    const nav = root.querySelector<HTMLElement>(".top-nav"),
+      tools = root.querySelector<HTMLElement>(
+        '.nav-tools[aria-label="이슈 도구"]',
+      ),
+      actions = root.querySelector<HTMLElement>(".nav-actions"),
+      menu = root.querySelector<HTMLElement>('[aria-label="메뉴"]'),
+      title = nav?.querySelector("h1");
+    assert(
+      nav && tools && actions && menu && title,
+      "상단 도구·메뉴 그룹 누락",
+    );
+    assert(
+      tools.children.length === 3 &&
+        !nav.querySelector('[aria-label="필터"]') &&
+        !tools.contains(menu) &&
+        actions.contains(menu),
+      "도구와 메뉴가 분리되지 않았다",
+    );
+    const bounds = nav.getBoundingClientRect(),
+      group = tools.getBoundingClientRect(),
+      end = actions.getBoundingClientRect();
+    assert(
+      Math.abs(group.left + group.width / 2 - bounds.left - bounds.width / 2) <
+        1,
+      "도구 그룹이 탑바 중앙에 있지 않다",
+    );
+    assert(
+      end.right <= bounds.right && end.left >= bounds.left,
+      "메뉴 그룹 넘침",
+    );
+    if (innerWidth <= 420)
+      assert(
+        group.top >= title.getBoundingClientRect().bottom,
+        "좁은 화면에서 도구가 서비스명과 겹친다",
+      );
+    else
+      assert(
+        group.right <= end.left &&
+          group.left >= title.getBoundingClientRect().right,
+        "도구가 서비스명 또는 메뉴와 겹친다",
+      );
+  },
+]);
+checks.push([
   "모바일은 보조 정보를 접고 목록부터 보여주며 펼쳐도 재조회하지 않는다",
   async () => {
     const fold = root.querySelector<HTMLDetailsElement>(".dashboard-fold");
@@ -607,11 +654,15 @@ checks.push([
 checks.push([
   "필터 체크는 초안만 바꾸고 적용 버튼이 목록을 한 번 조회한다",
   async () => {
-    button("필터").click();
+    root
+      .querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')
+      ?.click();
+    button("뷰 편집").click();
     await tick();
-    const panel = document.querySelector<HTMLElement>(".filter-panel");
-    assert(panel, "팝오버 없음");
-    assert(panel.matches(":popover-open"), "팝오버 닫힘");
+    const panel = document.querySelector<HTMLDialogElement>(
+      ".workspace-view-modal[open]",
+    );
+    assert(panel, "뷰 편집 창 없음");
     const checkbox = panel.querySelector<HTMLInputElement>(
       '[aria-label="단계: 완료"]',
     );
@@ -640,7 +691,7 @@ checks.push([
         panel.querySelector(".sort-rule .select-trigger"),
       `선택 후 정렬 포커스 유실: ${document.activeElement?.tagName} ${document.activeElement?.getAttribute("aria-label")} popup=${panel.matches(":popover-open")}`,
     );
-    button("적용").click();
+    button("저장").click();
     await tick();
     assert(
       calls.filter((call) => call.pathname === "/api/issues").length ===
@@ -688,7 +739,7 @@ checks.push([
     ).find((button) => button.textContent === "선택 해제");
     assert(clear, "하위 담당자 선택 해제 없음");
     clear.click();
-    button("적용").click();
+    panel?.querySelector<HTMLButtonElement>('[aria-label="닫기"]')?.click();
     assert(
       app.list.effectiveBranch("TEST-1").assignees?.length === 0,
       "빈 선택을 상속으로 바꾸면 안 된다",
@@ -779,37 +830,44 @@ checks.push([
   "설정 모달은 다크 모드와 간단히 보기를 로컬에 저장한다",
   () => {
     button("설정").click();
-    const checks = root.querySelectorAll<HTMLInputElement>(
-      ":scope > .settings-modal input[type=radio]",
-    );
-    assert(checks.length === 7, "화면 표시 선택 카드 누락");
-    for (const label of ["테마 · 다크", "제목 표시 · 한 줄로"]) {
-      const check = root.querySelector<HTMLInputElement>(
-        `input[aria-label="${label}"]`,
+    try {
+      const checks = root.querySelectorAll<HTMLInputElement>(
+        ":scope > .settings-modal input[type=radio]",
       );
-      assert(check, "설정 필드 누락");
-      check.click();
+      assert(checks.length === 7, "화면 표시 선택 카드 누락");
+      for (const label of ["테마 · 다크", "제목 표시 · 한 줄로"]) {
+        const check = root.querySelector<HTMLInputElement>(
+          `input[aria-label="${label}"]`,
+        );
+        assert(check, "설정 필드 누락");
+        check.click();
+      }
+      assert(
+        !root.querySelector(":scope > .settings-modal .modal-footer"),
+        "설정 저장 푸터가 남는다",
+      );
+      assert(
+        root.querySelector<HTMLDialogElement>(":scope > .settings-modal")?.open,
+        "변경할 때 설정이 닫힌다",
+      );
+      assert(
+        JSON.parse(values.get(GLOBAL_SETTINGS_KEY) ?? "null")?.display.theme ===
+          "dark" &&
+          JSON.parse(values.get(GLOBAL_SETTINGS_KEY) ?? "null")?.display
+            .compactView === true,
+        "설정 즉시 적용 누락",
+      );
+      assert(
+        getComputedStyle(root).maxWidth === "none" &&
+          root.getBoundingClientRect().width ===
+            document.documentElement.clientWidth,
+        "전체 너비에 제한이 남는다",
+      );
+    } finally {
+      root
+        .querySelector<HTMLDialogElement>(":scope > .settings-modal")
+        ?.close();
     }
-    assert(
-      !root.querySelector(":scope > .settings-modal .modal-footer"),
-      "설정 저장 푸터가 남는다",
-    );
-    assert(
-      root.querySelector<HTMLDialogElement>(":scope > .settings-modal")?.open,
-      "변경할 때 설정이 닫힌다",
-    );
-    assert(
-      values.get("fastJira:theme") === "dark" &&
-        values.get("fastJira:compactView") === "true",
-      "설정 즉시 적용 누락",
-    );
-    assert(
-      getComputedStyle(root).maxWidth === "none" &&
-        root.getBoundingClientRect().width ===
-          document.documentElement.clientWidth,
-      "전체 너비에 제한이 남는다",
-    );
-    button("닫기").click();
   },
 ]);
 checks.push([
@@ -1843,7 +1901,11 @@ checks.push([
     const center =
       split.getBoundingClientRect().left +
       split.getBoundingClientRect().width / 2;
-    const leftGap = center - card.getBoundingClientRect().right;
+    const browse = root.querySelector<HTMLElement>(".browse");
+    assert(browse, "목록 영역 누락");
+    // 스크롤바 폭은 카드 여백과 분리해 비교한다.
+    const scrollbar = browse.offsetWidth - browse.clientWidth;
+    const leftGap = center - card.getBoundingClientRect().right - scrollbar;
     const rightGap =
       detail.getBoundingClientRect().left +
       parseFloat(getComputedStyle(detail).paddingLeft) -
@@ -1890,19 +1952,13 @@ checks.push([
         sort: "oldest",
       },
     );
-    await app.select("TEST-1");
-    const before = calls.filter(
-      (call) => call.pathname === "/api/children",
-    ).length;
-    const children = root.querySelector<HTMLDetailsElement>(".detail-children");
-    assert(children && !children.open, "상세 하위 펼침 누락");
-    assert(
-      calls.filter((call) => call.pathname === "/api/children").length ===
-        before,
-      "펼치기 전에 하위 조회",
-    );
     failChildren = true;
-    children.open = true;
+    await app.select("TEST-1");
+    const children = root.querySelector<HTMLElement>(".detail-children");
+    assert(
+      children && !children.matches("details"),
+      "상세 하위는 접기 없이 표시해야 한다",
+    );
     for (
       let attempt = 0;
       !children.textContent?.includes("다시 시도") && attempt < 100;
@@ -1914,7 +1970,7 @@ checks.push([
       "하위 조회 실패 복구 누락",
     );
     failChildren = false;
-    children.querySelector<HTMLButtonElement>("button")?.click();
+    children.querySelector<HTMLButtonElement>(".detail-child-more")?.click();
     for (
       let attempt = 0;
       !children.querySelector(".list-item") && attempt < 100;
@@ -1935,9 +1991,7 @@ checks.push([
     const loaded = calls.filter(
       (call) => call.pathname === "/api/children",
     ).length;
-    children.open = false;
-    await tick();
-    children.open = true;
+    app.list.updateMany([], new Set());
     await tick();
     assert(
       calls.filter((call) => call.pathname === "/api/children").length ===
@@ -1985,6 +2039,14 @@ checks.push([
       "AI 전달 범위 누락",
     );
     assert(content.textContent.includes("이 컴퓨터"), "보관 범위 누락");
+    assert(
+      !content.querySelector(".help-feature:is(button, a)"),
+      "기능 소개가 FAQ 링크로 동작함",
+    );
+    assert(
+      content.querySelectorAll(".faq-shortcuts dt").length === 3,
+      "단축키를 바로 확인할 수 없음",
+    );
     assert(button("시작 안내 다시 보기"), "시작 안내 경로 누락");
     button("닫기").click();
   },
@@ -2174,104 +2236,70 @@ checks.push([
   "완료 표시 설정은 즉시 적용하고 목록 재조회 없이 로컬에 저장한다",
   async () => {
     button("설정").click();
-    await tick();
-    const check = root.querySelector<HTMLInputElement>(
-      'input[aria-label="완료된 작업 · 목록"]',
-    );
-    assert(check, "완료 표시 옵션 누락");
-    const count = calls.filter(
-      (call) => call.pathname === "/api/issues",
-    ).length;
-    check.click();
-    await tick();
-    assert(
-      document.documentElement.dataset.compactDone ===
-        String(check.value === "1"),
-      "표시 적용 누락",
-    );
-    assert(
-      values.get("fastJira:compactDone") === String(check.value === "1"),
-      "로컬 저장 누락",
-    );
-    assert(
-      calls.filter((call) => call.pathname === "/api/issues").length === count,
-      "표시 변경에 불필요한 목록 조회",
-    );
-    button("닫기").click();
+    try {
+      await tick();
+      const check = root.querySelector<HTMLInputElement>(
+        'input[aria-label="완료된 작업 · 목록"]',
+      );
+      assert(check, "완료 표시 옵션 누락");
+      const count = calls.filter(
+        (call) => call.pathname === "/api/issues",
+      ).length;
+      check.click();
+      await tick();
+      assert(
+        document.documentElement.dataset.compactDone ===
+          String(check.value === "1"),
+        "표시 적용 누락",
+      );
+      assert(
+        JSON.parse(values.get(GLOBAL_SETTINGS_KEY) ?? "null")?.display
+          .compactDone ===
+          (check.value === "1"),
+        "로컬 저장 누락",
+      );
+      assert(
+        calls.filter((call) => call.pathname === "/api/issues").length ===
+          count,
+        "표시 변경에 불필요한 목록 조회",
+      );
+    } finally {
+      root
+        .querySelector<HTMLDialogElement>(":scope > .settings-modal")
+        ?.close();
+    }
   },
 ]);
 checks.push([
-  "프로젝트 선택은 별도 팝오버에서 적용하며 뷰와 검색 조건을 유지한다",
+  "프로젝트는 뷰에서 편집하고 메뉴에는 중복 진입점을 두지 않는다",
   async () => {
-    const beforeViews = JSON.stringify(app.views.state);
-    const beforeFilters = {
-      ...app.list.filters,
-      projects: [...app.list.filters.projects],
-    };
-    const beforeCalls = calls.filter(
-      (call) => call.pathname === "/api/issues",
-    ).length;
-    button("프로젝트 선택").click();
-    const projects = document.querySelector<HTMLElement>(".project-panel");
-    assert(projects, "프로젝트 팝오버 없음");
-    assert(projects.matches(":popover-open"), "프로젝트 팝오버 닫힘");
-    const check = projects.querySelector<HTMLInputElement>(
-      'input[type="checkbox"]',
-    );
-    assert(check?.checked, "기존 선택 미반영");
-    check.click();
+    button("메뉴").click();
     assert(
-      app.list.filters.projects.length === beforeFilters.projects.length,
-      "초안이 즉시 적용됨",
+      !root
+        .querySelector(".app-menu-panel button")
+        ?.textContent?.includes("프로젝트 선택"),
+      "메뉴에 프로젝트 선택이 남음",
     );
     assert(
-      calls.filter((call) => call.pathname === "/api/issues").length ===
-        beforeCalls,
-      "체크할 때 API 조회",
+      !document.querySelector(".project-panel"),
+      "별도 프로젝트 패널이 남음",
     );
-    button("취소").click();
-    button("프로젝트 선택").click();
+    button("메뉴").click();
+    const tab = root.querySelector<HTMLButtonElement>(
+      '[role="tab"][aria-selected="true"]',
+    );
+    assert(tab, "현재 뷰 없음");
+    tab.click();
+    button("뷰 편집").click();
+    const dialog = document.querySelector<HTMLDialogElement>(
+      ".workspace-view-modal",
+    );
+    assert(dialog?.open, "뷰 편집이 열리지 않음");
     assert(
-      projects.querySelector<HTMLInputElement>('input[type="checkbox"]')
-        ?.checked,
-      "취소된 초안이 남음",
+      dialog.querySelector('input[type="checkbox"]'),
+      "뷰의 프로젝트 선택 없음",
     );
-    button("선택 해제").click();
-    button("적용").click();
-    await tick();
-    assert(app.list.filters.projects.length === 0, "프로젝트 선택 해제 실패");
-    assert(
-      root.querySelectorAll(".activity-row").length === 0,
-      "선택 해제한 프로젝트의 활동이 남음",
-    );
-    assert(
-      calls.filter((call) => call.pathname === "/api/issues").length ===
-        beforeCalls,
-      "빈 프로젝트를 API로 조회",
-    );
-    button("프로젝트 선택").click();
-    button("전체 선택").click();
-    button("적용").click();
-    await tick();
-    assert(
-      calls.filter((call) => call.pathname === "/api/issues").length ===
-        beforeCalls + 1,
-      "프로젝트 적용 중복 조회",
-    );
-    assert(
-      JSON.stringify(app.views.state) === beforeViews,
-      "프로젝트 변경이 뷰 정의를 바꿈",
-    );
-    assert(
-      JSON.stringify(app.list.filters) === JSON.stringify(beforeFilters),
-      "프로젝트 적용이 다른 조건을 바꿈",
-    );
-    button("필터").click();
-    assert(
-      !document.querySelector('.view-settings input[aria-label^="프로젝트:"]'),
-      "뷰 안에 프로젝트 선택 잔존",
-    );
-    button("취소").click();
+    dialog.close();
   },
 ]);
 
@@ -2303,7 +2331,7 @@ checks.push([
     assert(follow && panel, "하위 목록 필터 상속 선택 없음");
     follow.click();
     await tick();
-    button("적용").click();
+    panel.querySelector<HTMLButtonElement>('[aria-label="닫기"]')?.click();
     await tick();
     app.closeDetail();
     const getAction = () =>
@@ -2340,7 +2368,7 @@ checks.push([
         ?.getAttribute("aria-expanded") === expanded,
       "뷰 클릭이 아코디언을 바꿈",
     );
-    button("취소").click();
+    panel.querySelector<HTMLButtonElement>('[aria-label="닫기"]')?.click();
     app.views.register(
       target,
       app.views.resolve(target, false),
@@ -3244,14 +3272,17 @@ checks.push([
     } finally {
       button("닫기").click();
     }
-    button("필터").click();
+    await app.select("TEST-1");
+    root.querySelector<HTMLButtonElement>(".detail-child-filter")?.click();
     await tick();
     try {
       spacing(".view-panel-head", "padding-top", small ? 8 : 16);
       spacing(".view-panel-body", "padding-top", small ? 8 : 16);
       spacing(".view-panel-body", "padding-left", small ? 10 : 20);
     } finally {
-      button("취소").click();
+      document
+        .querySelector<HTMLButtonElement>('.filter-panel [aria-label="닫기"]')
+        ?.click();
     }
   },
 ]);
@@ -3403,6 +3434,72 @@ checks.push([
       (await pending).destroy();
       host.remove();
       history.replaceState(null, "", location.pathname);
+    }
+  },
+]);
+
+checks.push([
+  "AI 최초 확인과 Jira 준비는 병렬로 시작하고 도구모음을 함께 표시한다",
+  async () => {
+    for (const ready of [true, false]) {
+      const host = element("div");
+      document.body.append(host);
+      let release!: () => void;
+      let identityStarted = false;
+      let statusCalls = 0;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const pending = createApp(
+        host,
+        {
+          ...api,
+          identity: async () => {
+            identityStarted = true;
+            return api.identity();
+          },
+          assistantStatus: async () => {
+            statusCalls++;
+            await waiting;
+            if (!ready) throw new Error("일시적인 연결 실패");
+            return {
+              ready: true,
+              models: [{ id: "test", name: "검사 모델", isDefault: true }],
+              error: "",
+            };
+          },
+        },
+        storage,
+      );
+      try {
+        await tick();
+        assert(
+          identityStarted && statusCalls === 1,
+          "AI와 Jira를 병렬로 확인하지 않음",
+        );
+        assert(
+          !host.querySelector(".top-nav"),
+          "AI 판별 전에 도구모음을 먼저 표시함",
+        );
+        release();
+        await pending;
+        const ai = host.querySelector<HTMLButtonElement>(
+          '[aria-label="AI 대화"]',
+        );
+        assert(
+          ai && ai.hidden === !ready,
+          "첫 화면의 AI 표시 여부가 판별과 다름",
+        );
+        assert(
+          host.querySelector(".workspace"),
+          "AI 확인 실패가 Jira 화면을 막음",
+        );
+        assert(statusCalls === 1, "초기 상태 확인 중복 호출");
+      } finally {
+        release();
+        (await pending).destroy();
+        host.remove();
+      }
     }
   },
 ]);

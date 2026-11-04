@@ -2,8 +2,7 @@ import { actionButton, element } from "./dom.ts";
 
 /** 시작 안내는 기존 설정 화면으로 연결하고 목록 사용을 막지 않는다. */
 export function gettingStarted(actions: {
-  projects: () => void;
-  filters: () => void;
+  view: () => void;
   display: () => void;
   finish: () => void;
 }) {
@@ -17,16 +16,10 @@ export function gettingStarted(actions: {
   const steps = element("ol", "getting-started-steps");
   for (const [label, icon, description, run] of [
     [
-      "프로젝트 선택",
-      "folder",
-      "현재 뷰에 볼 프로젝트를 골라요.",
-      actions.projects,
-    ],
-    [
-      "필터 설정",
-      "list-filter",
-      "내 작업과 필요한 단계만 모아요. 선택 사항이에요.",
-      actions.filters,
+      "뷰 설정",
+      "layers",
+      "프로젝트와 작업 조건을 한 번에 골라요.",
+      actions.view,
     ],
     [
       "화면 표시",

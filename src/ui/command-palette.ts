@@ -36,6 +36,7 @@ import { chatMessage } from "./chat-message.ts";
 import { createChatSidebar } from "./chat-sidebar.ts";
 import { copyText } from "./clipboard.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
+import { createFaqDialog } from "./faq.ts";
 import { popoverPosition } from "./geometry.ts";
 import type { CardOptions } from "./issue-card.ts";
 import { createSearchDialog } from "./search-dialog.ts";
@@ -358,6 +359,7 @@ export function createCommandPalette(config: {
     input.focus();
   });
   config.host.append(dialog, pickerDialog);
+  const faqDialog = createFaqDialog(config.host);
   let alive = true,
     busy = false,
     applying = false,
@@ -992,6 +994,7 @@ export function createCommandPalette(config: {
     )
       return;
     pickerDialog.close();
+    faqDialog.close();
     if (next === "search") {
       voice.stop();
       dialog.close();
@@ -1005,7 +1008,16 @@ export function createCommandPalette(config: {
       input.focus();
     }
   }
+  function openFaq(id?: string) {
+    if (!alive) return;
+    pickerDialog.close();
+    searchDialog.close();
+    dialog.close();
+    voice.stop();
+    faqDialog.open(id);
+  }
   const commandActions: Record<CommandId, () => void> = {
+    faq: () => openFaq(),
     create: () => {
       pickerDialog.close();
       config.create?.();
@@ -1021,7 +1033,7 @@ export function createCommandPalette(config: {
     commandMenu.replaceChildren(
       ...items.map((item) => {
         const button = actionButton(item.label, item.icon);
-        if (item.id !== "create")
+        if (item.id === "search" || item.id === "ai")
           button.append(
             element("kbd", "", formatShortcut(navigator.platform, item.id)),
           );
@@ -1037,6 +1049,7 @@ export function createCommandPalette(config: {
   function openCommands() {
     if (!alive) return;
     searchDialog.close();
+    faqDialog.close();
     dialog.close();
     voice.stop();
     commandQuery.value = "";
@@ -1156,6 +1169,7 @@ export function createCommandPalette(config: {
   return {
     open,
     openCommands,
+    openFaq,
     get busy() {
       return busy || applying || recording;
     },
@@ -1176,6 +1190,7 @@ export function createCommandPalette(config: {
       approvalPanel.destroy();
       window.removeEventListener("keydown", shortcut, true);
       searchDialog.destroy();
+      faqDialog.destroy();
       pickerDialog.close();
       pickerDialog.remove();
       if (dialog.open) dialog.close();

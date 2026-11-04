@@ -587,3 +587,37 @@ test("작업참여자 조회는 역할 이름 제한 없이 검색 가능한 모
   assert(conditions.includes("cf[92] = currentUser()"));
   assert(!conditions.includes("cf[93]"));
 });
+
+test("미지정 포함은 동적 사람 필드가 모두 빈 작업을 기존 사람 조건과 OR로 묶는다", async () => {
+  const { query } = setup(
+    () => Response.json({ issues: [] }),
+    [{ id: "customfield_12", name: "협업 담당", schema: { type: "user" } }],
+  );
+  const mine = await query.browseConditions({
+    ...options,
+    scope: "related",
+    includeUnassigned: true,
+  });
+  assert(
+    mine.includes(
+      "((assignee = currentUser() OR cf[12] = currentUser()) OR (assignee is EMPTY AND cf[12] is EMPTY))",
+    ),
+  );
+  const custom = await query.browseConditions({
+    ...options,
+    scope: "related",
+    assignees: "member-a",
+    includeUnassigned: true,
+  });
+  assert(
+    custom.includes(
+      '((assignee in ("member-a") OR cf[12] in ("member-a")) OR (assignee is EMPTY AND cf[12] is EMPTY))',
+    ),
+  );
+  const none = await query.browseConditions({
+    ...options,
+    assignees: "none",
+    includeUnassigned: true,
+  });
+  assert(none.includes("project is EMPTY"));
+});

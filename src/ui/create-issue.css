@@ -1,6 +1,7 @@
 .settings-modal.create-issue-dialog {
   width: min(720px, calc(100vw - 24px));
   padding: 0;
+  height: min(760px, calc(100dvh - 24px));
 }
 .create-issue-dialog .dialog-head {
   padding: var(--space-4);
@@ -9,6 +10,7 @@
 .create-issue-form {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-height: 0;
 }
 .create-issue-body {

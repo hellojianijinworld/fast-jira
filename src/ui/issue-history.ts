@@ -1,8 +1,8 @@
 import type { Api } from "../client/api.ts";
 import type { IssueDetails } from "../domain/details.ts";
-import { textDifference } from "../domain/text-diff.ts";
 import { actionButton, element, iconButton, uiIcon } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
+import { historyDiff } from "./history-diff.ts";
 import { avatar, personPill, relativeTime } from "./meta.ts";
 
 const fieldLabels: Record<string, string> = {
@@ -49,6 +49,7 @@ export function issueHistory(
   const head = element("div", "dialog-head");
   const close = iconButton("변경 기록 닫기", "x");
   function dismiss() {
+    closeComparison(false);
     panel.hidePopover();
     trigger.focus();
   }
@@ -65,50 +66,92 @@ export function issueHistory(
     more = actionButton("이전 기록", "chevron-right");
   const scroll = element("div", "history-scroll");
   const timeline = element("div"),
-    comparison = element("section", "history-diff");
-  comparison.hidden = true;
+    comparison = element("section", "history-diff history-diff-popover");
+  comparison.popover = "auto";
+  comparison.id = `history-diff-${key}`;
+  comparison.setAttribute("role", "dialog");
   timeline.append(entries, message, more);
-  scroll.append(timeline, comparison);
-  let previousScroll = 0;
+  scroll.append(timeline);
   let comparisonTrigger: HTMLButtonElement | undefined;
-  const back = actionButton("변경 기록으로", "undo-2", {
-    size: "sm",
-    variant: "ghost",
-  });
-  function closeComparison() {
-    comparison.hidden = true;
-    timeline.hidden = false;
-    scroll.scrollTop = previousScroll;
-    comparisonTrigger?.focus({ preventScroll: true });
+  let comparisonScroll = 0;
+  function position(width: number) {
+    Object.assign(
+      panel.style,
+      popoverPosition(trigger.getBoundingClientRect(), {
+        width,
+        maxHeight: 560,
+        viewportWidth: innerWidth,
+        viewportHeight: innerHeight,
+      }),
+    );
   }
-  back.addEventListener("click", closeComparison);
+  function closeComparison(restoreFocus = true) {
+    if (comparison.matches(":popover-open")) comparison.hidePopover();
+    comparisonTrigger?.setAttribute("aria-expanded", "false");
+    if (restoreFocus) comparisonTrigger?.focus({ preventScroll: true });
+  }
+  comparison.addEventListener("toggle", () => {
+    comparisonTrigger?.setAttribute(
+      "aria-expanded",
+      String(comparison.matches(":popover-open")),
+    );
+  });
+  comparison.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeComparison();
+  });
   function showComparison(
-    trigger: HTMLButtonElement,
+    anchor: HTMLButtonElement,
     label: string,
     from: string,
     to: string,
   ) {
-    previousScroll = scroll.scrollTop;
-    comparisonTrigger = trigger;
-    const diff = textDifference(from, to);
-    comparison.replaceChildren(back, element("h4", "", `${label} 변경 내용`));
-    for (const [title, value, changed, tag] of [
-      ["변경 전", from, diff.before, "del"],
-      ["변경 후", to, diff.after, "ins"],
-    ] as const) {
-      const block = element("section", "history-diff-block");
-      const text = element("pre");
-      text.append(diff.prefix, element(tag, "", changed), diff.suffix);
-      if (!value) text.replaceChildren(element("span", "muted", "없음"));
-      block.append(element("h5", "", title), text);
-      comparison.append(block);
-    }
-    timeline.hidden = true;
-    comparison.hidden = false;
-    scroll.scrollTop = 0;
-    back.focus();
+    if (comparisonTrigger === anchor && comparison.matches(":popover-open"))
+      return closeComparison();
+    closeComparison(false);
+    comparisonTrigger = anchor;
+    comparisonScroll = scroll.scrollTop;
+    const heading = element("div", "dialog-head");
+    const dismissDiff = iconButton("변경 비교 닫기", "x");
+    dismissDiff.setAttribute("aria-label", "변경 비교 닫기");
+    dismissDiff.addEventListener("click", () => closeComparison());
+    heading.append(element("h4", "", `${label} 변경 내용`), dismissDiff);
+    comparison.replaceChildren(heading, historyDiff(from, to));
+    comparison.setAttribute("aria-label", `${label} 변경 비교`);
+    const anchorRect = anchor.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const width = Math.min(1200, viewportWidth - 24),
+      height = Math.min(innerHeight * 0.8, innerHeight - 24);
+    const dx = anchorRect.left + anchorRect.width / 2 - viewportWidth / 2;
+    const dy = anchorRect.top + anchorRect.height / 2 - innerHeight / 2;
+    const horizontal = Math.abs(dx / width) > Math.abs(dy / height);
+    comparison.dataset.tailSide = horizontal
+      ? dx >= 0
+        ? "right"
+        : "left"
+      : dy >= 0
+        ? "bottom"
+        : "top";
+    const length = horizontal ? height : width;
+    const target = (horizontal ? dy : dx) + length / 2;
+    comparison.style.setProperty(
+      "--diff-tail-position",
+      `${Math.max(20, Math.min(length - 20, target))}px`,
+    );
+    comparison.showPopover();
+    anchor.setAttribute("aria-expanded", "true");
+    dismissDiff.focus({ preventScroll: true });
   }
-  panel.append(head, scroll);
+  const closeOnMove = (event: Event) => {
+    if (event.type === "scroll" && scroll.scrollTop === comparisonScroll)
+      return;
+    closeComparison(false);
+  };
+  scroll.addEventListener("scroll", closeOnMove, { passive: true });
+  window.addEventListener("resize", closeOnMove);
+  panel.append(head, scroll, comparison);
   if (reporter) {
     const footer = element("footer", "history-footer");
     footer.append(
@@ -151,19 +194,27 @@ export function issueHistory(
         row.append(author);
         for (const change of entry.changes) {
           const label = fieldLabels[change.field] ?? change.field;
-          const value = element("button", "history-change");
-          value.type = "button";
-          value.setAttribute("aria-label", `${label} 변경 비교`);
+          const value = element(
+            change.field === "description" ? "button" : "p",
+            "history-change",
+          );
           value.append(
             element("small", "history-field", label),
             element("span", "history-preview", change.from || "없음"),
             element("span", "history-arrow", "→"),
             element("span", "history-preview", change.to || "없음"),
-            uiIcon("chevron-right"),
           );
-          value.addEventListener("click", () =>
-            showComparison(value, label, change.from, change.to),
-          );
+          if (value instanceof HTMLButtonElement) {
+            value.type = "button";
+            value.setAttribute("aria-label", `${label} 변경 비교`);
+            value.setAttribute("aria-haspopup", "dialog");
+            value.setAttribute("aria-controls", comparison.id);
+            value.setAttribute("aria-expanded", "false");
+            value.append(uiIcon("chevron-right"));
+            value.addEventListener("click", () =>
+              showComparison(value, label, change.from, change.to),
+            );
+          }
           row.append(value);
         }
         entries.append(row);
@@ -193,16 +244,8 @@ export function issueHistory(
       panel.hidePopover();
       return;
     }
-    if (!comparison.hidden) closeComparison();
-    Object.assign(
-      panel.style,
-      popoverPosition(trigger.getBoundingClientRect(), {
-        width: 480,
-        maxHeight: 560,
-        viewportWidth: innerWidth,
-        viewportHeight: innerHeight,
-      }),
-    );
+    closeComparison(false);
+    position(480);
     panel.showPopover();
     close.focus();
     if (!loaded) void load();
@@ -222,6 +265,8 @@ export function issueHistory(
     },
     destroy() {
       alive = false;
+      window.removeEventListener("resize", closeOnMove);
+      closeComparison(false);
       if (panel.matches(":popover-open")) panel.hidePopover();
       panel.remove();
     },

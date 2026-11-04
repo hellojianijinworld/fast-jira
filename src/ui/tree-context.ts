@@ -11,6 +11,7 @@ export function createTreeContext(
   options: {
     scroller: () => HTMLElement;
     topInset?: () => number;
+    leading?: () => HTMLElement | undefined;
     items: () => ReadonlyMap<string, Issue>;
     projects: () => readonly ProjectOption[];
     select: (key: string) => void;
@@ -137,7 +138,9 @@ export function createTreeContext(
         trail.forEach((item, index) => {
           crumbs.push(breadcrumb(item, index < trail.length - 1));
         });
+        const leading = options.leading?.();
         nav.replaceChildren(
+          ...(leading ? [leading] : []),
           ...crumbs.map((crumb, index) => {
             const step = element("span", "tree-context-step");
             if (index) step.append(uiIcon("chevron-right"));

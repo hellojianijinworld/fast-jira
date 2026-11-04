@@ -58,11 +58,12 @@ export function enhanceSelect(
   panel.popover = "auto";
   panel.setAttribute("role", config.onSearch ? "dialog" : "listbox");
   panel.setAttribute("aria-label", label);
-  const choices = element("div");
+  const choices = element("div", "select-choices");
   const error = element("p", "error");
   error.hidden = true;
   error.setAttribute("role", "alert");
   let searchInput: HTMLInputElement | undefined;
+  let anchor: PopoverRect | undefined;
   let revision = 0,
     opening = false;
   if (config.onSearch) {
@@ -120,7 +121,7 @@ export function enhanceSelect(
     value.replaceChildren(
       option ? content(option) : document.createTextNode("선택"),
     );
-    if (isOpen()) render();
+    if (isOpen()) show(anchor ?? trigger.getBoundingClientRect(), false);
   }
   function render() {
     const focused = choices.contains(document.activeElement)
@@ -160,6 +161,7 @@ export function enhanceSelect(
     }
   }
   function show(rect: PopoverRect, focus = true) {
+    anchor = rect;
     render();
     Object.assign(
       panel.style,

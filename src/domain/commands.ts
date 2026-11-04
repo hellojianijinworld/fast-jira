@@ -18,6 +18,12 @@ export const commands = [
     icon: "sparkles",
     keywords: "ai 대화 요청 명령",
   },
+  {
+    id: "faq",
+    label: "FAQ 검색",
+    icon: "circle-help",
+    keywords: "faq 도움말 질문 사용법 안내",
+  },
 ] as const;
 export type CommandId = (typeof commands)[number]["id"];
 export function matchingCommands(query: string, aiAvailable = true) {
@@ -28,7 +34,7 @@ export function matchingCommands(query: string, aiAvailable = true) {
       `${item.label} ${item.keywords}`.toLocaleLowerCase().includes(term),
   );
 }
-export type ShortcutCommand = Exclude<CommandId, "create"> | "palette";
+export type ShortcutCommand = "search" | "ai" | "palette";
 const shortcutKeys = { search: "K", palette: "P", ai: "I" } as const;
 const isMac = (platform: string) => /Mac|iPhone|iPad/.test(platform);
 export function shortcutLabel(

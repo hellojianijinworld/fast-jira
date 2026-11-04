@@ -12,6 +12,8 @@ import { element } from "../src/ui/dom.ts";
 const host = document.querySelector<HTMLElement>("#fixture");
 if (!host) throw new Error("fixture missing");
 const results = document.querySelector("#results");
+let releaseMetadata: (() => void) | undefined;
+let delayMetadata = false;
 let failures = 0,
   created = "",
   writes = 0,
@@ -73,7 +75,11 @@ const api = createApi(async (path, init) => {
       { id: "2", name: "작업", hierarchyLevel: 0, project: "AA" },
       { id: "3", name: "서브태스크", hierarchyLevel: -1, project: "AA" },
     ]);
-  if (url.pathname === "/api/create-metadata")
+  if (url.pathname === "/api/create-metadata") {
+    if (delayMetadata)
+      await new Promise<void>((resolve) => {
+        releaseMetadata = resolve;
+      });
     return Response.json({
       project: url.searchParams.get("project"),
       type: url.searchParams.get("type"),
@@ -130,6 +136,7 @@ const api = createApi(async (path, init) => {
         },
       ],
     });
+  }
   if (url.pathname === "/api/create-parents")
     return Response.json({ issues: [issue], nextPageToken: null });
   if (url.pathname === "/api/create-users")
@@ -364,5 +371,31 @@ await check("명령 팔레트의 이슈 생성은 공통 생성 창으로 연결
   palette.destroy();
   await creator.open({ draft });
 });
+await check(
+  "생성 창은 필드 조회 전후에 높이가 변하지 않고 닫을 수 있다",
+  async () => {
+    delayMetadata = true;
+    const opening = creator.open({ project: "AA" });
+    await wait(() => !!releaseMetadata);
+    const dialog = required(
+      host.querySelector<HTMLDialogElement>(".create-issue-dialog"),
+    );
+    const before = dialog.getBoundingClientRect().height;
+    required(releaseMetadata)();
+    await opening;
+    assert(
+      Math.abs(dialog.getBoundingClientRect().height - before) < 1,
+      "필드 로딩 후 모달 높이 변경",
+    );
+    const close = required(
+      dialog.querySelector<HTMLButtonElement>(
+        '.dialog-head [aria-label="닫기"]',
+      ),
+    );
+    close.click();
+    assert(!dialog.open, "공통 닫기 동작 실패");
+    delayMetadata = false;
+  },
+);
 document.body.dataset.failures = String(failures);
 document.body.dataset.done = "true";

@@ -10,7 +10,12 @@ import { isRecord } from "./validation.ts";
 
 export type ViewDefinition = Pick<
   Filters,
-  "scope" | "sort" | "statuses" | "assignees" | "excludeDone"
+  | "scope"
+  | "sort"
+  | "statuses"
+  | "assignees"
+  | "excludeDone"
+  | "includeUnassigned"
 >;
 export type ViewBinding =
   | { kind: "default" }
@@ -51,6 +56,7 @@ export function normalizeView(value: ViewDefinition): ViewDefinition {
     statuses: normalizeSelection(value.statuses),
     assignees: normalizeSelection(value.assignees),
     excludeDone: value.excludeDone,
+    includeUnassigned: value.includeUnassigned === true,
   };
 }
 export function sameView(left: ViewDefinition, right: ViewDefinition): boolean {
@@ -248,6 +254,7 @@ export function migrateViews(
           statuses: effective.statuses,
           assignees: effective.assignees,
           excludeDone: effective.excludeDone,
+          ...(effective.includeUnassigned ? { includeUnassigned: true } : {}),
         },
       },
     );
@@ -280,6 +287,7 @@ function decodeDefinition(value: unknown): ViewDefinition {
     scope: value.scope as ViewDefinition["scope"],
     sort: value.sort,
     excludeDone: value.excludeDone,
+    includeUnassigned: value.includeUnassigned === true,
     statuses: selection(value.statuses, (id) => /^\d{1,20}$/.test(id)),
     assignees: selection(
       value.assignees,

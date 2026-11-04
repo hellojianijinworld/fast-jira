@@ -6,6 +6,7 @@ import type { ParticipantChange } from "../src/domain/participants.ts";
 import { issueParticipantFields } from "../src/domain/participants.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
 import { element } from "../src/ui/dom.ts";
+import { historyDiff } from "../src/ui/history-diff.ts";
 import { issueCard } from "../src/ui/issue-card.ts";
 import { issueDetail } from "../src/ui/issue-detail.ts";
 import { participantsField } from "../src/ui/participants.ts";
@@ -480,6 +481,50 @@ await check(
     assert(disabled, "늦은 검색 응답이 저장 중 선택을 활성화함");
   },
 );
+await check(
+  "참여자 검색은 목록 위에 유지되고 배지는 이름과 분리해 정렬한다",
+  async () => {
+    button("작업참여자 변경").click();
+    await wait();
+    button("개발 지정").click();
+    await wait();
+    const panel = host.querySelector<HTMLElement>(
+      ".select-options:popover-open",
+    );
+    const search = panel?.querySelector<HTMLElement>(".select-search");
+    const choices = panel?.querySelector<HTMLElement>(".select-choices");
+    assert(panel && search && choices, "검색 목록이 없음");
+    assert(
+      search.getBoundingClientRect().bottom <=
+        choices.getBoundingClientRect().top + 1,
+      "검색이 선택지 뒤로 밀림",
+    );
+    const option = choices.querySelector<HTMLElement>(
+      ".select-option:not(:disabled)",
+    );
+    assert(
+      option && choices.clientHeight >= option.getBoundingClientRect().height,
+      "늦게 도착한 후보가 처음 높이에 눌림",
+    );
+    const before = search.getBoundingClientRect().top;
+    choices.scrollTop = choices.scrollHeight;
+    assert(
+      Math.abs(search.getBoundingClientRect().top - before) < 1,
+      "검색창이 목록과 함께 스크롤됨",
+    );
+    const chip = host.querySelector<HTMLElement>(".participant-chip");
+    const avatar = chip?.querySelector<HTMLElement>(".avatar");
+    const name = chip?.querySelector<HTMLElement>(".person-name");
+    assert(
+      avatar &&
+        name &&
+        name.getBoundingClientRect().left >
+          avatar.getBoundingClientRect().right,
+      "아바타와 이름이 붙음",
+    );
+    await closeDialog();
+  },
+);
 view.destroy();
 host.replaceChildren();
 // 실제 상세 컴포넌트로 데스크톱·좁은 화면의 표시를 확인한다. 모든 통신은 위 모의 API로만 처리한다.
@@ -652,25 +697,112 @@ await check(
       preview.getBoundingClientRect().height < 48,
       "긴 원문이 요약 높이를 늘림",
     );
+    assert(
+      panel.querySelectorAll("button.history-change").length === 1,
+      "본문 외 필드에도 비교 버튼이 붙음",
+    );
+    const status = panel.querySelector("p.history-change");
+    assert(status?.textContent?.includes("대기"), "상태 변경의 이전 값 누락");
+    assert(
+      status?.textContent?.includes("진행 중") &&
+        !status.querySelector("button,svg") &&
+        !status.hasAttribute("aria-haspopup"),
+      "일반 필드가 여전히 비교 동작으로 표시됨",
+    );
     const requests = historyRequests;
     preview.focus();
     const previousScroll = scroll.scrollTop;
     preview.click();
     await wait();
     const diff = panel.querySelector<HTMLElement>(".history-diff");
-    assert(diff && !diff.hidden, "상세 비교 화면 없음");
-    const texts = [...diff.querySelectorAll("pre")];
+    assert(diff, "비교 팝오버 요소 누락");
+    assert(diff.matches(":popover-open"), "항목 비교 팝오버 없음");
     assert(
-      texts[0]?.textContent === oldDescription &&
-        texts[1]?.textContent === newDescription,
-      "원문이 유실됨",
+      Math.abs(
+        diff.getBoundingClientRect().width -
+          Math.min(1200, document.documentElement.clientWidth - 24),
+      ) < 2,
+      "Diff가 화면 폭을 활용하지 않거나 화면을 넘침",
+    );
+    const bounds = diff.getBoundingClientRect();
+    assert(
+      Math.abs(
+        bounds.left +
+          bounds.width / 2 -
+          document.documentElement.clientWidth / 2,
+      ) < 2 && Math.abs(bounds.top + bounds.height / 2 - innerHeight / 2) < 2,
+      "Diff가 화면 중앙에 있지 않음",
+    );
+    assert(
+      Math.abs(bounds.height - Math.min(innerHeight * 0.8, innerHeight - 24)) <
+        2,
+      "고정 80% 높이 미적용",
+    );
+    assert(
+      diff.dataset.tailSide &&
+        getComputedStyle(diff, "::before").content !== "none",
+      "트리거 방향의 말풍선 꼬리 누락",
+    );
+    assert(
+      panel.matches(":popover-open") &&
+        !scroll.firstElementChild?.hasAttribute("hidden"),
+      "비교를 열며 원래 기록 목록이 사라짐",
+    );
+    assert(
+      Math.abs(scroll.scrollTop - previousScroll) < 1,
+      "비교를 열며 목록 스크롤이 바뀜",
+    );
+    const beforeCells = [
+      ...diff.querySelectorAll<HTMLElement>('[data-side="before"] code'),
+    ];
+    const afterCells = [
+      ...diff.querySelectorAll<HTMLElement>('[data-side="after"] code'),
+    ];
+    const left = beforeCells[0]?.getBoundingClientRect(),
+      right = afterCells[0]?.getBoundingClientRect();
+    assert(
+      left &&
+        right &&
+        Math.abs(left.top - right.top) < 1 &&
+        right.left >= left.right,
+      "좌우 비교 정렬 실패",
+    );
+    assert(
+      beforeCells.map((cell) => cell.textContent).join("") === oldDescription &&
+        afterCells.map((cell) => cell.textContent).join("") === newDescription,
+      "원문 유실",
+    );
+    const inline = diff.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    assert(inline, "인라인 보기 전환 누락");
+    inline.checked = true;
+    inline.dispatchEvent(new Event("change", { bubbles: true }));
+    assert(
+      diff.querySelector('.history-diff-table[data-layout="inline"]'),
+      "인라인 보기 미적용",
+    );
+    assert(
+      diff.querySelectorAll(".history-diff-row > .history-diff-cell").length >
+        0,
+      "줄별 비교 누락",
+    );
+    inline.checked = false;
+    inline.dispatchEvent(new Event("change", { bubbles: true }));
+    assert(
+      diff.querySelector('.history-diff-table[data-layout="split"]'),
+      "좌우 보기 복원 실패",
     );
     assert(
       diff.querySelector("del") && diff.querySelector("ins"),
       "삭제·추가 강조 없음",
     );
     assert(
-      diff.scrollWidth <= scroll.clientWidth + 1,
+      (diff.querySelector<HTMLElement>(".history-diff-table")?.scrollWidth ??
+        0) <=
+        (diff.querySelector<HTMLElement>(".history-diff-table")?.clientWidth ??
+          0) +
+          1 && diff.getBoundingClientRect().right <= innerWidth,
       "상세 비교가 좁은 화면을 넘침",
     );
     const footer = panel.querySelector<HTMLElement>(".history-footer");
@@ -682,10 +814,23 @@ await check(
     );
     diff.querySelector<HTMLButtonElement>("button")?.click();
     assert(
-      diff.hidden &&
+      !diff.matches(":popover-open") &&
+        panel.matches(":popover-open") &&
         document.activeElement === preview &&
         Math.abs(scroll.scrollTop - previousScroll) < 1,
       "돌아올 때 포커스·스크롤이 사라짐",
+    );
+    preview.click();
+    diff.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    assert(
+      !diff.matches(":popover-open") && panel.matches(":popover-open"),
+      "Escape가 부모 변경 기록까지 닫음",
     );
     assert(historyRequests === requests, "상세 비교에 불필요한 조회 발생");
     assert(
@@ -700,6 +845,71 @@ await check(
     panel
       .querySelector<HTMLButtonElement>('[aria-label="변경 기록 닫기"]')
       ?.click();
+  },
+);
+await check(
+  "빈 마감일은 지정 없음으로 보이고 입력 중에는 날짜 편집을 유지한다",
+  () => {
+    const control = detail.element.querySelector<HTMLElement>(".date-control");
+    const input = control?.querySelector<HTMLInputElement>("input");
+    const label = control?.querySelector<HTMLElement>(".date-empty-label");
+    assert(control && input && label, "마감일 컨트롤 없음");
+    assert(
+      control.dataset.empty === "true" && label.textContent === "지정 없음",
+      "빈 마감일 안내 없음",
+    );
+    input.focus();
+    assert(
+      getComputedStyle(label).display === "none",
+      "안내가 날짜 편집을 가림",
+    );
+    input.blur();
+    assert(getComputedStyle(label).display !== "none", "빈 안내 복원 실패");
+  },
+);
+await check(
+  "Diff 보기 설정은 새 비교 화면에서도 유지하고 표시 설정을 덮지 않는다",
+  async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    };
+    const first = historyDiff("전\n유지", "후\n유지", storage);
+    host.append(first);
+    const checkbox = first.querySelector<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    assert(checkbox, "보기 체크박스 누락");
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    const second = historyDiff("다른 이슈 전", "다른 이슈 후", storage);
+    host.append(second);
+    assert(
+      second.querySelector<HTMLInputElement>("input")?.checked &&
+        second.querySelector('.history-diff-table[data-layout="inline"]'),
+      "다른 이슈에서 글로벌 설정 미복원",
+    );
+    const blocked = historyDiff("전", "후", {
+      getItem: () => null,
+      setItem: () => {
+        throw Error("blocked");
+      },
+    });
+    host.append(blocked);
+    const input = blocked.querySelector<HTMLInputElement>("input");
+    assert(input, "쓰기 실패 검사 누락");
+    input.checked = true;
+    input.dispatchEvent(new Event("change"));
+    assert(
+      !blocked.querySelector<HTMLElement>('[role="status"]')?.hidden,
+      "설정 저장 실패 누락",
+    );
+    first.remove();
+    second.remove();
+    blocked.remove();
   },
 );
 document.body.dataset.result = failures ? "failed" : "passed";

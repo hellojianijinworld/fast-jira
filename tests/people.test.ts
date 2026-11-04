@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { createApi } from "../src/client/api.ts";
 import { branchDefaults, type Filters } from "../src/domain/filters.ts";
 import { passesChild } from "../src/domain/list.ts";
+import { listCacheKey } from "../src/domain/list-snapshot.ts";
 import { personFilter, personSelection } from "../src/domain/people.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
 
@@ -174,4 +176,51 @@ test("로컬 참여자 필터는 카드와 동일한 사람 필드를 쓰고 옛
   assert(passesChild(issue, settings, "me"));
   assert(!passesChild(issue, { ...settings, assignees: ["unassigned"] }, "me"));
   assert(!passesChild(issue, { ...settings, people: "assigned" }, "me"));
+});
+
+test("선택한 관계자 또는 아무 관계자도 없는 작업을 함께 보되 다른 사람의 작업은 제외한다", () => {
+  const settings = {
+    ...branchDefaults({ ...filters, includeUnassigned: true }),
+    projects: filters.projects,
+  };
+  const empty = emptyIssue("TEST-2");
+  assert(passesChild(empty, settings, "me"));
+  assert(passesChild({ ...empty, assigneeId: "me" }, settings, "me"));
+  assert(!passesChild({ ...empty, assigneeId: "other" }, settings, "me"));
+  assert(!passesChild({ ...empty, relatedUserIds: ["other"] }, settings, "me"));
+  assert(
+    !passesChild(
+      { ...empty, statusId: "2" },
+      { ...settings, statuses: ["1"] },
+      "me",
+    ),
+  );
+  assert(!passesChild(empty, { ...settings, assignees: [] }, "me"));
+  assert(passesChild(empty, { ...settings, assignees: ["member-a"] }, "me"));
+});
+
+test("미지정 포함 캐시는 분리하고 하위 요청은 글로벌 값 대신 하위 조건을 전달한다", async () => {
+  assert.notEqual(
+    listCacheKey(filters),
+    listCacheKey({ ...filters, includeUnassigned: true }),
+  );
+  const calls: URL[] = [];
+  const api = createApi(async (input) => {
+    calls.push(new URL(String(input), "http://fixture"));
+    return Response.json({ issues: [], ancestors: [], nextPageToken: null });
+  });
+  await api.issues({ ...filters, includeUnassigned: true });
+  await api.children(
+    "TEST-1",
+    { ...filters, includeUnassigned: true },
+    branchDefaults(filters),
+  );
+  await api.children(
+    "TEST-1",
+    filters,
+    branchDefaults({ ...filters, includeUnassigned: true }),
+  );
+  assert.equal(calls[0]?.searchParams.get("includeUnassigned"), "true");
+  assert.equal(calls[1]?.searchParams.has("includeUnassigned"), false);
+  assert.equal(calls[2]?.searchParams.get("includeUnassigned"), "true");
 });

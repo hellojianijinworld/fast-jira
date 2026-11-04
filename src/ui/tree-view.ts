@@ -25,6 +25,10 @@ export interface TreeCallbacks {
   viewInfo?: (key: string) => ViewInfo;
   onTreeChange: () => void;
   decorate?: (issue: Issue, card: HTMLElement) => HTMLElement;
+  selectionGroup?: (
+    parent: string,
+    keys: readonly string[],
+  ) => HTMLElement | null;
 }
 /** 트리 표시와 스크롤 관측만 담당한다. 페이지·필터·접힘 상태는 controller가 보관한다. */
 export function createTreeView(
@@ -357,6 +361,18 @@ export function createTreeView(
               });
               placeholder.append(button);
               nested.append(placeholder);
+            }
+            const keys = [
+              ...nested.querySelectorAll<HTMLInputElement>("[data-select-key]"),
+            ]
+              .filter((check) => !check.closest("[hidden]"))
+              .map((check) => check.dataset.selectKey ?? "");
+            const selection = callbacks.selectionGroup?.(issue.key, keys);
+            if (selection) {
+              const row = element("li");
+              row.dataset.treeKey = "selection";
+              row.append(selection);
+              nested.prepend(row);
             }
             if (nested.children.length) item.append(nested);
           }

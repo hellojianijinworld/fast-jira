@@ -15,6 +15,7 @@ export interface BrowseOptions {
   excludeDone: boolean;
   statuses: string;
   assignees: string;
+  includeUnassigned?: boolean;
 }
 export interface IssuePage {
   issues: Issue[];
@@ -122,11 +123,14 @@ export function createJiraQuery(
             ...(await relatedFields()).map((id) => `cf[${id.slice(12)}]`),
           ]
         : ["assignee"];
-    if (assignees) conditions.push(assigneeCondition(assignees, fields));
-    else if (scope !== "all")
-      conditions.push(
-        `(${fields.map((field) => `${field} = currentUser()`).join(" OR ")})`,
-      );
+    let peopleCondition = assignees
+      ? assigneeCondition(assignees, fields)
+      : scope !== "all"
+        ? `(${fields.map((field) => `${field} = currentUser()`).join(" OR ")})`
+        : "";
+    if (options.includeUnassigned && peopleCondition && assignees !== "none")
+      peopleCondition = `(${peopleCondition} OR (${fields.map((field) => `${field} is EMPTY`).join(" AND ")}))`;
+    if (peopleCondition) conditions.push(peopleCondition);
     if (excludeDone) conditions.push("statusCategory != Done");
     if (statuses) conditions.push(statusCondition(statuses));
     if (q) {

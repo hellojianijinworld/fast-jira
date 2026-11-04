@@ -49,6 +49,17 @@ export function createBulkSelection(config: {
     menu?.destroy();
     menu = null;
   }
+  function syncGroup(check: HTMLInputElement) {
+    const keys = (check.dataset.selectGroup ?? "").split(",").filter(Boolean);
+    const count = keys.filter((key) => selected.has(key)).length;
+    check.checked = keys.length > 0 && count === keys.length;
+    check.indeterminate = count > 0 && count < keys.length;
+    check.setAttribute(
+      "aria-checked",
+      check.indeterminate ? "mixed" : String(check.checked),
+    );
+    check.disabled = busy;
+  }
   function sync() {
     bar.hidden = !active;
     config.toggle.setAttribute("aria-pressed", String(active));
@@ -63,6 +74,10 @@ export function createBulkSelection(config: {
       check.checked = selected.has(check.dataset.selectKey ?? "");
       check.disabled = busy;
     }
+    for (const check of config.host.querySelectorAll<HTMLInputElement>(
+      "[data-select-group]",
+    ))
+      syncGroup(check);
   }
   function reset() {
     if (busy) return;
@@ -70,15 +85,20 @@ export function createBulkSelection(config: {
     closeEditor();
     sync();
   }
-  function choose(key: string, checked: boolean) {
+  function choose(keys: readonly string[], checked: boolean) {
     if (busy) return;
-    if (checked && !selected.has(key) && selected.size >= 50) {
+    const next = new Set(selected);
+    for (const key of keys) {
+      if (checked) next.add(key);
+      else next.delete(key);
+    }
+    if (next.size > 50) {
       config.notice("한 번에 최대 50개까지 선택할 수 있어요.");
       sync();
       return;
     }
-    if (checked) selected.add(key);
-    else selected.delete(key);
+    selected.clear();
+    for (const key of next) selected.add(key);
     closeEditor();
     sync();
   }
@@ -314,6 +334,18 @@ export function createBulkSelection(config: {
   sync();
   return {
     reset,
+    groupControl(parent: string, keys: readonly string[]): HTMLElement | null {
+      if (!active || !keys.length) return null;
+      const label = element("label", "bulk-group-select"),
+        check = element("input");
+      check.type = "checkbox";
+      check.dataset.selectGroup = [...new Set(keys)].join(",");
+      check.setAttribute("aria-label", `${parent} 표시된 하위 전체 선택`);
+      syncGroup(check);
+      check.addEventListener("change", () => choose(keys, check.checked));
+      label.append(check, document.createTextNode("하위 전체 선택"));
+      return label;
+    },
     decorate(issue: Issue, card: HTMLElement): HTMLElement {
       if (!active) return card;
       const wrapper = element("div", "bulk-card"),
@@ -323,7 +355,9 @@ export function createBulkSelection(config: {
       check.setAttribute("aria-label", `${issue.key} 선택`);
       check.checked = selected.has(issue.key);
       check.disabled = busy;
-      check.addEventListener("change", () => choose(issue.key, check.checked));
+      check.addEventListener("change", () =>
+        choose([issue.key], check.checked),
+      );
       card.addEventListener(
         "click",
         (event) => {
@@ -334,7 +368,7 @@ export function createBulkSelection(config: {
             return;
           event.preventDefault();
           event.stopImmediatePropagation();
-          choose(issue.key, !selected.has(issue.key));
+          choose([issue.key], !selected.has(issue.key));
         },
         { capture: true },
       );

@@ -416,6 +416,8 @@ export function createApi(fetcher: typeof fetch = fetch) {
       params.set("key", key);
       params.set("sort", settings.sort);
       params.set("people", settings.people);
+      params.delete("includeUnassigned");
+      if (settings.includeUnassigned) params.set("includeUnassigned", "true");
       params.set("excludeDone", String(settings.excludeDone));
       params.set("statuses", selectionParameter(settings.statuses));
       params.set("assignees", selectionParameter(settings.assignees));

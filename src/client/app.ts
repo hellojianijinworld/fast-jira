@@ -23,7 +23,13 @@ import { createBulkSelection } from "../ui/bulk-selection.ts";
 import { createCommandPalette } from "../ui/command-palette.ts";
 import { connectionForm } from "../ui/connection.ts";
 import { createIssueDialog } from "../ui/create-issue.ts";
-import { actionButton, element, externalLink, iconButton } from "../ui/dom.ts";
+import {
+  actionButton,
+  element,
+  externalLink,
+  iconButton,
+  uiIcon,
+} from "../ui/dom.ts";
 import { favoriteButton, updateFavoriteButton } from "../ui/favorite-button.ts";
 import { feedbackContent } from "../ui/feedback.ts";
 import { createFilterPanel } from "../ui/filter-panel.ts";
@@ -36,7 +42,6 @@ import { keyedContent } from "../ui/keyed-content.ts";
 import { refreshRelativeTimes } from "../ui/meta.ts";
 import { showModal } from "../ui/modal.ts";
 import { createNotice } from "../ui/notice.ts";
-import { createProjectPanel } from "../ui/project-panel.ts";
 import { settingsContent } from "../ui/settings.ts";
 import { createSplitPane } from "../ui/split-pane.ts";
 import { createTreeContext } from "../ui/tree-context.ts";
@@ -72,12 +77,15 @@ export async function createApp(
   updates?: AppUpdateUi,
 ) {
   const assistantConnection = createAssistantConnection(api.assistantStatus);
+  const initialAssistant = assistantConnection.refresh();
   const nav = element("header", "top-nav"),
-    tools = element("div", "nav-tools");
+    center = element("div", "nav-center"),
+    tools = element("div", "nav-tools"),
+    menuActions = element("div", "nav-actions");
+  tools.setAttribute("role", "group");
+  tools.setAttribute("aria-label", "이슈 도구");
   const searchToggle = iconButton("검색", "search"),
     aiToggle = iconButton("AI 대화", "sparkles"),
-    projects = actionButton("프로젝트 선택", "folder", { variant: "ghost" }),
-    filters = iconButton("필터", "list-filter"),
     help = actionButton("이용 안내", "circle-help", { variant: "ghost" }),
     settings = actionButton("설정", "settings", { variant: "ghost" }),
     selection = iconButton("이슈 선택 모드", "check");
@@ -95,9 +103,9 @@ export async function createApp(
   const checkUpdate = actionButton("업데이트 확인", "circle-arrow-up", {
     variant: "ghost",
   });
-  const github = externalLink(PRODUCT_URL, "GitHub");
+  const github = externalLink(PRODUCT_URL);
+  github.append(uiIcon("github"), document.createTextNode("GitHub"));
   const appMenu = createAppMenu([
-    projects,
     settings,
     ...(updates ? [checkUpdate] : []),
     null,
@@ -105,10 +113,15 @@ export async function createApp(
     feedback,
     github,
   ]);
-  tools.append(searchToggle, aiToggle, filters, selection);
-  if (updates) tools.append(updates.trigger);
-  tools.append(appMenu.element);
-  nav.append(element("h1", "", "Fast Jira"), tools);
+  tools.append(searchToggle, aiToggle, selection);
+  if (updates) menuActions.append(updates.trigger);
+  menuActions.append(appMenu.element);
+  center.append(tools);
+  const brand = element("h1", "app-brand"),
+    mascot = element("span", "brand-mascot", "🦓");
+  mascot.setAttribute("aria-hidden", "true");
+  brand.append(mascot, element("span", "brand-name", "Fast Jira"));
+  nav.append(brand, center, menuActions);
   const workspace = element("main", "workspace"),
     browse = element("section", "browse");
   const searchInfo = element("div", "search-info"),
@@ -140,12 +153,11 @@ export async function createApp(
   const noticeHost = element("div"),
     notice = createNotice(noticeHost);
   workspace.append(browse, splitter, side);
-  root.replaceChildren(nav, workspace, noticeHost, mobile, popup);
   nav.setAttribute("aria-busy", "true");
-  for (const button of tools.querySelectorAll("button")) button.disabled = true;
-  const checking = element("p", "empty", "Jira 연결을 확인하는 중…");
+  for (const button of nav.querySelectorAll("button")) button.disabled = true;
+  const checking = element("p", "empty", "연결을 확인하는 중…");
   checking.setAttribute("role", "status");
-  listHost.append(checking);
+  root.replaceChildren(checking);
   const identity = await api.identity(),
     store = createAccountStore(storage, identity.site, identity.me.accountId);
   const freshBootstrap = api.bootstrap();
@@ -157,6 +169,9 @@ export async function createApp(
     bootstrap.me.accountId !== identity.me.accountId
   )
     throw new Error("연결 계정이 바뀌었어요. 새로고침해 주세요.");
+  await initialAssistant;
+  aiToggle.hidden = !assistantConnection.snapshot.chat;
+  root.replaceChildren(nav, workspace, noticeHost, mobile, popup);
   let preferences = readPreferences(storage),
     selectedKey = "",
     detailRevision = 0,
@@ -182,7 +197,6 @@ export async function createApp(
     workspaceNavigation?.render();
   }
   const globalView = { kind: "global" } as const;
-  let syncingViews = false;
   const views = createViewController(activeWorkspace(workspaces).views, {
     beforeChange: () => {
       if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
@@ -196,7 +210,7 @@ export async function createApp(
       ),
     statuses: () => catalog.statuses,
     changed: (conditionsChanged) => {
-      if (syncingViews || destroyed) return;
+      if (destroyed) return;
       if (conditionsChanged) {
         bulk.reset();
       }
@@ -223,8 +237,7 @@ export async function createApp(
     types: cached?.catalog.types ?? [],
   };
   nav.removeAttribute("aria-busy");
-  for (const button of tools.querySelectorAll("button"))
-    button.disabled = false;
+  for (const button of nav.querySelectorAll("button")) button.disabled = false;
 
   const split = createSplitPane(workspace, splitter, layout, storage);
   let render = () => {};
@@ -714,6 +727,7 @@ export async function createApp(
     copied: notice.show,
     catalog: () => catalog,
     decorate: bulk.decorate,
+    selectionGroup: bulk.groupControl,
     compactDone: () => preferences.compactDone,
     compactDoneParents: () => preferences.compactDone,
     selectedKey: () => selectedKey,
@@ -725,9 +739,8 @@ export async function createApp(
     onTreeChange: () => store.saveTree(list.tree.states, list.tree.version),
   });
   const treeContext = createTreeContext(browse, listHost, {
+    leading: () => workspaceNavigation?.switcher,
     scroller: () => (layout.matches ? workspace : browse),
-    topInset: () =>
-      layout.matches ? (workspaceNavigation?.element.offsetHeight ?? 0) : 0,
     items: list.visibleItems,
     projects: () => catalog.projects,
     select: (key) => {
@@ -738,7 +751,6 @@ export async function createApp(
     filters: () => list.filters,
     catalog: () => catalog,
     catalogProjects: () => catalogProjects,
-    viewName: () => activeWorkspace(workspaces).name,
     views,
     onCatalog: (next, projects) => {
       if (
@@ -749,45 +761,6 @@ export async function createApp(
       catalog = next;
       catalogProjects = [...projects];
       render();
-    },
-    onApply: (filters, nextCatalog, commit) => {
-      if (bulk.busy) throw new Error("일괄 변경이 끝난 뒤 뷰를 변경하세요.");
-      syncingViews = true;
-      try {
-        commit();
-      } finally {
-        syncingViews = false;
-      }
-      const next = { ...filters, ...views.resolve(globalView, false) };
-      catalog = nextCatalog;
-      store.saveFilters(next, true);
-      if (JSON.stringify(next) !== JSON.stringify(list.filters)) {
-        bulk.reset();
-        void list.load(next);
-      } else render();
-    },
-  });
-  const projectPanel = createProjectPanel({
-    projects: () => catalog.projects,
-    selected: () => list.filters.projects,
-    viewName: () => activeWorkspace(workspaces).name,
-    apply: (projects) => {
-      if (bulk.busy)
-        throw new Error("일괄 변경이 끝난 뒤 프로젝트를 변경하세요.");
-      if (
-        [...projects].sort().join(",") ===
-        [...list.filters.projects].sort().join(",")
-      )
-        return;
-      const next = { ...list.filters, projects };
-      saveWorkspaces(
-        saveWorkspace(workspaces, { ...activeWorkspace(workspaces), projects }),
-      );
-      store.saveFilters(next, true);
-      bulk.reset();
-      void list.load(next);
-      void refreshCatalog(projects);
-      void activity.check(projects);
     },
   });
   const workspaceOptions = createViewOptions(api, () => ({
@@ -812,7 +785,6 @@ export async function createApp(
       return;
     }
     panel.close();
-    projectPanel.close();
     bulk.reset();
     if (before.id !== after.id) closeDetail();
     const query = {
@@ -874,7 +846,7 @@ export async function createApp(
     remove: (id) => applyWorkspace(deleteWorkspace(workspaces, id)),
     error: notice.show,
   });
-  workspace.prepend(workspaceNavigation.element);
+  center.prepend(workspaceNavigation.element);
   browse.id = "workspace-list";
   browse.setAttribute("role", "tabpanel");
   render = () => {
@@ -922,18 +894,6 @@ export async function createApp(
       clear.addEventListener("click", clearSearch);
       searchInfo.append(element("span", "", `검색: ${query}`), clear);
     }
-    projects.classList.toggle(
-      "active",
-      list.filters.projects.length !== catalog.projects.length,
-    );
-    filters.classList.toggle(
-      "active",
-      list.filters.scope !== "all" ||
-        list.filters.excludeDone ||
-        list.filters.statuses !== null ||
-        list.filters.assignees !== null ||
-        list.filters.sort !== "recent",
-    );
     if (anchors.length)
       restoreViewportAnchor(listHost, listScroller(), anchors);
   };
@@ -996,14 +956,10 @@ export async function createApp(
     aiToggle.hidden = !state.chat;
     if (!state.checking) commands.refreshAvailability();
   });
-  void assistantConnection.refresh();
   searchToggle.addEventListener("click", () => commands.open("search"));
   aiToggle.addEventListener("click", () => commands.open("ai"));
-  projects.addEventListener("click", () => projectPanel.open(appMenu.trigger));
-  filters.addEventListener("click", () => panel.open(filters));
   const guide = gettingStarted({
-    projects: () => projectPanel.open(appMenu.trigger),
-    filters: () => panel.open(filters),
+    view: () => workspaceNavigation?.editCurrent(),
     display: () => showSettings(),
     finish: () => {
       store.saveFilters(list.filters, true);
@@ -1065,7 +1021,7 @@ export async function createApp(
   help.addEventListener("click", () => {
     showModal(popup, {
       title: "Fast Jira 이용 안내",
-      content: helpContent({ start: showGuide }),
+      content: helpContent({ start: showGuide, faq: commands.openFaq }),
     });
   });
   mobile.addEventListener("cancel", (event) => {
@@ -1285,7 +1241,6 @@ export async function createApp(
       layout.removeEventListener("change", changeLayout);
       window.removeEventListener("popstate", popstate);
       panel.destroy();
-      projectPanel.destroy();
       appMenu.destroy();
       workspaceNavigation?.destroy();
       updates?.trigger.removeEventListener("click", showUpdates);

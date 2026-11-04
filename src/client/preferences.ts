@@ -27,6 +27,8 @@ import {
   type WorkspaceViews,
 } from "../domain/workspace-views.ts";
 
+import { readGlobalSettings, updateGlobalSettings } from "./global-settings.ts";
+
 export type LocalStore = Pick<Storage, "getItem" | "setItem">;
 export interface Preferences {
   theme: "light" | "dark" | "system";
@@ -34,31 +36,14 @@ export interface Preferences {
   compactDone: boolean;
 }
 export function readPreferences(storage: LocalStore): Preferences {
-  try {
-    const theme = storage.getItem("fastJira:theme");
-    return {
-      theme: theme === "dark" || theme === "system" ? theme : "light",
-      compactView: storage.getItem("fastJira:compactView") === "true",
-      compactDone:
-        (storage.getItem("fastJira:compactDone") ??
-          storage.getItem("fastJira:compactDoneParents")) !== "false",
-    };
-  } catch {
-    return {
-      theme: "light",
-      compactView: false,
-      compactDone: true,
-    };
-  }
+  return readGlobalSettings(storage).display;
 }
 export function writePreferences(
   storage: LocalStore,
   preferences: Preferences,
 ): void {
   try {
-    storage.setItem("fastJira:theme", preferences.theme);
-    storage.setItem("fastJira:compactView", String(preferences.compactView));
-    storage.setItem("fastJira:compactDone", String(preferences.compactDone));
+    updateGlobalSettings(storage, { display: preferences });
   } catch {
     /* 저장을 거부해도 현재 화면 설정은 적용한다. */
   }
@@ -192,6 +177,9 @@ export function createAccountStore(
             ? saved.scope
             : "related",
         excludeDone: saved.excludeDone === true,
+        ...(saved.includeUnassigned === true
+          ? { includeUnassigned: true }
+          : {}),
         sort: validSort(saved.sort) ? saved.sort : "recent",
         statuses: selection(saved.statuses, statusId),
         assignees: selection(saved.assignees, assigneeId),

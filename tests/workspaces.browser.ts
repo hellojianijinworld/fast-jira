@@ -8,6 +8,7 @@ import { emptyIssue } from "../src/domain/wire.ts";
 import { activeWorkspace } from "../src/domain/workspace-views.ts";
 import { appUpdate } from "../src/ui/app-update.ts";
 import { element } from "../src/ui/dom.ts";
+import { createWorkspaceNavigation } from "../src/ui/workspace-views.ts";
 import { activityXML } from "./activity-fixture.ts";
 import "../src/client/styles.css";
 
@@ -39,6 +40,7 @@ const api = createApi(async (input, init) => {
   const url = new URL(String(input), location.origin);
   calls.push(url);
   switch (url.pathname) {
+    case "/api/identity":
     case "/api/projects":
       return Response.json({
         site: "fixture.atlassian.net",
@@ -232,36 +234,17 @@ await check(
       const guide = host.querySelector<HTMLElement>(".getting-started");
       assert(guide && !guide.hidden, "최초 안내 누락");
       assert(!host.querySelector("dialog[open]"), "안내가 목록을 가림");
-      button("프로젝트 선택", guide).click();
-      assert(
-        document.querySelector(".project-panel:popover-open"),
-        "프로젝트 선택 경로 누락",
+      button("뷰 설정", guide).click();
+      const viewDialog = document.querySelector<HTMLDialogElement>(
+        ".workspace-view-modal[open]",
       );
+      assert(viewDialog, "뷰 편집 창 누락");
+      assert(
+        viewDialog.querySelector(".project-checks"),
+        "현재 뷰의 프로젝트 편집 경로 누락",
+      );
+      button("취소", viewDialog).click();
       await wait();
-      const menuTrigger = button("메뉴", host);
-      const projectsPanel = document.querySelector<HTMLElement>(
-        ".project-panel:popover-open",
-      );
-      assert(
-        menuTrigger.getAttribute("aria-controls") === projectsPanel?.id &&
-          menuTrigger.getAttribute("aria-expanded") === "true",
-        "프로젝트 선택의 앵커 상태가 메뉴 닫기로 덮임",
-      );
-      button(
-        "취소",
-        document.querySelector(".project-panel:popover-open") as HTMLElement,
-      ).click();
-      menuTrigger.click();
-      assert(
-        menuTrigger.getAttribute("aria-controls") ===
-          host.querySelector(".app-menu-panel")?.id,
-        "메뉴를 다시 열 때 controls가 복원되지 않음",
-      );
-      host
-        .querySelector<HTMLElement>(".app-menu-panel")
-        ?.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-        );
 
       button("화면 표시", guide).click();
       assert(
@@ -515,77 +498,66 @@ await check(
     );
   },
 );
-await check(
-  "상단 필터는 현재 탭만 편집하고 다른 탭은 바꾸지 않는다",
-  async () => {
-    const count = calls.filter((url) => url.pathname === "/api/issues").length;
-    button("필터").click();
-    await wait();
-    const panel = document.querySelector<HTMLElement>(
-      ".filter-panel:not(.project-panel):popover-open",
-    );
-    assert(panel, "현재 탭 필터");
-    assert(
-      panel
-        .querySelector(".view-panel-scope")
-        ?.textContent?.includes("‘진행 확인’") === true,
-      "필터 적용 탭 안내",
-    );
-    assert(
-      !panel.querySelector('[aria-label="사용할 뷰"], [aria-label="뷰 이름"]'),
-      "중복 뷰 UI",
-    );
-    const stage = panel.querySelector<HTMLInputElement>(
-      '[aria-label="단계: 대기"]',
-    );
-    assert(stage, "단계 편집");
-    stage.click();
-    assert(
-      calls.filter((url) => url.pathname === "/api/issues").length === count,
-      "초안에서 재조회",
-    );
-    button("적용", panel).click();
-    await wait();
-    assert(
-      JSON.stringify(app.list.filters.statuses) === '["1","2"]',
-      "현재 탭 저장",
-    );
-    button("디자인 작업").click();
-    await wait();
-    assert(app.list.filters.statuses === null, "다른 탭 조건 변경");
-    button("진행 확인").click();
-    await wait();
-    assert(
-      JSON.stringify(app.list.filters.statuses) === '["1","2"]',
-      "첫 탭 조건 복원",
-    );
-  },
-);
+await check("뷰 편집은 현재 탭 조건만 바꾸고 다른 탭은 유지한다", async () => {
+  const count = calls.filter((url) => url.pathname === "/api/issues").length;
+  button("진행 확인").click();
+  button("뷰 편집").click();
+  await wait();
+  const panel = document.querySelector<HTMLElement>(
+    ".workspace-view-modal[open]",
+  );
+  assert(panel, "현재 탭 필터");
+  const stage = panel.querySelector<HTMLInputElement>(
+    '[aria-label="단계: 대기"]',
+  );
+  assert(stage, "단계 편집");
+  stage.click();
+  assert(
+    calls.filter((url) => url.pathname === "/api/issues").length === count,
+    "초안에서 재조회",
+  );
+  button("저장", panel).click();
+  await wait();
+  assert(
+    JSON.stringify(app.list.filters.statuses) === '["1","2"]',
+    "현재 탭 저장",
+  );
+  button("디자인 작업").click();
+  await wait();
+  assert(app.list.filters.statuses === null, "다른 탭 조건 변경");
+  button("진행 확인").click();
+  await wait();
+  assert(
+    JSON.stringify(app.list.filters.statuses) === '["1","2"]',
+    "첫 탭 조건 복원",
+  );
+});
 await check(
   "프로젝트 선택은 현재 탭에만 저장하고 빈 선택도 재시작 후 유지한다",
   async () => {
-    button("프로젝트 선택").click();
-    let panel = document.querySelector<HTMLElement>(
-      ".project-panel:popover-open",
-    );
-    assert(panel, "프로젝트 선택");
-    assert(
-      panel
-        .querySelector(".view-panel-scope")
-        ?.textContent?.includes("‘진행 확인’") === true,
-      "프로젝트 적용 탭 안내",
-    );
+    const openProjects = async () => {
+      button("진행 확인").click();
+      button("뷰 편집").click();
+      await wait();
+      const panel = document.querySelector<HTMLDialogElement>(
+        ".workspace-view-modal[open]",
+      );
+      assert(panel, "현재 뷰 편집 없음");
+      return panel;
+    };
+    let panel = await openProjects();
     button("선택 해제", panel).click();
+    await wait();
     button("취소", panel).click();
+    await wait();
     assert(
       app.list.filters.projects.join() === "TEST",
       "취소가 프로젝트를 바꿈",
     );
-    button("프로젝트 선택").click();
-    panel = document.querySelector<HTMLElement>(".project-panel:popover-open");
-    assert(panel, "프로젝트 다시 열기");
+    panel = await openProjects();
     button("선택 해제", panel).click();
-    button("적용", panel).click();
+    await wait();
+    button("저장", panel).click();
     await wait();
     assert(app.list.filters.projects.length === 0, "현재 탭 선택 해제 저장");
     button("디자인 작업").click();
@@ -621,7 +593,7 @@ await check(
       ?.click();
     await wait();
     assert(
-      !updates.trigger.hidden && updates.trigger.closest(".nav-tools"),
+      !updates.trigger.hidden && updates.trigger.closest(".nav-actions"),
       "상단 업데이트 아이콘 없음",
     );
     assert(
@@ -731,33 +703,52 @@ await check(
     );
   },
 );
-await check("뷰는 왼쪽 목록 위에 붙고 스크롤해도 위치를 유지한다", async () => {
+await check("뷰는 탑바 도구 왼쪽에 있고 스크롤해도 함께 유지된다", async () => {
   const nav = root.querySelector<HTMLElement>(".top-nav"),
     workspace = root.querySelector<HTMLElement>(".workspace"),
     views = root.querySelector<HTMLElement>(".workspace-views"),
     browse = root.querySelector<HTMLElement>(".browse");
   assert(nav && workspace && views && browse, "목록 뷰 구조");
   assert(
-    !nav.contains(views) && views.parentElement === workspace,
-    "뷰가 상단 내비에 남음",
+    nav.contains(views) &&
+      views.nextElementSibling?.classList.contains("nav-tools"),
+    "뷰가 도구 왼쪽에 있지 않음",
   );
-  assert(views.getBoundingClientRect().height <= 40, "뷰 영역이 너무 높음");
-  if (innerWidth > 600) {
-    assert(
-      Math.abs(
-        views.getBoundingClientRect().width -
-          browse.getBoundingClientRect().width,
-      ) < 1,
-      "목록과 뷰 폭 불일치",
-    );
-    assert(
-      Math.abs(
-        views.getBoundingClientRect().bottom -
-          browse.getBoundingClientRect().top,
-      ) < 1,
-      "뷰가 목록 바로 위에 붙지 않음",
-    );
-  }
+  assert(views.getBoundingClientRect().height <= 44, "뷰 영역이 너무 높음");
+  const label = views.querySelector<HTMLElement>(".workspace-tab-label");
+  assert(label, "뷰 이름 없음");
+  assert(
+    views.querySelectorAll(
+      ".workspace-tab > svg, .workspace-tab > .workspace-icon, .workspace-tab > .workspace-emoji",
+    ).length > 0,
+    "뷰 아이콘 없음",
+  );
+  button("메뉴").focus();
+  for (let n = 0; n < 30 && label.getBoundingClientRect().width > 0; n++)
+    await wait();
+  assert(
+    label.getBoundingClientRect().width === 0,
+    "기본 상태에서 뷰 이름이 공간을 차지함",
+  );
+  const toolbarBefore = nav
+    .querySelector<HTMLElement>(".nav-tools")!
+    .getBoundingClientRect();
+  views.querySelector<HTMLButtonElement>(".workspace-tab")?.focus();
+  for (let n = 0; n < 30 && label.getBoundingClientRect().width === 0; n++)
+    await wait();
+  assert(
+    label.getBoundingClientRect().width > 0,
+    "키보드 포커스에서 뷰 이름이 펼쳐지지 않음",
+  );
+  const toolbarAfter = nav
+    .querySelector<HTMLElement>(".nav-tools")!
+    .getBoundingClientRect();
+  assert(
+    Math.abs(toolbarBefore.x - toolbarAfter.x) < 1 &&
+      toolbarBefore.width === toolbarAfter.width,
+    "뷰 펼침이 툴바를 움직임",
+  );
+  button("메뉴").focus();
   const scroller = innerWidth <= 600 ? workspace : browse;
   const spacer = element("div");
   spacer.style.height = "1200px";
@@ -771,7 +762,7 @@ await check("뷰는 왼쪽 목록 위에 붙고 스크롤해도 위치를 유지
     assert(scroller.scrollTop > 0, "목록 스크롤 검사 불가");
     assert(
       Math.abs(views.getBoundingClientRect().top - before) < 1,
-      "스크롤 시 뷰가 사라짐",
+      "스크롤 시 탑바 뷰가 움직임",
     );
     assert(document.documentElement.scrollWidth <= innerWidth, "가로 넘침");
   } finally {
@@ -866,9 +857,14 @@ await check(
         await wait();
       }
       assert(choice, "한국어 이모지 검색 결과");
-      choice.click();
-      await wait();
       const picker = dialog.querySelector<HTMLElement>(".workspace-icon-panel");
+      choice.click();
+      for (
+        let tries = 0;
+        picker?.matches(":popover-open") && tries < 200;
+        tries++
+      )
+        await wait();
       assert(
         picker && getComputedStyle(picker).display === "none",
         `선택 후 아이콘 창이 남음 ${picker?.matches(":popover-open")} ${picker ? getComputedStyle(picker).display : "없음"}`,
@@ -1033,6 +1029,110 @@ await check(
       app.list.filters.sort === "recent",
       "이전 탭의 늦은 캐시가 현재 조건을 덮음",
     );
+  },
+);
+
+await check(
+  "스티키 뷰 전환은 이름 없는 아이콘·현재 선택·키보드 이동과 기존 전환을 제공한다",
+  async () => {
+    let activeId = "first";
+    const host = element("div");
+    document.body.append(host);
+    let navigation: ReturnType<typeof createWorkspaceNavigation>;
+    navigation = createWorkspaceNavigation({
+      state: () => ({
+        version: 1,
+        activeId,
+        tabs: [
+          {
+            id: "first",
+            name: "내 작업",
+            icon: "emoji:👤",
+            projects: ["TEST"],
+            views: initialViews({
+              scope: "all",
+              sort: "recent",
+              statuses: null,
+              assignees: null,
+              excludeDone: false,
+            }),
+          },
+          {
+            id: "second",
+            name: "배포 준비",
+            icon: "emoji:🚀",
+            projects: ["TEST"],
+            views: initialViews({
+              scope: "all",
+              sort: "recent",
+              statuses: null,
+              assignees: null,
+              excludeDone: false,
+            }),
+          },
+        ],
+      }),
+      projects: [],
+      me: { accountId: "me", displayName: "나" },
+      load: async () => {
+        throw Error("전환 메뉴에서 편집 정보를 조회하면 안 됨");
+      },
+      select: (id) => {
+        activeId = id;
+        navigation.render();
+      },
+      save: () => {},
+      remove: () => {},
+      error: (message) => {
+        throw Error(message);
+      },
+    });
+    host.append(navigation.element, navigation.switcher);
+    try {
+      assert(
+        !navigation.switcher.textContent?.includes("내 작업"),
+        "아이콘 옆에 뷰 이름이 노출됨",
+      );
+      navigation.switcher.click();
+      const menu = document.querySelector<HTMLElement>(
+        ".workspace-switch-menu:popover-open",
+      );
+      assert(menu, "뷰 전환 메뉴 미표시");
+      const choices = [
+        ...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+      ];
+      assert(
+        choices.length === 2 &&
+          choices[0]?.getAttribute("aria-checked") === "true",
+        "현재 뷰 표시 누락",
+      );
+      menu.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+      );
+      assert(document.activeElement === choices[1], "키보드 뷰 이동 실패");
+      choices[1]?.click();
+      assert(
+        activeId === "second" && !menu.matches(":popover-open"),
+        "기존 뷰 전환 호출·메뉴 닫기 실패",
+      );
+      assert(navigation.switcher.textContent === "🚀", "활성 뷰 아이콘 미갱신");
+      navigation.switcher.click();
+      menu.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      assert(
+        !menu.matches(":popover-open") &&
+          document.activeElement === navigation.switcher,
+        "Escape 닫기·포커스 복원 실패",
+      );
+    } finally {
+      navigation.destroy();
+      host.remove();
+    }
   },
 );
 results.hidden = preview.has("preview");

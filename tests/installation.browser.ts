@@ -17,16 +17,20 @@ let phase: InstallationManagement["job"] = null,
   fail = false,
   consent = false,
   domainReady = false;
-const connection = createAssistantConnection(async () => ({
-  ready: false,
-  models: [],
-  error: "",
-  availability: "unavailable",
-  providers: [
-    { id: "codex", ready: false, error: "", reason: "login_required" },
-    { id: "claude", ready: false, error: "", reason: "missing_cli" },
-  ],
-}));
+let assistantChecks = 0;
+const connection = createAssistantConnection(async () => {
+  assistantChecks++;
+  return {
+    ready: false,
+    models: [],
+    error: "",
+    availability: "unavailable",
+    providers: [
+      { id: "codex", ready: false, error: "", reason: "login_required" },
+      { id: "claude", ready: false, error: "", reason: "missing_cli" },
+    ],
+  };
+});
 const ui = installationStatus({
   api: {
     installationStatus: async () => {
@@ -115,7 +119,22 @@ try {
     "명시적 도메인 동의 누락",
   );
   fail = true;
+  const beforeFailure = assistantChecks;
   await ui.refresh();
+  assert(
+    assistantChecks === beforeFailure + 1,
+    "앱 관리 실패 때문에 AI 상태 조회를 건너뜀",
+  );
+  assert(
+    host
+      .querySelector(".installation-summary")
+      ?.textContent?.includes("Codex 로그인 필요"),
+    "상단에 미연결 이유 요약 누락",
+  );
+  assert(
+    host.textContent?.includes("앱·간편 주소의 관리 정보를 불러오지 못했어요"),
+    "어느 상태 조회가 실패했는지 누락",
+  );
   assert(!host.textContent?.includes("private secret"), "내부 오류 원문 노출");
   results.textContent = "전체 검사 통과 · 실제 설치·로그인·Jira 변경 없음";
   results.dataset.result = "passed";

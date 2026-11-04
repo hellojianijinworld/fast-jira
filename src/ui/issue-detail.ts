@@ -153,6 +153,7 @@ export function issueDetail(
         .get(name)
         ?.setAttribute("aria-busy", String(editor.busy === name));
     }
+    dateControl.dataset.empty = String(!date.value);
     for (const menu of menus) menu.sync();
     form.setAttribute("aria-busy", String(editor.busy === "summary"));
     input.disabled =
@@ -273,7 +274,12 @@ export function issueDetail(
   date.value = issue.dueDate;
   date.setAttribute("aria-label", "마감일");
   date.disabled = !result.dateEditing;
-  const due = field("마감일", date);
+  const dateControl = element("div", "date-control");
+  dateControl.dataset.empty = String(!date.value);
+  const emptyDate = element("span", "date-empty-label", "지정 없음");
+  emptyDate.setAttribute("aria-hidden", "true");
+  dateControl.append(date, emptyDate);
+  const due = field("마감일", dateControl);
   controls.set("dueDate", date);
   holders.set("dueDate", due);
   if (issue.dueDate) dueLabel.append(dueTime(issue.dueDate));

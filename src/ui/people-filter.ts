@@ -39,7 +39,17 @@ export function createPeopleFilter(
   controls.append(basisLabel, modeLabel);
   const help = element("p", "view-help"),
     choices = element("div", "people-filter-choices");
-  root.append(element("h3", "", "사람"), controls, help, choices);
+  const includeEmpty = element("label", "filter-check"),
+    includeCheck = element("input"),
+    includeText = document.createTextNode("");
+  includeCheck.type = "checkbox";
+  includeCheck.checked = draft.value.includeUnassigned === true;
+  includeEmpty.append(includeCheck, includeText);
+  includeCheck.addEventListener("change", () => {
+    draft.change({ includeUnassigned: includeCheck.checked });
+    changed();
+  });
+  root.append(element("h3", "", "사람"), controls, help, choices, includeEmpty);
   const basisMenu = enhanceSelect(basis);
   let members = users.some((user) => user.id === me.accountId)
     ? [...users]
@@ -74,6 +84,12 @@ export function createPeopleFilter(
   }
   function renderChoices() {
     const related = basis.value === "related";
+    const emptyLabel = related
+      ? "아무 작업관계자도 없는 항목도 같이 볼게요"
+      : "담당자가 없는 항목도 같이 볼게요";
+    includeEmpty.hidden = currentMode === "all" || currentMode === "unassigned";
+    includeText.textContent = emptyLabel;
+    includeCheck.setAttribute("aria-label", emptyLabel);
     help.textContent =
       currentMode === "unassigned"
         ? related

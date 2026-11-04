@@ -73,17 +73,7 @@ export function appUpdate(
       !state?.supported ||
       state.phase !== "available" ||
       !state.release;
-    title.textContent = running
-      ? "업데이트하고 있어요"
-      : state?.job?.phase === "failed"
-        ? "업데이트를 완료하지 못했어요"
-        : controller.checking
-          ? "새 버전을 확인하고 있어요"
-          : state?.phase === "available"
-            ? "새 버전이 있어요"
-            : state?.phase === "current"
-              ? "최신 버전을 사용하고 있어요"
-              : "업데이트 확인";
+    title.textContent = "버전";
     current.textContent = `현재 ${state?.currentVersion ?? "확인 중"}`;
     target.textContent = state?.release ? `→ ${state.release.version}` : "";
     message.textContent = controller.disconnected

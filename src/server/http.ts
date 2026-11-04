@@ -39,6 +39,9 @@ function browseOptions(params: URLSearchParams): BrowseOptions {
   const done = params.get("excludeDone") ?? "false";
   if (done !== "true" && done !== "false")
     throw invalid("완료 제외 값이 올바르지 않습니다.");
+  const includeUnassigned = params.get("includeUnassigned") ?? "false";
+  if (includeUnassigned !== "true" && includeUnassigned !== "false")
+    throw invalid("미지정 포함 값이 올바르지 않습니다.");
   return {
     q: params.get("q")?.trim() ?? "",
     projects: params.get("projects") ?? params.get("project") ?? "",
@@ -46,6 +49,7 @@ function browseOptions(params: URLSearchParams): BrowseOptions {
     excludeDone: done === "true",
     statuses: params.get("statuses") ?? "",
     assignees: params.get("assignees") ?? "",
+    includeUnassigned: includeUnassigned === "true",
   };
 }
 async function requestInput(

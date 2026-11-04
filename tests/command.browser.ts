@@ -664,8 +664,8 @@ await check(
       "명령 목록이 안 열림",
     );
     assert(
-      dialog().querySelectorAll(".command-menu button").length === 2,
-      "두 명령 누락",
+      dialog().querySelectorAll(".command-menu button").length === 3,
+      "검색·AI·FAQ 명령 누락",
     );
     const query = dialog().querySelector<HTMLInputElement>(
       ".command-picker input",
@@ -1427,6 +1427,115 @@ await check("AI 미연결 진입점·음성 지원·열린 대화 보존", async
   assert(input().value === "작성 중인 내용 유지", "작성문 유실");
   palette.destroy();
 });
+await check(
+  "FAQ 명령은 AI·Jira 조회 없이 질문 검색·답변·뒤로 가기를 제공한다",
+  async () => {
+    const required = <T>(value: T | null | undefined): T => {
+      if (value == null) throw new Error("FAQ 검사 요소 누락");
+      return value;
+    };
+    const palette = makePalette({ chat: false, voice: false });
+    const reads = searchCalls,
+      local = localReads,
+      written = writes.length;
+    palette.openCommands();
+    const command = [
+      ...host.querySelectorAll<HTMLButtonElement>(".command-menu button"),
+    ].find((button) => button.textContent === "FAQ 검색");
+    assert(command, "FAQ 명령 없음");
+    required(command).click();
+    const faq = required(host.querySelector<HTMLDialogElement>(".faq-dialog"));
+    assert(faq?.open, "FAQ 닫힘");
+    const query = required(
+      faq.querySelector<HTMLInputElement>('[aria-label="FAQ 질문 검색"]'),
+    );
+    const form = required(faq.querySelector<HTMLElement>(".faq-search"));
+    const formRect = form.getBoundingClientRect();
+    const inputRect = query.getBoundingClientRect();
+    assert(inputRect.height >= 28, "검색 입력이 목록에 밀려 찌그러짐");
+    assert(
+      inputRect.left >= formRect.left + 3 &&
+        inputRect.right <= formRect.right - 3,
+      "검색 포커스 테두리가 본문 경계에 잘림",
+    );
+    assert(
+      faq.querySelectorAll(".faq-group").length > 1,
+      "검색 없이 주제별 질문을 볼 수 없음",
+    );
+    const topic = [
+      ...faq.querySelectorAll<HTMLButtonElement>(".faq-topic"),
+    ].find((button) => button.textContent?.includes("작업 만들기·변경"));
+    required(topic).click();
+    assert(
+      faq.querySelectorAll(".faq-group").length === 1,
+      "선택 주제 외 질문이 표시됨",
+    );
+    assert(
+      faq.querySelectorAll(".faq-result").length > 1,
+      "주제 내 여러 질문 누락",
+    );
+    query.value = "작업참여자";
+    query.dispatchEvent(new Event("input", { bubbles: true }));
+    const first = faq.querySelector<HTMLButtonElement>(".faq-result");
+    assert(first?.textContent?.includes("담당자"), "질문 검색 누락");
+    required(first).click();
+    assert(
+      faq.querySelector(".faq-answer")?.textContent?.includes("사용자 지정"),
+      "답변 없음",
+    );
+    required(faq.querySelector<HTMLButtonElement>(".faq-back")).click();
+    assert(
+      faq.querySelector<HTMLInputElement>("input")?.value === "작업참여자",
+      "돌아올 때 검색어 유실",
+    );
+    assert(
+      faq
+        .querySelector('.faq-topic[aria-pressed="true"]')
+        ?.textContent?.includes("작업 만들기·변경"),
+      "답변에서 돌아올 때 선택 주제 유실",
+    );
+    assert(
+      searchCalls === reads &&
+        localReads === local &&
+        writes.length === written,
+      "FAQ가 Jira를 조회·변경함",
+    );
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    const shortcuts = [
+      {
+        code: "KeyK",
+        key: "k",
+        shiftKey: false,
+        ctrlKey: !mac,
+        metaKey: mac,
+        altKey: false,
+        selector: ".search-modal",
+      },
+      {
+        code: "KeyP",
+        key: "P",
+        shiftKey: true,
+        ctrlKey: !mac,
+        metaKey: mac,
+        altKey: false,
+        selector: ".command-picker-modal",
+      },
+    ];
+    for (const shortcut of shortcuts) {
+      palette.openFaq();
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { ...shortcut, cancelable: true }),
+      );
+      assert(!faq.open, "기능 단축키 실행 후 FAQ가 남음");
+      assert(
+        host.querySelector(`${shortcut.selector}[open]`),
+        "단축키가 다른 화면을 엶",
+      );
+    }
+    palette.destroy();
+    assert(!host.querySelector(".faq-dialog"), "FAQ 정리 누락");
+  },
+);
 document.body.dataset.result = failures ? "failed" : "passed";
 results.append(
   element(

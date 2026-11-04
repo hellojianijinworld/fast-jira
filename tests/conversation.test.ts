@@ -189,7 +189,7 @@ test("실행 결과와 후속 질문을 함께 보관하고 연결 복구 때도
 test("AI를 사용할 수 없으면 명령 팔레트에서 AI 항목만 제외한다", () => {
   assert.deepEqual(
     matchingCommands("", false).map((item) => item.id),
-    ["create", "search"],
+    ["create", "search", "faq"],
   );
   assert.equal(matchingCommands("AI", false).length, 0);
   assert.equal(matchingCommands("검색", false)[0]?.id, "search");
