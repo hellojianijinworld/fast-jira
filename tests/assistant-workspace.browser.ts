@@ -20,6 +20,8 @@ const issue = {
   status: "개발 진행 중",
   statusCategory: "indeterminate",
 };
+let activityCalls = 0,
+  listCalls = 0;
 let runs = 0,
   release: (() => void) | undefined;
 const api = createApi(async (input, init) => {
@@ -40,6 +42,7 @@ const api = createApi(async (input, init) => {
         priorities: [],
       });
     case "/api/issues":
+      listCalls++;
       return Response.json({
         issues: [issue],
         ancestors: [],
@@ -60,7 +63,25 @@ const api = createApi(async (input, init) => {
     case "/api/comments":
       return Response.json([]);
     case "/api/activity":
-      return Response.json({ feed: activityXML([]) });
+      activityCalls++;
+      return Response.json({
+        feed: activityXML(
+          runs
+            ? [
+                {
+                  id: "saved-activity",
+                  key: issue.key,
+                  author: "검사 사용자",
+                  avatar: "",
+                  text: "AI 변경이 저장됐어요",
+                  created: new Date().toISOString(),
+                },
+              ]
+            : [],
+        ),
+      });
+    case "/api/matches":
+      return Response.json({ keys: [issue.key], ancestors: [] });
     case "/api/changes":
       return Response.json({ issues: [], ancestors: [] });
     case "/api/assistant/status":
@@ -81,6 +102,7 @@ const api = createApi(async (input, init) => {
         });
       return Response.json({
         conversationId: "test",
+        issues: runs === 1 ? [issue] : [],
         answer: new URLSearchParams(location.search).has("markdown")
           ? "최근 작업을 정리했어요.\n\n| 이슈 | 현재 상태 | 확인한 내용 |\n| --- | --- | --- |\n| [TEST-833 · 생성 파이프라인 개선](https://fixture.atlassian.net/browse/TEST-833) | **개발 진행 중** | 세부 작업을 확인하고 있어요. |\n| TEST-820 · 가운뎃점 치환 | PR 대기중 | 관련 PR이 병합됐어요. 완료 기준을 확인해 주세요. |\n\n1. 완료 기준 확인\n2. QA 결과 확인\n\n> 상태를 바꾸기 전에 내용을 확인해 주세요."
           : "현재 작업은 [TEST-833](https://fixture.atlassian.net/browse/TEST-833)에서 확인할 수 있어요.",
@@ -169,6 +191,21 @@ input().value = "내 작업을 확인해 줘";
 root.querySelector<HTMLFormElement>(".command-form")?.requestSubmit();
 await tick();
 if (!preview) {
+  await check(
+    "AI 변경 완료는 목록 전체 재조회 없이 최근 활동도 바로 확인한다",
+    async () => {
+      for (let n = 0; n < 20 && activityCalls < 2; n++) await tick();
+      assert(activityCalls === 2, "AI 변경 후 최근 활동을 조회하지 않음");
+      assert(
+        root
+          .querySelector(".activity-feed")
+          ?.textContent?.includes("AI 변경이 저장됐어요"),
+        "변경된 활동 표시 누락",
+      );
+      assert(listCalls === 1, "활동 갱신이 목록 전체를 재조회함");
+    },
+  );
+
   await check(
     "AI는 비모달 왼쪽 패널이고 링크를 눌러도 대화와 입력을 유지한다",
     async () => {

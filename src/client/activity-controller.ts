@@ -83,8 +83,17 @@ export function createActivityController(
     changed();
     return pending;
   }
+  async function refresh(projects: readonly string[]) {
+    const key = [...new Set(projects)].sort().join(",");
+    if (pending && key === scope) {
+      await pending;
+      if (!alive || scope !== key) return;
+    }
+    await check(projects);
+  }
   return {
     check,
+    refresh,
     get entries() {
       return entries;
     },

@@ -156,3 +156,79 @@ test("선택하지 않은 프로젝트의 활동은 응답에 섞여도 표시�
   assert.deepEqual(controller.entries, []);
   assert.deepEqual(calls, [["AA"], ["BB"]]);
 });
+
+test("변경 후 활동 갱신은 진행 중인 이전 조회 뒤 최신 결과를 한 번 더 확인한다", async () => {
+  let finish!: (items: ReturnType<typeof entry>[]) => void;
+  let calls = 0;
+  const state = createActivityController(
+    {
+      activity: async () => {
+        calls++;
+        if (calls === 1)
+          return new Promise<ReturnType<typeof entry>[]>((resolve) => {
+            finish = resolve;
+          });
+        return [entry(2)];
+      },
+    },
+    () => {},
+  );
+  const old = state.check(["AA"]);
+  await Promise.resolve();
+  const refresh = state.refresh(["AA"]);
+  const duplicate = state.refresh(["AA"]);
+  finish([entry(1)]);
+  await Promise.all([old, refresh, duplicate]);
+  assert.equal(calls, 2);
+  assert.equal(state.entries[0]?.id, "2");
+  state.destroy();
+});
+
+test("갱신 대기 중 프로젝트를 바꾸면 이전 프로젝트를 다시 조회하지 않는다", async () => {
+  let finish!: (items: ReturnType<typeof entry>[]) => void;
+  const scopes: string[] = [];
+  const state = createActivityController(
+    {
+      activity: async (projects) => {
+        scopes.push(projects.join(","));
+        if (projects[0] === "AA")
+          return new Promise<ReturnType<typeof entry>[]>((resolve) => {
+            finish = resolve;
+          });
+        return [{ ...entry(2), key: "BB-2" }];
+      },
+    },
+    () => {},
+  );
+  const old = state.check(["AA"]);
+  await Promise.resolve();
+  const refresh = state.refresh(["AA"]);
+  await state.check(["BB"]);
+  finish([entry(1)]);
+  await Promise.all([old, refresh]);
+  assert.deepEqual(scopes, ["AA", "BB"]);
+  assert.equal(state.entries[0]?.key, "BB-2");
+  state.destroy();
+});
+
+test("생성 후 최근 활동은 재조회 응답에 들어온 항목만 표시한다", async () => {
+  let incoming: ReturnType<typeof entry>[] = [];
+  let calls = 0;
+  const state = createActivityController(
+    {
+      activity: async () => {
+        calls++;
+        return incoming;
+      },
+    },
+    () => {},
+  );
+  await state.check(["AA"]);
+  await state.refresh(["AA"]);
+  assert.equal(calls, 2);
+  assert.deepEqual(state.entries, [], "피드에 없는 생성 내역을 임의로 추가함");
+  incoming = [entry(2)];
+  await state.refresh(["AA"]);
+  assert.deepEqual(state.entries, incoming);
+  state.destroy();
+});

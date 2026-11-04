@@ -351,6 +351,8 @@ export async function createApp(
     store.saveRecent(recent);
     refreshFavorites(issues);
     if (!issues.length) return;
+    if (issues.some((issue) => list.filters.projects.includes(issue.project)))
+      void activity.refresh(list.filters.projects);
     const filters = list.filters,
       visible = list.visibleItems();
     const matches = await api
