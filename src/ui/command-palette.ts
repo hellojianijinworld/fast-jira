@@ -1,6 +1,9 @@
 import { createChatQueue } from "../client/chat-queue.ts";
+import { createMentionSource } from "../client/mention-source.ts";
 import { executionReport } from "../domain/assistant-execution.ts";
 import type { IssueDraft } from "../domain/create-issue.ts";
+import { mentionPrompt } from "../domain/mention.ts";
+import { textareaMentions } from "./mention-editors.ts";
 import "./command-palette.css";
 import { type Api, ApiError, subscribeVoice } from "../client/api.ts";
 import {
@@ -85,7 +88,8 @@ export function createCommandPalette(config: {
     | "bulkUndo"
     | "voiceStart"
     | "voiceStop"
-  >;
+  > &
+    Partial<Pick<Api, "users" | "mentionUsers">>;
   site: string;
   currentUserId?: string;
   context: () => AssistantContext;
@@ -608,6 +612,14 @@ export function createCommandPalette(config: {
         subscribe: subscribeVoice,
         ...voiceCallbacks,
       });
+  const mentionSource = createMentionSource(config.api, {
+    site: config.site,
+    projects: () => config.context().projects,
+    issue: () => config.context().issue,
+    local: config.localIssues,
+  });
+  const mentions = textareaMentions(input, mentionSource);
+
   let awaitingApproval = false;
   const approvalPanel = createAssistantApprovalPanel(
     config.api,
@@ -650,6 +662,7 @@ export function createCommandPalette(config: {
       ...(config.voiceAvailable
         ? { voiceAvailable: config.voiceAvailable }
         : {}),
+      mentions: mentionSource,
       notice: notify,
     },
   );
@@ -690,7 +703,7 @@ export function createCommandPalette(config: {
       edit.setAttribute("aria-label", `대기 요청 수정: ${message.text}`);
       edit.disabled = Boolean(input.value.trim()) || steering || stopping;
       edit.addEventListener("click", () => {
-        input.value = message.text;
+        mentions.restore(message.text, message.mentions);
         queue.remove(id, message.id);
         sync();
         input.focus();
@@ -698,7 +711,7 @@ export function createCommandPalette(config: {
       now.disabled = steering || stopping || applying;
       now.addEventListener(
         "click",
-        () => void sendImmediately(message.text, message.id),
+        () => void sendImmediately(message.text, message.id, message.mentions),
       );
       remove.addEventListener("click", () => {
         queue.remove(id, message.id);
@@ -722,10 +735,14 @@ export function createCommandPalette(config: {
     )
       return;
     const message = queue.take(current.id);
-    if (message) await ask(message.text);
+    if (message) await ask(message.text, followupMode, message.mentions ?? []);
     else sync();
   }
-  async function sendImmediately(prompt: string, queuedId?: number) {
+  async function sendImmediately(
+    prompt: string,
+    queuedId?: number,
+    references = mentions.references(prompt),
+  ) {
     if (
       !current ||
       steering ||
@@ -741,7 +758,11 @@ export function createCommandPalette(config: {
     sync();
     try {
       if (busy && !selectedModel.startsWith("claude:")) {
-        await config.api.assistantControl(activeRequestId, "steer", prompt);
+        await config.api.assistantControl(
+          activeRequestId,
+          "steer",
+          mentionPrompt(prompt, references),
+        );
         active.messages.push({ role: "user", text: prompt });
         aiResults.append(renderMessage("user", prompt));
         saveConversation();
@@ -751,12 +772,12 @@ export function createCommandPalette(config: {
           throw new Error("중단 결과를 확인하지 못했어요.");
         queue.resume(active.id);
         steering = false;
-        void ask(prompt);
+        void ask(prompt, followupMode, references);
       }
       if (queuedId !== undefined) queue.remove(active.id, queuedId);
       if (input.value.trim() === prompt) input.value = "";
     } catch (error) {
-      if (queuedId === undefined) queue.add(active.id, prompt);
+      if (queuedId === undefined) queue.add(active.id, prompt, references);
       if (input.value.trim() === prompt) input.value = "";
       notify(`${errorText(error)} 요청은 대기열에 남겨뒀어요.`);
     } finally {
@@ -766,6 +787,7 @@ export function createCommandPalette(config: {
     }
   }
   function sync() {
+    mentions.refresh();
     microphone.hidden = config.voiceAvailable
       ? !config.voiceAvailable() && !recording
       : false;
@@ -1212,7 +1234,11 @@ export function createCommandPalette(config: {
   function scrollConversation() {
     transcript.scrollTop = transcript.scrollHeight;
   }
-  async function ask(queuedPrompt?: string, followup = followupMode) {
+  async function ask(
+    queuedPrompt?: string,
+    followup = followupMode,
+    references = mentions.references(queuedPrompt ?? input.value.trim()),
+  ) {
     const prompt = queuedPrompt ?? input.value.trim();
     if (
       !prompt ||
@@ -1225,9 +1251,10 @@ export function createCommandPalette(config: {
       return;
     if (busy) {
       if (!current) return;
-      if (followup === "steer") await sendImmediately(prompt);
+      if (followup === "steer")
+        await sendImmediately(prompt, undefined, references);
       else {
-        queue.add(current.id, prompt);
+        queue.add(current.id, prompt, references);
         input.value = "";
         sync();
       }
@@ -1321,7 +1348,7 @@ export function createCommandPalette(config: {
     }
     try {
       const reply = await config.api.assistantRun(
-        prompt,
+        mentionPrompt(prompt, references),
         config.context(),
         conversationId,
         selectedModel,
@@ -1583,7 +1610,7 @@ export function createCommandPalette(config: {
     event.preventDefault();
     if (action === "steer" && !input.value.trim() && current) {
       const first = queue.list(current.id)[0];
-      if (first) void sendImmediately(first.text, first.id);
+      if (first) void sendImmediately(first.text, first.id, first.mentions);
     } else if (action === "send") form.requestSubmit();
     else void ask(undefined, action);
   });
@@ -1723,6 +1750,7 @@ export function createCommandPalette(config: {
       closeHelp();
       closeSettings();
       approvalPanel.destroy();
+      mentions.destroy();
       window.removeEventListener("keydown", shortcut, true);
       searchDialog.destroy();
       faqDialog.destroy();

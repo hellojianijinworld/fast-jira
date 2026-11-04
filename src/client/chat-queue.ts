@@ -1,6 +1,8 @@
+import type { TextMention } from "../domain/mention.ts";
 export interface QueuedMessage {
   id: number;
   text: string;
+  mentions?: TextMention[];
 }
 /** 대기 요청은 대화별 메모리에만 보관하고 중단·실패 후에는 명시적으로 재개한다. */
 export function createChatQueue() {
@@ -11,8 +13,14 @@ export function createChatQueue() {
   return {
     list,
     paused: (id: string) => paused.has(id),
-    add(id: string, text: string) {
-      const message = { id: ++sequence, text };
+    add(id: string, text: string, mentions: readonly TextMention[] = []) {
+      const message = {
+        id: ++sequence,
+        text,
+        ...(mentions.length
+          ? { mentions: structuredClone([...mentions]) }
+          : {}),
+      };
       queues.set(id, [...list(id), message]);
       return message;
     },

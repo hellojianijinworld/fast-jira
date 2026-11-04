@@ -2064,6 +2064,58 @@ await check(
     }
   },
 );
+await check(
+  "공통 멘션은 AI 전송·대기열·즉시 전달에서 이슈 ID를 유지한다",
+  async () => {
+    await openControlChat();
+    try {
+      async function selectMention() {
+        const composer = input();
+        composer.value = "@AA";
+        composer.focus();
+        composer.setSelectionRange(3, 3);
+        composer.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        composer.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        assert(composer.value.startsWith("@AA-1 · "), "멘션 선택 실패");
+      }
+      holdAnswer = true;
+      const before = assistantCalls;
+      await selectMention();
+      assert(assistantCalls === before, "선택하면서 전송됨");
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      assert(prompt.includes('"id":"1"'), "일반 요청에 이슈 ID 누락");
+      await selectMention();
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      assert(
+        dialog()
+          .querySelector(".chat-queue-text")
+          ?.textContent?.startsWith("@AA-1 · "),
+        "대기열 표시에 내부 데이터 노출",
+      );
+      button("지금 보내기").click();
+      await tick();
+      assert(
+        controls.at(-1)?.prompt?.includes('"id":"1"'),
+        "즉시 전달에 ID 누락",
+      );
+      assert(
+        !dialog().querySelector(".chat-queue-text"),
+        "전달한 대기 요청 잔존",
+      );
+    } finally {
+      endControlChat();
+    }
+  },
+);
 document.body.dataset.result = failures ? "failed" : "passed";
 results.append(
   element(

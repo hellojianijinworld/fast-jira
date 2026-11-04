@@ -1640,3 +1640,82 @@ textarea:disabled {
 .ui-menu [aria-checked="true"]:is(:hover, :focus-visible) {
   background: var(--selected-hover);
 }
+
+/* 멘션은 작성 도구와 관계없이 같은 유형 배지·선택 표시를 쓴다. */
+.mention-input {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  flex: 1;
+}
+.mention-input > textarea {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  background: transparent;
+}
+.mention-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: transparent;
+  border-style: solid;
+  border-color: transparent;
+  pointer-events: none;
+}
+.mention-token {
+  padding: 0;
+  color: transparent;
+  background: var(--blue-soft);
+  border-radius: var(--radius-4);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  width: 100%;
+}
+.mention-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-4);
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: var(--font-size-12);
+  line-height: var(--line-height-label);
+}
+.mention-kind svg {
+  width: 1em;
+  height: 1em;
+}
+.mention-key {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--font-size-12);
+}
+.mention-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mention-issue {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.mention-picker > .error:empty {
+  display: none;
+}

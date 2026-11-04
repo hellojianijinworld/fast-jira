@@ -331,7 +331,7 @@
 .chat-main .command-form:focus-within {
   border-color: var(--blue);
 }
-.chat-main .command-form > textarea {
+.chat-main .command-form textarea {
   border: 0;
   background: transparent;
   padding: 0 2px 4px;
@@ -599,7 +599,7 @@
     margin: 0 8px 6px;
     padding: 8px;
   }
-  .chat-main .command-form > textarea {
+  .chat-main .command-form textarea {
     min-height: 58px;
   }
 

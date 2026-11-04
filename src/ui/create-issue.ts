@@ -1,3 +1,6 @@
+import { createMentionSource } from "../client/mention-source.ts";
+import { mentionPrompt } from "../domain/mention.ts";
+import { textareaMentions } from "./mention-editors.ts";
 import "./create-issue.css";
 import { type Api, subscribeVoice } from "../client/api.ts";
 import {
@@ -132,7 +135,14 @@ export function createIssueDialog(config: {
     fill.disabled = mic.disabled = true;
     const aiStatus = element("small", "muted");
     aiStatus.setAttribute("role", "status");
-    ai.append(prompt, aiControls, aiStatus);
+    const mentions = textareaMentions(
+      prompt,
+      createMentionSource(config.api, {
+        site: config.site,
+        projects: () => [project.value],
+      }),
+    );
+    ai.append(mentions.element, aiControls, aiStatus);
     aiControls.append(model, mic, fill);
     inputs.append(contextRow, parentField, fieldHost);
     body.append(ai, inputs, error);
@@ -146,6 +156,7 @@ export function createIssueDialog(config: {
       transcript: (text) => {
         if (!disposed)
           prompt.value = [voicePrefix, text].filter(Boolean).join("\n");
+        mentions.refresh();
       },
       state: (active, message) => {
         recording = active;
@@ -494,7 +505,7 @@ export function createIssueDialog(config: {
       aiStatus.textContent = "생성 내용을 준비하고 있어요…";
       try {
         const reply = await config.api.assistantRun(
-          `다음 요청으로 이슈 생성 폼을 채우세요. Jira에는 저장하지 말고 jira_prepare_issue 도구로 생성안 하나를 반환하세요. 현재 폼은 참고 데이터입니다. 요청에 없는 필드 변경은 하지 말고 기존 값을 유지하세요. URL은 설명에 보존하세요.\\n${prompt.value}`,
+          `다음 요청으로 이슈 생성 폼을 채우세요. Jira에는 저장하지 말고 jira_prepare_issue 도구로 생성안 하나를 반환하세요. 현재 폼은 참고 데이터입니다. 요청에 없는 필드 변경은 하지 말고 기존 값을 유지하세요. URL은 설명에 보존하세요.\\n${mentionPrompt(prompt.value, mentions.references())}`,
           {
             projects: project.value ? [project.value] : [],
             issue: parent,
@@ -571,6 +582,7 @@ export function createIssueDialog(config: {
       revision++;
       request?.abort();
       voice.destroy();
+      mentions.destroy();
       for (const field of fields) field.destroy();
       projectMenu?.destroy();
       typeMenu?.destroy();

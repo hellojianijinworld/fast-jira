@@ -1,8 +1,10 @@
 import type { Api } from "../client/api.ts";
+import { createMentionSource } from "../client/mention-source.ts";
 import type { AdfDocument } from "../domain/adf.ts";
 import { adfEditor } from "./adf-editor.ts";
 import type { AdfContext } from "./adf-render.ts";
 import { actionButton, element } from "./dom.ts";
+import { adfMentionEditor } from "./mention-editors.ts";
 import { mentionPicker } from "./mention-picker.ts";
 
 /** 본문·댓글·답글의 작성/실패/정리 동작을 공유한다. 실제 저장은 호출자가 맡는다. */
@@ -10,7 +12,7 @@ export function documentForm(config: {
   initial: AdfDocument | null;
   issue: AdfContext;
   imageEnabled: boolean;
-  api: Pick<Api, "mentionUsers">;
+  api: Pick<Api, "mentionUsers" | "issues">;
   label: string;
   submitLabel: string;
   validate?: (document: AdfDocument) => AdfDocument;
@@ -20,8 +22,13 @@ export function documentForm(config: {
   const form = element("form", "document-form"),
     editor = adfEditor(config.initial, config.issue, config.imageEnabled);
   editor.element.setAttribute("aria-label", config.label);
-  const picker = mentionPicker(editor, (query) =>
-    config.api.mentionUsers(config.issue.key, query),
+  const picker = mentionPicker(
+    adfMentionEditor(editor),
+    createMentionSource(config.api, {
+      site: new URL(config.issue.url).hostname,
+      projects: () => [config.issue.key.split("-")[0] ?? ""],
+      issue: () => config.issue.key,
+    }),
   );
   const actions = element("div", "document-actions"),
     save = actionButton(config.submitLabel, "check"),

@@ -1,3 +1,5 @@
+import { type MentionTarget, mentionPrompt } from "../domain/mention.ts";
+import { textareaMentions } from "./mention-editors.ts";
 import "./assistant-approvals.css";
 import type { Api } from "../client/api.ts";
 import type { VoiceCallbacks, VoiceInput } from "../client/codex-voice.ts";
@@ -20,6 +22,7 @@ export function createAssistantApprovalPanel(
     answer: { approved: boolean; feedback: string; response: string },
   ) => void,
   options: {
+    mentions?: (query: string) => Promise<MentionTarget[]>;
     voice?: (callbacks: VoiceCallbacks) => VoiceInput;
     voiceAvailable?: () => boolean;
     notice?: (message: string) => void;
@@ -148,7 +151,10 @@ export function createAssistantApprovalPanel(
       send.disabled = true;
       mic.hidden = !options.voice || options.voiceAvailable?.() === false;
       actions.append(mic, send);
-      composer.append(note, actions);
+      const mentions = options.mentions
+        ? textareaMentions(note, options.mentions)
+        : undefined;
+      composer.append(mentions?.element ?? note, actions);
       const error = element("p", "error");
       error.setAttribute("role", "alert");
       form.append(...(answers.length ? [choices] : []), composer, error);
@@ -187,7 +193,10 @@ export function createAssistantApprovalPanel(
         },
       });
       stopVoice = () => voice?.stop();
-      disposals.set(request.id, () => voice?.destroy());
+      disposals.set(request.id, () => {
+        voice?.destroy();
+        mentions?.destroy();
+      });
       mic.addEventListener("click", () => {
         if (submitting || (!recording && options.voiceAvailable?.() === false))
           return;
@@ -195,6 +204,7 @@ export function createAssistantApprovalPanel(
         voice?.start();
       });
       function refresh() {
+        mentions?.refresh();
         const choice = [...radios].find(([, radio]) => radio.checked)?.[0];
         choices.disabled = submitting || recording;
         mic.disabled = submitting;
@@ -231,7 +241,11 @@ export function createAssistantApprovalPanel(
               ? Boolean(feedback)
               : !feedback && Boolean(choice) && choice !== "deny";
             const values: Record<string, JsonValue> = Object.create(null);
-            if (approved && textQuestion) values[textQuestion.key] = feedback;
+            if (approved && textQuestion)
+              values[textQuestion.key] = mentionPrompt(
+                feedback,
+                mentions?.references(feedback),
+              );
             else if (approved && optionField) {
               const index = answers.findIndex(([value]) => value === choice);
               values[optionField.key] = optionField.options?.[index] ?? "";
@@ -252,7 +266,11 @@ export function createAssistantApprovalPanel(
                         ? JSON.parse(input.value)
                         : input.value;
               }
-            if (feedback && !textQuestion) values.feedback = feedback;
+            if (feedback && !textQuestion)
+              values.feedback = mentionPrompt(
+                feedback,
+                mentions?.references(feedback),
+              );
             submitting = true;
             error.textContent = "";
             note.disabled = true;

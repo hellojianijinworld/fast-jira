@@ -1,4 +1,5 @@
 import type { Api } from "../client/api.ts";
+import { createMentionSource } from "../client/mention-source.ts";
 import {
   decodeAdfDocument,
   type JsonValue,
@@ -11,6 +12,8 @@ import { uniqueParticipants } from "../domain/participants.ts";
 import { isRecord } from "../domain/validation.ts";
 import { adfEditor } from "./adf-editor.ts";
 import { actionButton, element, elementId } from "./dom.ts";
+import { adfMentionEditor } from "./mention-editors.ts";
+import { mentionPicker } from "./mention-picker.ts";
 import { personChip, personPill } from "./meta.ts";
 import { enhanceSelect } from "./select-menu.ts";
 
@@ -177,6 +180,15 @@ export function creationField(
       { url: `https://${config.site}`, key: "" },
       false,
     );
+    const picker = mentionPicker(
+      adfMentionEditor(editor),
+      createMentionSource(config.api, {
+        site: config.site,
+        projects: () => [config.project],
+      }),
+    );
+    root.append(picker.element);
+    destroy = () => picker.destroy();
     identify(editor.element);
     editable = editor.element;
     read = () =>

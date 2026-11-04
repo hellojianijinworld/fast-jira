@@ -6,6 +6,7 @@ import type {
 } from "../domain/adf.ts";
 import { decodeAdfMarks } from "../domain/adf.ts";
 import type { UserOption } from "../domain/issue.ts";
+import { type MentionTarget, mentionLabel } from "../domain/mention.ts";
 import { type AdfContext, renderADF } from "./adf-render.ts";
 import { element, safeHref } from "./dom.ts";
 
@@ -260,6 +261,28 @@ export function adfEditor(
         range,
         rect: selection.getRangeAt(0).getBoundingClientRect(),
       };
+    },
+    insertIssueMention(target: MentionTarget, range: Range) {
+      if (!root.contains(range.commonAncestorContainer) || !target.url) return;
+      const link = render({
+        type: "text",
+        text: mentionLabel(target).slice(1),
+        marks: [{ type: "link", attrs: { href: target.url } }],
+      });
+      if (link instanceof HTMLElement)
+        link.classList.add("mention", "mention-issue");
+      root.focus();
+      range.deleteContents();
+      range.insertNode(link);
+      const space = window.document.createTextNode(" ");
+      link.parentNode?.insertBefore(space, link.nextSibling);
+      range.setStartAfter(space);
+      range.collapse(true);
+      const selection = getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      rememberSelection();
+      root.dispatchEvent(new InputEvent("input", { bubbles: true }));
     },
     insertMention(user: Pick<UserOption, "id" | "name">, replaceRange?: Range) {
       if (replaceRange && !root.contains(replaceRange.commonAncestorContainer))

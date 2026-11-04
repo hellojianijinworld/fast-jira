@@ -4,6 +4,7 @@ import type { ComponentSize } from "./theme.ts";
 
 export interface SelectConfig {
   size?: ComponentSize;
+  side?: "above" | "below";
   renderOption?: (option: HTMLOptionElement) => Node;
   beforeOpen?: () => Promise<boolean | undefined>;
   onSearch?: (query: string) => Promise<void>;
@@ -166,6 +167,7 @@ export function enhanceSelect(
     Object.assign(
       panel.style,
       popoverPosition(rect, {
+        ...(config.side ? { side: config.side } : {}),
         width: Math.max(rect.width, 240),
         maxHeight: 320,
         viewportWidth: innerWidth,
@@ -177,6 +179,7 @@ export function enhanceSelect(
     Object.assign(
       panel.style,
       popoverPosition(rect, {
+        ...(config.side ? { side: config.side } : {}),
         width: Math.max(rect.width, 240),
         maxHeight: Math.min(320, panel.getBoundingClientRect().height),
         viewportWidth: innerWidth,

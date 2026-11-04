@@ -7,6 +7,7 @@ import { emptyIssue } from "../src/domain/wire.ts";
 import { connectionForm } from "../src/ui/connection.ts";
 import { detailChildren } from "../src/ui/detail-children.ts";
 import { issueBreadcrumbs } from "../src/ui/issue-breadcrumbs.ts";
+import { adfMentionEditor } from "../src/ui/mention-editors.ts";
 import { parentSelect } from "../src/ui/parent-select.ts";
 import { createTreeContext } from "../src/ui/tree-context.ts";
 import { createTreeView } from "../src/ui/tree-view.ts";
@@ -1676,11 +1677,11 @@ await check(
       false,
     );
     const queries: string[] = [];
-    const picker = mentionPicker(editor, async (query) => {
+    const picker = mentionPicker(adfMentionEditor(editor), async (query) => {
       queries.push(query);
       return [
-        { id: "one", name: "사람 하나", avatar: "" },
-        { id: "two", name: "사람 둘", avatar: "" },
+        { kind: "user", id: "one", label: "사람 하나", avatar: "" },
+        { kind: "user", id: "two", label: "사람 둘", avatar: "" },
       ];
     });
     fixture.append(editor.element, picker.element);

@@ -75,3 +75,25 @@ test("공통 분할은 양쪽 20%와 읽을 수 있는 최소 폭을 함께 보�
   assert.equal(splitDimensions(1920, 16, 1).ratio, 0.8);
   assert.equal(splitDimensions(300, 16, 1).width, 150);
 });
+
+test("멘션 팝오버의 위쪽 배치는 후보 높이에 관계없이 같은 하단을 유지한다", () => {
+  const rect = { left: 20, top: 350, bottom: 450, width: 500 };
+  const place = (maxHeight: number) =>
+    popoverPosition(rect, {
+      side: "above",
+      width: 500,
+      maxHeight,
+      viewportWidth: 1000,
+      viewportHeight: 600,
+    });
+  const tall = place(300),
+    short = place(50);
+  assert.equal(
+    Number.parseFloat(tall.top) + Number.parseFloat(tall.maxHeight),
+    344,
+  );
+  assert.equal(
+    Number.parseFloat(short.top) + Number.parseFloat(short.maxHeight),
+    344,
+  );
+});

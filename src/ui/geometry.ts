@@ -9,6 +9,7 @@ export interface PopoverBounds {
   maxHeight: number;
   viewportWidth: number;
   viewportHeight: number;
+  side?: "above" | "below";
   gap?: number;
   margin?: number;
 }
@@ -22,7 +23,9 @@ export function popoverPosition(rect: PopoverRect, bounds: PopoverBounds) {
   const below = viewportHeight - rect.bottom - gap - margin;
   const above = rect.top - gap - margin;
   // 앵커 아래가 좁으면 위쪽을 사용한다. 패널 자체가 화면 밖으로 밀리지 않게 마지막에 제한한다.
-  const useBelow = below >= Math.min(200, maxHeight) || below >= above;
+  const useBelow = bounds.side
+    ? bounds.side === "below" || above < 48
+    : below >= Math.min(200, maxHeight) || below >= above;
   const height = Math.min(maxHeight, Math.max(0, useBelow ? below : above));
   return {
     width: `${width}px`,
