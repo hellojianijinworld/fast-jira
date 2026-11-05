@@ -155,6 +155,13 @@ export function createAssistantService(
         throw new Error("Codex 모델 목록을 읽지 못했어요.");
       const available = models.flatMap((value) => {
         const model = record(value);
+        const efforts = Array.isArray(model.supportedReasoningEfforts)
+          ? model.supportedReasoningEfforts.flatMap((value) =>
+              isRecord(value) && typeof value.reasoningEffort === "string"
+                ? [value.reasoningEffort]
+                : [],
+            )
+          : [];
         return typeof model.model === "string" && model.model.trim()
           ? [
               {
@@ -164,6 +171,11 @@ export function createAssistantService(
                     ? model.displayName
                     : model.model,
                 isDefault: model.isDefault === true,
+                ...(efforts.length ? { efforts } : {}),
+                ...(typeof model.defaultReasoningEffort === "string" &&
+                efforts.includes(model.defaultReasoningEffort)
+                  ? { defaultEffort: model.defaultReasoningEffort }
+                  : {}),
               },
             ]
           : [];
@@ -320,6 +332,17 @@ export function createAssistantService(
         !available.models.some((item) => item.id === model)
       )
         throw new JiraError("사용 가능한 AI 모델을 선택하세요.", 400);
+      const selected = available.models.find((item) => item.id === model);
+      if (
+        input.effort !== undefined &&
+        (typeof input.effort !== "string" ||
+          !selected?.efforts?.includes(input.effort))
+      )
+        throw new JiraError(
+          "이 모델에서 지원하는 추론 강도를 선택하세요.",
+          400,
+        );
+      const effort = input.effort ?? selected?.defaultEffort;
       if (model.startsWith("claude:"))
         return await claude.run(
           {
@@ -840,6 +863,7 @@ export function createAssistantService(
           .request("turn/start", {
             threadId,
             model,
+            ...(effort ? { effort } : {}),
             additionalContext: screenContext(),
             input: [
               {

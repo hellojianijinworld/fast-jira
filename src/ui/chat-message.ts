@@ -2,7 +2,7 @@ import MarkdownIt from "markdown-it";
 import type { ChatMessage } from "../domain/conversation.ts";
 import { mentionLabel, type TextMention } from "../domain/mention.ts";
 import { parseIssueKey } from "../domain/validation.ts";
-import { element, safeHref } from "./dom.ts";
+import { element, safeHref, uiIcon } from "./dom.ts";
 import { mentionToken } from "./mention-token.ts";
 
 const markdown = new MarkdownIt({
@@ -132,15 +132,17 @@ export function chatEvent({
   created,
 }: Pick<ChatMessage, "text" | "details" | "created">) {
   const event = element(details ? "details" : "div", "chat-event");
-  event.append(element(details ? "summary" : "span", "", text));
+  const label = element(details ? "summary" : "span", "", text);
+  if (details) label.prepend(uiIcon("chevron-right"));
+  event.append(label);
   if (details) {
     const entries = element("div", "chat-event-entries");
     for (const block of details.split(/\n\s*\n/).filter(Boolean)) {
       const [title, ...lines] = block.split("\n");
       const entry = element("div", "chat-event-entry");
       entry.append(element("p", "chat-event-title", title));
-      for (const line of lines)
-        entry.append(element("p", "chat-event-detail", line));
+      if (lines.length)
+        entry.append(element("p", "chat-event-detail", lines.join(" · ")));
       entries.append(entry);
     }
     event.append(entries);

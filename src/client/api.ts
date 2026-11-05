@@ -219,6 +219,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
       history: import("../domain/conversation.ts").ChatMessage[] = [],
       requestId?: string,
       progress?: (event: AssistantProgress) => void,
+      effort?: string,
     ) => {
       const started = Date.now();
       return fetcher("/api/assistant/run", {
@@ -234,6 +235,7 @@ export function createApi(fetcher: typeof fetch = fetch) {
           model,
           history,
           hasHistory: history.length > 0,
+          ...(effort ? { effort } : {}),
           ...(requestId ? { requestId } : {}),
         }),
         signal,

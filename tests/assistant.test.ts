@@ -21,7 +21,7 @@ import { createHttpServer } from "../src/server/http.ts";
 import { createJiraService } from "../src/server/jira-service.ts";
 
 const context = { projects: ["AA"], issue: "AA-1", keys: [] };
-function fixture(models = ["available"]) {
+function fixture(models = ["available"], reasoning = false) {
   let writes = 0,
     reads = 0,
     closed = false,
@@ -66,6 +66,15 @@ function fixture(models = ["available"]) {
             model,
             displayName: model,
             isDefault: index === 0,
+            ...(reasoning
+              ? {
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: "medium" },
+                    { reasoningEffort: "high" },
+                  ],
+                  defaultReasoningEffort: "medium",
+                }
+              : {}),
           })),
         };
       if (method === "config/read")
@@ -1285,5 +1294,37 @@ test("동일 출처 AI HTTP 스트림은 최종 응답 전에 중간 메시지�
     f.assistant.dispose();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("모델의 지원 추론 강도를 전달하고 선택값을 turn/start에 적용한다", async () => {
+  const f = fixture(["available"], true);
+  try {
+    const state = await f.assistant.status();
+    assert.deepEqual(state.models[0]?.efforts, ["medium", "high"]);
+    assert.equal(state.models[0]?.defaultEffort, "medium");
+    await assert.rejects(
+      f.assistant.run({
+        prompt: "조회",
+        model: "available",
+        context,
+        effort: "unsupported",
+      }),
+      /추론 강도/,
+    );
+    const pending = f.assistant.run({
+      prompt: "조회",
+      model: "available",
+      context,
+      effort: "high",
+    });
+    await f.waitTurn();
+    f.complete();
+    await pending;
+    const turn = f.requests.find((item) => item.method === "turn/start");
+    assert.ok(turn);
+    assert.equal((turn.params as { effort?: string }).effort, "high");
+  } finally {
+    f.assistant.dispose();
   }
 });

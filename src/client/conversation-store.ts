@@ -3,6 +3,7 @@ import {
   type Conversation,
   decodeConversations,
 } from "../domain/conversation.ts";
+import { isRecord } from "../domain/validation.ts";
 import type { LocalStore } from "./preferences.ts";
 /** Jira 사이트·계정별 브라우저 보관. 저장 실패 시 기존 기록을 덮어쓰지 않는다. */
 export function createConversationStore(storage: LocalStore, scope: string) {
@@ -11,7 +12,30 @@ export function createConversationStore(storage: LocalStore, scope: string) {
   const modelKey = `fastJira:assistant-model:${scope}`;
   const sendModeKey = `fastJira:assistant-send-mode:${scope}`;
   const followupKey = `fastJira:assistant-followup-mode:${scope}`;
+  const effortKey = `fastJira:assistant-efforts:${scope}`;
+  function efforts(): Record<string, unknown> {
+    try {
+      const value: unknown = JSON.parse(storage.getItem(effortKey) ?? "{}");
+      return isRecord(value) ? value : {};
+    } catch {
+      return {};
+    }
+  }
   const store = {
+    defaultEffort(model: string): string {
+      const value = efforts()[model];
+      return typeof value === "string" ? value : "";
+    },
+    setDefaultEffort(model: string, effort: string) {
+      try {
+        storage.setItem(
+          effortKey,
+          JSON.stringify({ ...efforts(), [model]: effort }),
+        );
+      } catch {
+        throw new Error("추론 강도를 브라우저에 저장하지 못했어요.");
+      }
+    },
     followupMode(): ChatFollowupMode {
       try {
         return storage.getItem(followupKey) === "steer" ? "steer" : "queue";

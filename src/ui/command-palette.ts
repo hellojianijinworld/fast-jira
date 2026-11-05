@@ -19,6 +19,7 @@ import type { LocalStore } from "../client/preferences.ts";
 import type { ChangeProposal } from "../domain/agent.ts";
 import type {
   AssistantContext,
+  AssistantModel,
   AssistantProgress,
   AssistantProviderStatus,
 } from "../domain/assistant.ts";
@@ -128,6 +129,7 @@ export function createCommandPalette(config: {
     input = element("textarea"),
     controls = buttonGroup(element("div", "command-controls"), { size: "sm" }),
     model = element("select", "command-model"),
+    effortSelect = element("select", "command-effort"),
     microphone = iconButton("음성 입력", "mic"),
     send = actionButton("보내기", "arrow-up", "primary"),
     cancel = iconButton("답변 중단", "square"),
@@ -213,6 +215,8 @@ export function createCommandPalette(config: {
       current = item;
       conversationId = item.conversationId;
       selectedModel = item.model;
+      selectedEffort =
+        item.effort ?? historyStore?.defaultEffort(item.model) ?? "";
       if ([...model.options].some((option) => option.value === selectedModel))
         model.value = selectedModel;
       input.value = "";
@@ -271,6 +275,8 @@ export function createCommandPalette(config: {
   pickerClose.addEventListener("click", () => pickerDialog.close());
   send.setAttribute("aria-label", "요청 보내기");
   model.setAttribute("aria-label", "대화 모델");
+  effortSelect.setAttribute("aria-label", "추론 강도");
+  effortSelect.hidden = true;
   model.title = "이 대화의 모델 · 선택한 모델을 새 대화 기본값으로 저장합니다";
   model.append(element("option", "", "연결 확인 중…"));
   shortcutHint.id = elementId("chat-input-shortcuts");
@@ -331,7 +337,15 @@ export function createCommandPalette(config: {
   );
   sendGroup.append(send);
 
-  controls.append(provider, model, shortcutHint, microphone, cancel, sendGroup);
+  controls.append(
+    provider,
+    model,
+    effortSelect,
+    shortcutHint,
+    microphone,
+    cancel,
+    sendGroup,
+  );
   pendingHost.setAttribute("aria-label", "대기 중인 요청");
   pendingHost.setAttribute("aria-live", "polite");
   form.append(pendingHost, input, controls);
@@ -561,9 +575,11 @@ export function createCommandPalette(config: {
     voicePrefix = "",
     recording = false,
     selectedModel = "",
+    selectedEffort = "",
     ready = false,
     loadingModels = false;
   let providerStates: AssistantProviderStatus[] = [];
+  let modelCatalog: AssistantModel[] = [];
   let request: AbortController | undefined;
   let activeRequestId = "";
   let noticeParent: HTMLElement | null = null;
@@ -830,6 +846,8 @@ export function createCommandPalette(config: {
       : "어떤 작업을 도와드릴까요?";
     model.disabled =
       busy || steering || stopping || loadingModels || applying || recording;
+    syncEffort();
+    effortSelect.disabled = model.disabled;
     sendModeField.disabled = applying || recording;
     followupField.disabled = applying || recording;
     send.disabled =
@@ -935,6 +953,7 @@ export function createCommandPalette(config: {
       if (!alive) return;
       ready = state.ready && state.models.length > 0;
       providerStates = state.providers ?? [];
+      modelCatalog = state.models;
       const options = state.models.map((item) => {
         const label = item.name.replace(/^(?:Codex|Claude)\s*·\s*/, "");
         const option = element("option", "", label);
@@ -972,6 +991,8 @@ export function createCommandPalette(config: {
         model.value = selectedModel;
       }
       selectedModel = model.value;
+      selectedEffort =
+        current?.effort ?? historyStore?.defaultEffort(selectedModel) ?? "";
       markDefaultModel();
       updateCapabilities(ready ? "연결됨" : "연결 필요");
       status.textContent = ready
@@ -1161,10 +1182,64 @@ export function createCommandPalette(config: {
         [...model.options].find((option) => !option.disabled)?.value ??
         "");
     model.value = selectedModel;
+    selectedEffort = historyStore?.defaultEffort(selectedModel) ?? "";
     status.textContent = "";
     sync();
     input.focus();
   }
+  const effortLabels: Record<string, string> = {
+    none: "없음",
+    minimal: "최소",
+    low: "낮게",
+    medium: "보통",
+    high: "높게",
+    xhigh: "매우 높게",
+    max: "최대로",
+    ultra: "울트라",
+  };
+  function syncEffort() {
+    const metadata = modelCatalog.find((item) => item.id === selectedModel);
+    const available = metadata?.efforts ?? [];
+    const defaultLabel = metadata?.defaultEffort
+      ? `기본 (${effortLabels[metadata.defaultEffort] ?? metadata.defaultEffort})`
+      : "기본";
+    effortSelect.hidden = !available.length;
+    if (selectedEffort && !available.includes(selectedEffort))
+      selectedEffort = "";
+    effortSelect.replaceChildren(
+      ...["", ...available].map((value) => {
+        const option = element(
+          "option",
+          "",
+          `추론 · ${value ? (effortLabels[value] ?? value) : defaultLabel}`,
+        );
+        option.value = value;
+        option.selected = value === selectedEffort;
+        return option;
+      }),
+    );
+  }
+  effortSelect.addEventListener("change", () => {
+    if (model.disabled) return;
+    selectedEffort = effortSelect.value;
+    try {
+      historyStore?.setDefaultEffort(selectedModel, selectedEffort);
+    } catch (error) {
+      storageError = errorText(error);
+    }
+    if (current && current.effort !== selectedEffort) {
+      current.effort = selectedEffort;
+      const event: ChatMessage = {
+        role: "event",
+        text: `추론 강도 · ${effortLabels[selectedEffort] ?? (selectedEffort || "기본값")}`,
+        created: Date.now(),
+      };
+      current.messages.push(event);
+      aiResults.append(chatEvent(event));
+      saveConversation();
+    }
+    sync();
+  });
   function markDefaultModel() {
     for (const option of model.options)
       if (option.dataset.label)
@@ -1334,6 +1409,7 @@ export function createCommandPalette(config: {
         messages: [],
       };
     current.model = selectedModel;
+    current.effort = selectedEffort;
     const active = current;
     let history: ChatMessage[];
     try {
@@ -1437,6 +1513,7 @@ export function createCommandPalette(config: {
         history,
         requestId,
         receiveProgress,
+        selectedEffort || undefined,
       );
       if (!alive || controller.signal.aborted) return;
       succeeded = true;
@@ -1688,6 +1765,7 @@ export function createCommandPalette(config: {
   if (current) {
     conversationId = current.conversationId;
     selectedModel = current.model;
+    selectedEffort = current.effort ?? "";
     renderConversation();
   }
   input.addEventListener("input", renderQueue);
@@ -1708,6 +1786,7 @@ export function createCommandPalette(config: {
   model.addEventListener("change", () => {
     if (busy || steering || stopping || applying || recording) return;
     selectedModel = model.value;
+    selectedEffort = historyStore?.defaultEffort(selectedModel) ?? "";
     defaultModel = selectedModel;
     markDefaultModel();
     try {
@@ -1723,6 +1802,7 @@ export function createCommandPalette(config: {
         )
           current.conversationId = conversationId = "";
         current.model = selectedModel;
+        current.effort = selectedEffort;
         const text = `모델을 ${model.selectedOptions[0]?.dataset.label ?? selectedModel}로 변경했어요.`;
         const created = Date.now();
         current.messages.push({ role: "event", text, created });

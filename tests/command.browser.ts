@@ -154,7 +154,13 @@ const api = createApi(async (input, init) => {
     return Response.json({
       ready: true,
       models: [
-        { id: "test", name: "Codex · 검사 모델", isDefault: true },
+        {
+          id: "test",
+          name: "Codex · 검사 모델",
+          isDefault: true,
+          efforts: ["medium", "high"],
+          defaultEffort: "medium",
+        },
         { id: "other", name: "Codex · 다른 모델", isDefault: false },
         {
           id: "claude:sonnet",
@@ -2383,6 +2389,105 @@ await check(
       );
     } finally {
       event.remove();
+    }
+  },
+);
+await check(
+  "추론 강도는 지원 모델만 선택·전송·복원하고 헤더 조작부의 중심선이 일치한다",
+  async () => {
+    const fixture = element("div");
+    document.body.append(fixture);
+    const saved = new Map<string, string>();
+    const memory = {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        saved.set(key, value);
+      },
+    };
+    let sentEffort: string | undefined;
+    const make = () =>
+      createCommandPalette({
+        host: fixture,
+        api: {
+          ...api,
+          assistantRun: async (
+            _prompt,
+            _context,
+            _conversation,
+            _model,
+            _signal,
+            _history,
+            _request,
+            _progress,
+            effort,
+          ) => {
+            sentEffort = effort;
+            return {
+              conversationId: "effort-test",
+              answer: "확인했어요.",
+              proposals: [],
+            };
+          },
+        },
+        site: "fixture.atlassian.net",
+        context: () => ({ projects: ["AA"], issue: "", keys: [] }),
+        recent: () => [],
+        localIssues: () => [],
+        order: () => [],
+        select: () => {},
+        changed: async () => {},
+        canMutate: () => true,
+        notice: () => {},
+        storage: memory,
+        scope: "effort-test",
+      });
+    let view = make();
+    try {
+      view.open("ai");
+      await tick();
+      let panel = fixture.querySelector<HTMLDialogElement>(".ai-modal");
+      let effort = panel?.querySelector<HTMLSelectElement>(
+        '[aria-label="추론 강도"]',
+      );
+      assert(effort && !effort.hidden, "지원 추론 강도 선택기 누락");
+      const header = panel?.querySelector<HTMLElement>(".command-head h2");
+      if (header && panel)
+        for (const button of panel.querySelectorAll<HTMLButtonElement>(
+          ".command-head button:not([hidden])",
+        )) {
+          const a = header.getBoundingClientRect(),
+            b = button.getBoundingClientRect();
+          assert(
+            Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 1,
+            "AI 헤더 중심선 불일치",
+          );
+        }
+      if (!effort || !panel) return;
+      effort.value = "high";
+      effort.dispatchEvent(new Event("change"));
+      const composer = panel.querySelector<HTMLTextAreaElement>("textarea");
+      if (composer) composer.value = "강도 확인";
+      panel.querySelector("form")?.requestSubmit();
+      await tick();
+      assert(sentEffort === "high", "선택 강도가 요청에 전달되지 않음");
+      view.destroy();
+      view = make();
+      view.open("ai");
+      await tick();
+      panel = fixture.querySelector<HTMLDialogElement>(".ai-modal");
+      effort = panel?.querySelector<HTMLSelectElement>(
+        '[aria-label="추론 강도"]',
+      );
+      assert(effort?.value === "high", "기존 대화의 추론 강도 복원 실패");
+      const model = panel?.querySelector<HTMLSelectElement>(".command-model");
+      if (model) {
+        model.value = "claude:sonnet";
+        model.dispatchEvent(new Event("change"));
+      }
+      assert(effort?.hidden, "지원 정보를 받지 않은 모델에 임의 강도 표시");
+    } finally {
+      view.destroy();
+      fixture.remove();
     }
   },
 );

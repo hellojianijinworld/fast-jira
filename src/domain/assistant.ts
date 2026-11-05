@@ -6,6 +6,8 @@ import {
 import { type IssueDraft, issueDraft } from "./create-issue.ts";
 import { isRecord, record, requiredString } from "./validation.ts";
 export interface AssistantModel {
+  efforts?: string[];
+  defaultEffort?: string;
   id: string;
   name: string;
   isDefault: boolean;
@@ -148,7 +150,29 @@ export function assistantStatus(value: unknown): AssistantStatus {
       const model = record(value);
       if (typeof model.isDefault !== "boolean")
         throw new Error("AI 모델 정보가 올바르지 않습니다.");
+      if (
+        model.efforts !== undefined &&
+        (!Array.isArray(model.efforts) ||
+          !model.efforts.every(
+            (value) =>
+              typeof value === "string" &&
+              value.length > 0 &&
+              value.length <= 40,
+          ))
+      )
+        throw new Error("추론 강도 목록을 확인하세요.");
+      if (
+        model.defaultEffort !== undefined &&
+        (typeof model.defaultEffort !== "string" ||
+          !Array.isArray(model.efforts) ||
+          !model.efforts.includes(model.defaultEffort))
+      )
+        throw new Error("기본 추론 강도를 확인하세요.");
       return {
+        ...(model.efforts ? { efforts: model.efforts as string[] } : {}),
+        ...(model.defaultEffort
+          ? { defaultEffort: model.defaultEffort as string }
+          : {}),
         id: requiredString(model.id, "모델"),
         name: requiredString(model.name, "모델 이름"),
         isDefault: model.isDefault,

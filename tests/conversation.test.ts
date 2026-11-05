@@ -313,3 +313,31 @@ test("Codex 복구 자료는 오래된 요청·멘션 ID·작업 결과·승인 
     /복구 범위/,
   );
 });
+
+test("추론 강도는 모델별 기본값과 대화별 선택을 구분해 저장한다", () => {
+  const data = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      data.set(key, value);
+    },
+  };
+  const store = createConversationStore(storage, "efforts");
+  store.setDefaultEffort("first", "high");
+  store.setDefaultEffort("second", "medium");
+  assert.equal(
+    createConversationStore(storage, "efforts").defaultEffort("first"),
+    "high",
+  );
+  assert.equal(store.defaultEffort("second"), "medium");
+  store.upsert({
+    id: "c",
+    conversationId: "native",
+    model: "first",
+    effort: "medium",
+    updated: 1,
+    messages: [],
+  });
+  assert.equal(store.read()[0]?.effort, "medium");
+  assert.equal(store.defaultEffort("first"), "high");
+});

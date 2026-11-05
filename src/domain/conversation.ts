@@ -11,6 +11,7 @@ export interface ChatMessage {
   executionSummary?: string;
 }
 export interface Conversation {
+  effort?: string;
   id: string;
   conversationId: string;
   model: string;
@@ -52,6 +53,7 @@ export function decodeConversations(value: unknown): Conversation[] {
       typeof item.model !== "string" ||
       typeof item.updated !== "number" ||
       !Number.isFinite(item.updated) ||
+      (item.effort !== undefined && typeof item.effort !== "string") ||
       !Array.isArray(item.messages) ||
       !item.messages.every(isChatMessage)
     )
@@ -60,6 +62,7 @@ export function decodeConversations(value: unknown): Conversation[] {
       id: item.id,
       conversationId: item.conversationId,
       model: item.model,
+      ...(typeof item.effort === "string" ? { effort: item.effort } : {}),
       updated: item.updated,
       messages: item.messages.map((message) =>
         legacyFailure(message)
