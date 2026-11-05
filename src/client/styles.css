@@ -221,10 +221,13 @@ dialog::backdrop {
   background: var(--backdrop-dialog);
 }
 .settings-modal {
+  --modal-content-inset: var(--density-space-5);
+  --modal-scroll-outset: var(--modal-content-inset);
+  --modal-scroll-padding: var(--modal-content-inset);
   width: min(520px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
   max-height: calc(100dvh - 24px);
-  padding: var(--density-space-5);
+  padding: var(--modal-content-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius-dialog);
   background: var(--surface);
@@ -239,6 +242,16 @@ dialog::backdrop {
 .settings-modal > :where(:not(.dialog-head):not(.modal-footer)) {
   min-height: 0;
   overflow-y: auto;
+}
+/* 프레임의 안쪽 여백을 스크롤 영역으로 넘겨 스크롤바는 바깥 끝에 둔다. */
+.modal-scroll-region {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-inline-end: calc(-1 * var(--modal-scroll-outset, 0px));
+  margin-block-end: calc(-1 * var(--modal-scroll-outset, 0px));
+  padding-inline-end: var(--modal-scroll-padding, 0px);
+  padding-block-end: var(--modal-scroll-padding, 0px);
 }
 .dialog-head,
 .modal-footer {
@@ -297,7 +310,7 @@ dialog::backdrop {
 }
 @media (max-width: 900px) {
   .settings-modal {
-    padding: var(--pane-padding);
+    --modal-content-inset: var(--pane-padding);
   }
 }
 @media (max-width: 600px) {
@@ -1483,7 +1496,7 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
     gap: 2px;
   }
   .settings-modal {
-    padding: var(--pane-padding);
+    --modal-content-inset: var(--pane-padding);
   }
   .connection-field input,
   .select-search input,
@@ -2336,10 +2349,11 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   width: min(940px, calc(100vw - 24px));
 }
 .faq-dialog {
-  height: min(580px, calc(100dvh - 24px));
-  width: min(860px, calc(100vw - 24px));
+  height: min(820px, calc(100dvh - 24px));
+  width: min(1200px, calc(100vw - 24px));
 }
 .faq-content {
+  overflow: visible;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -2404,35 +2418,43 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   margin-top: 0;
 }
 .faq-results {
-  min-height: 0;
-  overflow-y: auto;
   flex: 1;
-  overscroll-behavior: contain;
+}
+.faq-item {
+  border-bottom: 1px solid var(--border);
+}
+.faq-item[open] {
+  background: var(--surface-alt);
+  border-radius: var(--radius-8);
 }
 .faq-result {
   display: flex;
-  width: 100%;
   gap: var(--density-space-3);
   align-items: center;
-  padding: var(--density-space-2-5);
-  text-align: left;
+  padding: var(--density-space-3);
+  list-style: none;
+  cursor: pointer;
   color: var(--text);
-  background: transparent;
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-body);
+}
+.faq-result::-webkit-details-marker {
+  display: none;
+}
+.faq-result-icon {
+  flex: none;
+  color: var(--muted);
+}
+.faq-item[open] > .faq-result-icon {
+  transform: rotate(180deg);
 }
 .faq-result-copy {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
-.faq-result small {
-  display: block;
-  margin-top: var(--density-space-1);
-  font-size: var(--font-size-11);
-}
-.faq-result:hover:where(:not(:disabled):not([aria-disabled="true"])) {
+.faq-result:hover {
   background: var(--hover);
-}
-.faq-back {
-  align-self: flex-start;
 }
 .faq-shortcuts {
   display: grid;
@@ -2443,17 +2465,26 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   margin: 0;
   color: var(--muted);
 }
-.faq-back-icon {
-  transform: rotate(180deg);
-}
 .faq-answer {
-  min-height: 0;
-  overflow-y: auto;
+  padding: 0 var(--density-space-3) var(--density-space-3);
   line-height: var(--line-height-body);
+  overflow-wrap: anywhere;
 }
-.faq-answer h3 {
-  font-size: var(--text-panel-title-size);
-  line-height: var(--line-height-heading);
+.faq-answer section + section {
+  margin-top: var(--density-space-3);
+}
+.faq-answer-heading {
+  font-size: var(--text-body-size);
+  margin: 0 0 var(--density-space-1);
+  font-weight: var(--font-weight-medium);
+}
+.faq-answer ul {
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  color: var(--secondary-text);
+}
+.faq-answer li + li {
+  margin-top: var(--density-space-1);
 }
 @media (max-width: 900px) {
   .help-overview {

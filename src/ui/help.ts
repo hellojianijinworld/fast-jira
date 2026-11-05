@@ -1,4 +1,4 @@
-import { shortcutLabel } from "../domain/commands.ts";
+import { shortcutCommands, shortcutLabel } from "../domain/commands.ts";
 import { feedbackUrl, PRODUCT_URL } from "../domain/product.ts";
 import {
   actionButton,
@@ -118,11 +118,7 @@ export function helpContent(
   const shortcuts = element("section", "help-section");
   shortcuts.append(element("h3", "", "단축키"));
   const keys = element("dl", "faq-shortcuts");
-  for (const [label, command] of [
-    ["이슈 검색", "search"],
-    ["AI 대화", "ai"],
-    ["명령 팔레트", "palette"],
-  ] as const)
+  for (const [label, command] of shortcutCommands)
     keys.append(
       element("dt", "", label),
       element("dd", "", shortcutLabel(navigator.platform, command)),

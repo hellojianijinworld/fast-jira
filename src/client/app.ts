@@ -16,6 +16,7 @@ import {
   type WorkspaceView,
   type WorkspaceViews,
 } from "../domain/workspace-views.ts";
+import { bindActionButton } from "../ui/action-button.ts";
 import { activityFeed } from "../ui/activity-feed.ts";
 import { createAppMenu } from "../ui/app-menu.ts";
 import type { AppUpdateUi } from "../ui/app-update.ts";
@@ -61,6 +62,7 @@ import { applyColorTheme } from "./color-theme.ts";
 import type { CachedList, ListCache } from "./list-cache.ts";
 import { createListController } from "./list-controller.ts";
 import { createLiveUpdates } from "./live-updates.ts";
+import { applicationCommands } from "./palette-actions.ts";
 import {
   createAccountStore,
   type LocalStore,
@@ -96,8 +98,9 @@ export async function createApp(
   tools.setAttribute("aria-label", "이슈 도구");
   const searchToggle = iconButton("검색", "search", { selectable: true }),
     aiToggle = iconButton("AI 대화", "sparkles", { selectable: true }),
-    help = menuItemButton("이용 안내", "circle-help"),
-    settings = menuItemButton("설정", "settings"),
+    help = menuItemButton("", "circle-help"),
+    faq = menuItemButton("", "circle-help"),
+    settings = menuItemButton("", "settings"),
     selection = iconButton("이슈 선택 모드", "check", { selectable: true });
   aiToggle.hidden = true;
   searchToggle.title = `이슈 검색 (${shortcutLabel(navigator.platform)})`;
@@ -107,8 +110,8 @@ export async function createApp(
     "aria-keyshortcuts",
     shortcutAria(navigator.platform, "ai"),
   );
-  const feedback = menuItemButton("의견 보내기", "message-circle");
-  const checkUpdate = menuItemButton("업데이트 확인", "circle-arrow-up");
+  const feedback = menuItemButton("", "message-circle");
+  const checkUpdate = menuItemButton("", "circle-arrow-up");
   const github = externalLink(PRODUCT_URL);
   github.append(uiIcon("github"), document.createTextNode("GitHub"));
   const appMenu = createAppMenu([
@@ -116,6 +119,7 @@ export async function createApp(
     ...(updates ? [checkUpdate] : []),
     null,
     help,
+    faq,
     feedback,
     github,
   ]);
@@ -950,6 +954,37 @@ export async function createApp(
     currentUserId: bootstrap.me.accountId,
     currentUserName: bootstrap.me.displayName,
     searchCatalog: () => catalog,
+    actions: () =>
+      applicationCommands({
+        theme: preferences.theme,
+        views: workspaces.tabs,
+        activeView: workspaces.activeId,
+        setTheme: (theme) => {
+          if (preferences.theme === theme) return;
+          preferences = { ...preferences, theme };
+          applyPreferences();
+          render();
+          notice.show(
+            `${theme === "light" ? "화이트" : theme === "dark" ? "다크" : "시스템"} 모드로 전환했어요.`,
+          );
+        },
+        selectView: (id) => {
+          if (id !== workspaces.activeId)
+            applyWorkspace(selectWorkspace(workspaces, id));
+        },
+        createView: () => workspaceNavigation?.create(),
+        editView: () => workspaceNavigation?.editCurrent(),
+        settings: (tab) => showSettings(tab === "관리", tab),
+        help: showHelp,
+        onboarding: () => showGuide(),
+        feedback: showFeedback,
+        updatesAvailable: Boolean(updates),
+        selection: {
+          active: bulk.active,
+          busy: bulk.busy,
+          toggle: bulk.toggle,
+        },
+      }),
     storage,
     scope: store.scope,
     unread: (value) => {
@@ -1026,7 +1061,10 @@ export async function createApp(
   const managementContent = element("div");
   managementContent.append(installation.element);
   if (updates) managementContent.append(updates.element);
-  function showSettings(management = false) {
+  function showSettings(
+    management = false,
+    initialTab?: "Jira 연결" | "화면 표시" | "관리",
+  ) {
     const content = settingsContent(
       preferences,
       { name: bootstrap.me.displayName, site: bootstrap.site },
@@ -1038,7 +1076,7 @@ export async function createApp(
       undefined,
       connectionForm(api, () => location.reload()),
       managementContent,
-      management ? "관리" : undefined,
+      initialTab ?? (management ? "관리" : undefined),
       () => {
         void installation.refresh();
       },
@@ -1050,19 +1088,45 @@ export async function createApp(
       actions: content.actions,
     });
   }
-  settings.addEventListener("click", () => showSettings());
+  const refreshMenu = [
+    [settings, "settings"],
+    [help, "help"],
+    [faq, "faq"],
+    [feedback, "feedback"],
+    [checkUpdate, "update"],
+  ] as const;
+  const refreshActions = refreshMenu.map(([button, id]) =>
+    bindActionButton(button, id, commands.actions, (error) =>
+      notice.show(
+        error instanceof Error ? error.message : "실행하지 못했어요.",
+      ),
+    ),
+  );
+  appMenu.trigger.addEventListener(
+    "click",
+    () => {
+      for (const refresh of refreshActions) refresh();
+    },
+    { capture: true },
+  );
+  appMenu.trigger.addEventListener(
+    "keydown",
+    () => {
+      for (const refresh of refreshActions) refresh();
+    },
+    { capture: true },
+  );
   const showUpdates = () => showSettings(true);
   updates?.trigger.addEventListener("click", showUpdates);
-  checkUpdate.addEventListener("click", showUpdates);
-  feedback.addEventListener("click", () =>
-    showModal(popup, { title: "의견 보내기", content: feedbackContent() }),
-  );
-  help.addEventListener("click", () => {
+  function showFeedback() {
+    showModal(popup, { title: "의견 보내기", content: feedbackContent() });
+  }
+  function showHelp() {
     showModal(popup, {
       title: "Fast Jira 이용 안내",
       content: helpContent({ start: showGuide, faq: commands.openFaq }),
     });
-  });
+  }
   mobile.addEventListener("cancel", (event) => {
     event.preventDefault();
     closeDetail();

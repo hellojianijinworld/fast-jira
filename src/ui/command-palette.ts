@@ -1,3 +1,4 @@
+import { createCommandCatalog } from "../client/action-catalog.ts";
 import { createChatQueue } from "../client/chat-queue.ts";
 import { createMentionSource } from "../client/mention-source.ts";
 import { executionReport } from "../domain/assistant-execution.ts";
@@ -35,7 +36,8 @@ import {
   type CommandId,
   commandForShortcut,
   shortcutLabel as formatShortcut,
-  matchingCommands,
+  matchingActions,
+  type PaletteAction,
 } from "../domain/commands.ts";
 import {
   type ChatMessage,
@@ -59,7 +61,9 @@ import {
 import { createFaqDialog } from "./faq.ts";
 import { popoverPosition } from "./geometry.ts";
 import type { CardOptions } from "./issue-card.ts";
+import { modalScrollRegion } from "./modal.ts";
 import { createSearchDialog } from "./search-dialog.ts";
+import { workspaceIcon } from "./workspace-icons.ts";
 
 type Mode = "search" | "ai";
 const fields = {
@@ -95,6 +99,7 @@ export function createCommandPalette(config: {
   site: string;
   currentUserId?: string;
   searchCatalog?: () => TreeCatalog;
+  actions?: () => readonly PaletteAction[];
   currentUserName?: string;
   context: () => AssistantContext;
   recent: () => readonly Issue[];
@@ -126,7 +131,7 @@ export function createCommandPalette(config: {
     pickerClose = iconButton("명령 팔레트 닫기", "x"),
     picker = element("section", "command-picker"),
     commandQuery = element("input"),
-    commandMenu = element("div", "command-menu"),
+    commandMenu = modalScrollRegion(element("div", "command-menu")),
     panel = element("section", "command-panel"),
     form = element("form", "command-form"),
     input = element("textarea"),
@@ -264,7 +269,7 @@ export function createCommandPalette(config: {
   chatMain.append(transcriptRegion, form);
   chatLayout.append(sidebar.root, chatMain);
   capabilities.append(element("summary", "", "연결 및 지원 상태"));
-  commandQuery.placeholder = "명령 검색…";
+  commandQuery.placeholder = "명령, 뷰 이름, FAQ 검색";
   commandQuery.setAttribute("aria-label", "명령 검색");
   commandQuery.setAttribute("aria-controls", elementId("command-options"));
   commandMenu.id = commandQuery.getAttribute("aria-controls") ?? "";
@@ -1708,27 +1713,70 @@ export function createCommandPalette(config: {
     search: () => open("search"),
     ai: () => open("ai"),
   };
+  const catalog = createCommandCatalog({
+    handlers: commandActions,
+    createAvailable: () => Boolean(config.create),
+    aiAvailable: () => config.aiAvailable?.() ?? true,
+    actions: () => config.actions?.() ?? [],
+    openFaq,
+  });
   function renderCommands() {
-    const items = matchingCommands(
-      commandQuery.value,
-      config.aiAvailable?.() ?? true,
-    ).filter((item) => item.id !== "create" || config.create);
-    commandMenu.replaceChildren(
-      ...items.map((item) => {
-        const button = actionButton(item.label, item.icon, {
-          purpose: "quiet",
-        });
-        if (item.id === "search" || item.id === "ai")
-          button.append(
-            element("kbd", "", formatShortcut(navigator.platform, item.id)),
-          );
-        button.addEventListener("click", commandActions[item.id]);
-        return button;
-      }),
-    );
+    const entries = catalog
+      .all()
+      .filter(
+        (action) =>
+          commandQuery.value.trim().replace(/^>\s*/, "") ||
+          action.group !== "FAQ",
+      );
+    // 섹션 순서가 검색 순위를 뒤집지 않도록 그룹 순서를 먼저 정한다.
+    const items = matchingActions(commandQuery.value, entries);
+    commandMenu.replaceChildren();
+    const groups = new Map<string, HTMLElement>();
+    for (const item of items) {
+      const name = item.group ?? "작업";
+      let group = groups.get(name);
+      if (!group) {
+        group = element("section", "command-category");
+        group.setAttribute("aria-label", name);
+        group.append(element("h3", "", name));
+        groups.set(name, group);
+        commandMenu.append(group);
+      }
+      const button = actionButton(item.label, item.icon, {
+        purpose: "quiet",
+        size: "sm",
+      });
+      button.setAttribute("aria-label", item.label);
+      const label = button.querySelector("span");
+      if (item.viewIcon)
+        button
+          .querySelector(".ui-icon")
+          ?.replaceWith(workspaceIcon(item.viewIcon));
+      label?.classList.add("command-action-label");
+      if (item.description)
+        label?.append(
+          element("small", "command-action-description", item.description),
+        );
+      if (item.current)
+        button.append(element("small", "command-current", "현재"));
+      button.disabled = item.enabled === false;
+      if (item.shortcut)
+        button.append(
+          element("kbd", "", formatShortcut(navigator.platform, item.shortcut)),
+        );
+      button.addEventListener("click", async () => {
+        pickerDialog.close();
+        try {
+          await catalog.execute(item.id);
+        } catch (error) {
+          notify(errorText(error));
+        }
+      });
+      group.append(button);
+    }
     if (!items.length)
       commandMenu.append(
-        element("p", "command-hint", "일치하는 명령이 없습니다."),
+        element("p", "command-hint", "일치하는 명령이나 뷰, 질문이 없어요."),
       );
   }
   function openCommands() {
@@ -1747,7 +1795,9 @@ export function createCommandPalette(config: {
     if (event.isComposing) return;
     if (event.key === "ArrowDown" || event.key === "Enter") {
       event.preventDefault();
-      const button = commandMenu.querySelector("button");
+      const button = commandMenu.querySelector<HTMLButtonElement>(
+        "button:not(:disabled)",
+      );
       if (event.key === "Enter") button?.click();
       else button?.focus();
     }
@@ -1755,7 +1805,11 @@ export function createCommandPalette(config: {
   commandMenu.addEventListener("keydown", (event) => {
     if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
     event.preventDefault();
-    const buttons = [...commandMenu.querySelectorAll("button")],
+    const buttons = [
+        ...commandMenu.querySelectorAll<HTMLButtonElement>(
+          "button:not(:disabled)",
+        ),
+      ],
       index = buttons.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === "ArrowUp" && index <= 0) commandQuery.focus();
     else buttons[index + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
@@ -1889,7 +1943,15 @@ export function createCommandPalette(config: {
     event.preventDefault();
     if (command === "palette") openCommands();
     else if (command === "ai") toggleAI();
-    else open(command);
+    else if (command === "settings") {
+      pickerDialog.close();
+      searchDialog.close();
+      faqDialog.close();
+      void catalog
+        .execute("settings")
+        .catch((error) => notify(errorText(error)));
+    } else
+      void catalog.execute(command).catch((error) => notify(errorText(error)));
   };
   updateCapabilities("미확인");
   window.addEventListener("keydown", shortcut, true);
@@ -1899,6 +1961,7 @@ export function createCommandPalette(config: {
     toggleAI,
     openCommands,
     openFaq,
+    actions: catalog,
     get busy() {
       return busy || steering || stopping || applying || recording;
     },

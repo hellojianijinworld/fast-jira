@@ -1,4 +1,6 @@
 .command-modal {
+  --modal-scroll-outset: 0px;
+  --modal-scroll-padding: var(--density-space-4);
   --command-top: min(8dvh, 64px);
   width: min(760px, calc(100vw - 32px));
   max-width: none;
@@ -262,16 +264,24 @@
   display: none;
 }
 .command-picker {
-  padding: 4px var(--density-space-4) var(--density-space-4);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 4px 0 0;
+  overflow: hidden;
 }
 .command-picker input {
-  width: 100%;
+  flex: none;
+  margin-inline: var(--density-space-4);
+  width: calc(100% - 2 * var(--density-space-4));
   box-sizing: border-box;
 }
 .command-menu {
   display: grid;
   gap: 4px;
+  min-height: 0;
+  padding-block-start: 0;
+  padding-inline-start: var(--density-space-4);
   margin-top: var(--density-space-2-5);
 }
 .command-menu button {
@@ -1155,4 +1165,37 @@
 }
 .search-filter-head .status-actions {
   margin-inline-start: auto;
+}
+.command-category {
+  min-width: 0;
+}
+.command-category h3 {
+  margin: var(--density-space-2) var(--density-space-2) var(--density-space-1);
+  color: var(--muted);
+  font-size: var(--font-size-11);
+  font-weight: var(--font-weight-medium);
+}
+.command-category > button {
+  display: flex;
+  width: 100%;
+  gap: var(--density-space-2);
+  text-align: left;
+}
+.command-action-label {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.command-action-description {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-11);
+  font-weight: var(--font-weight-normal);
+  color: var(--muted);
+}
+.command-current {
+  flex: none;
+  color: var(--blue);
+  font-size: var(--font-size-11);
 }

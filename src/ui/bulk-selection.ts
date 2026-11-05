@@ -325,15 +325,18 @@ export function createBulkSelection(config: {
     sync();
     config.render();
   });
-  config.toggle.addEventListener("click", () => {
+  function toggleMode() {
+    if (busy) return;
     reset();
     active = !active;
     sync();
     config.render();
-  });
+  }
+  config.toggle.addEventListener("click", toggleMode);
   sync();
   return {
     reset,
+    toggle: toggleMode,
     groupControl(parent: string, keys: readonly string[]): HTMLElement | null {
       if (!active || !keys.length) return null;
       const label = element("label", "bulk-group-select"),

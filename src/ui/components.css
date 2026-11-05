@@ -1736,3 +1736,11 @@ textarea:disabled {
   font-size: var(--font-size-11);
   line-height: var(--line-height-label);
 }
+
+.ui-menu kbd {
+  margin-inline-start: auto;
+  padding-inline-start: var(--space-3);
+  font: inherit;
+  font-size: 0.85em;
+  color: var(--muted);
+}

@@ -264,6 +264,16 @@ await check(
         "완료한 최초 안내가 반복됨",
       );
       button("메뉴", host).click();
+      button("FAQ", host).click();
+      assert(
+        host.querySelector(".faq-dialog[open]"),
+        "메뉴에서 FAQ를 열 수 없음",
+      );
+      button(
+        "닫기",
+        host.querySelector(".faq-dialog[open]") as HTMLElement,
+      ).click();
+      button("메뉴", host).click();
       button("이용 안내", host).click();
       button("시작 안내 다시 보기", host).click();
       assert(

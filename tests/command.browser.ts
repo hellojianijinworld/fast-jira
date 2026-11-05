@@ -745,8 +745,10 @@ await check(
     query.value = "AI";
     query.dispatchEvent(new Event("input"));
     assert(
-      dialog().querySelectorAll(".command-menu button").length === 1,
-      "명령 필터 실패",
+      dialog()
+        .querySelector(".command-menu button")
+        ?.getAttribute("aria-label") === "AI 대화",
+      "AI 명령이 FAQ 검색 결과보다 우선하지 않음",
     );
     query.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
@@ -1740,7 +1742,7 @@ await check("AI 미연결 진입점·음성 지원·열린 대화 보존", async
   palette.destroy();
 });
 await check(
-  "FAQ 명령은 AI·Jira 조회 없이 질문 검색·답변·뒤로 가기를 제공한다",
+  "FAQ 명령은 AI·Jira 조회 없이 질문 검색·목록 내 아코디언을 제공한다",
   async () => {
     const required = <T>(value: T | null | undefined): T => {
       if (value == null) throw new Error("FAQ 검사 요소 누락");
@@ -1788,23 +1790,31 @@ await check(
     );
     query.value = "작업참여자";
     query.dispatchEvent(new Event("input", { bubbles: true }));
-    const first = faq.querySelector<HTMLButtonElement>(".faq-result");
+    const first = faq.querySelector<HTMLElement>(
+      '[data-faq-id="people"] .faq-result',
+    );
     assert(first?.textContent?.includes("담당자"), "질문 검색 누락");
     required(first).click();
     assert(
-      faq.querySelector(".faq-answer")?.textContent?.includes("사용자 지정"),
+      faq
+        .querySelector(".faq-item[open] .faq-answer")
+        ?.textContent?.includes("사용자 지정"),
       "답변 없음",
     );
-    required(faq.querySelector<HTMLButtonElement>(".faq-back")).click();
+    assert(
+      faq.querySelector(".faq-search") === form,
+      "답변을 열면서 검색창을 교체함",
+    );
+    required(first).click();
     assert(
       faq.querySelector<HTMLInputElement>("input")?.value === "작업참여자",
-      "돌아올 때 검색어 유실",
+      "아코디언 개폐 시 검색어 유실",
     );
     assert(
       faq
         .querySelector('.faq-topic[aria-pressed="true"]')
         ?.textContent?.includes("작업 만들기·변경"),
-      "답변에서 돌아올 때 선택 주제 유실",
+      "아코디언 개폐 시 선택 주제 유실",
     );
     assert(
       searchCalls === reads &&

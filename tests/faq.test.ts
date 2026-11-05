@@ -41,3 +41,22 @@ test("주제에는 여러 질문을 두고 검색은 선택한 주제 범위를 
   }
   assert.equal(matchingFaq("", "missing-topic").length, 0);
 });
+
+test("추가된 기능의 답변 본문도 구조화된 목록에서 검색한다", () => {
+  for (const [query, id] of [
+    ["대기열 메모리", "ai-history"],
+    ["인라인 본문", "history"],
+    ["우선순위 정렬", "search-sort"],
+    ["다른 컴퓨터", "favorite"],
+  ])
+    assert(matchingFaq(query ?? "").some((entry) => entry.id === id));
+  for (const entry of faqEntries) {
+    assert(entry.question && entry.answer.length > 0);
+    for (const section of entry.answer) {
+      assert(section.title && section.items.length > 0);
+      assert(
+        section.items.every((item) => typeof item === "string" && item.trim()),
+      );
+    }
+  }
+});

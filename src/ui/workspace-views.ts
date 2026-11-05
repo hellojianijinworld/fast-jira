@@ -1,6 +1,7 @@
 import { createViewDraft } from "../client/view-editor-controller.ts";
 import type { ViewOptions } from "../client/view-options.ts";
 import type { ProjectOption } from "../domain/catalog.ts";
+import { createActionCatalog, viewCommands } from "../domain/commands.ts";
 import {
   applyView,
   decodeViews,
@@ -11,6 +12,7 @@ import type {
   WorkspaceView,
   WorkspaceViews,
 } from "../domain/workspace-views.ts";
+import { bindActionButton } from "./action-button.ts";
 import {
   actionButton,
   buttonGroup,
@@ -126,13 +128,13 @@ export function createWorkspaceNavigation(options: {
   });
   let menuTarget = "",
     menuAnchor: HTMLElement | undefined;
-  const edit = menuItemButton("뷰 편집", "square-pen");
-  const duplicate = menuItemButton("뷰 복제", "copy");
+  const edit = menuItemButton("", viewCommands.edit.icon);
+  const duplicate = menuItemButton("", viewCommands.duplicate.icon);
   const menuSeparator = element("hr");
   menuSeparator.setAttribute("role", "separator");
-  const displayNames = menuItemButton("모든 뷰 이름 표시", "check");
+  const displayNames = menuItemButton("", viewCommands.names.icon);
   displayNames.setAttribute("role", "menuitemcheckbox");
-  displayNames.addEventListener("click", () => {
+  function toggleNames() {
     const anchor = menuAnchor;
     closeMenu();
     options.setNamesExpanded?.(!options.namesExpanded?.());
@@ -143,7 +145,24 @@ export function createWorkspaceNavigation(options: {
             `#${CSS.escape(anchor?.id ?? "")}`,
           );
     focusTarget?.focus();
+  }
+  const actions = createActionCatalog(() => {
+    const target = options.state().tabs.some((tab) => tab.id === menuTarget);
+    return [
+      { ...viewCommands.edit, visible: target, run: editTarget },
+      { ...viewCommands.duplicate, visible: target, run: duplicateTarget },
+      {
+        ...viewCommands.names,
+        visible: Boolean(options.setNamesExpanded),
+        run: toggleNames,
+      },
+    ];
   });
+  const refreshActions = [
+    bindActionButton(edit, viewCommands.edit.id, actions, report),
+    bindActionButton(duplicate, viewCommands.duplicate.id, actions, report),
+    bindActionButton(displayNames, viewCommands.names.id, actions, report),
+  ];
   menu.append(edit, duplicate, menuSeparator, displayNames);
   root.addEventListener("contextmenu", (event) => {
     if (!options.setNamesExpanded) return;
@@ -155,14 +174,13 @@ export function createWorkspaceNavigation(options: {
   }
   function showMenu(id: string, anchor: HTMLElement, x?: number, y?: number) {
     closeMenu();
-    edit.hidden = duplicate.hidden = !id;
-    displayNames.hidden = !options.setNamesExpanded;
+    menuTarget = id;
+    for (const refresh of refreshActions) refresh();
     menuSeparator.hidden = !id || displayNames.hidden;
     displayNames.setAttribute(
       "aria-checked",
       String(!!options.namesExpanded?.()),
     );
-    menuTarget = id;
     menuAnchor = anchor;
     menu.setAttribute(
       "aria-label",
@@ -423,12 +441,12 @@ export function createWorkspaceNavigation(options: {
     iconPicker = undefined;
   });
   add.addEventListener("click", () => open(true));
-  edit.addEventListener("click", () => {
+  function editTarget() {
     const id = menuTarget;
     closeMenu();
     open(false, id);
-  });
-  duplicate.addEventListener("click", () => {
+  }
+  function duplicateTarget() {
     const current = options.state().tabs.find((tab) => tab.id === menuTarget);
     closeMenu();
     if (!current) return report(new Error("뷰를 찾을 수 없습니다."));
@@ -453,13 +471,14 @@ export function createWorkspaceNavigation(options: {
     } catch (reason) {
       report(reason);
     }
-  });
+  }
   render();
   return {
     element: root,
     switcher,
     render,
     editCurrent: () => open(false),
+    create: () => open(true),
     destroy() {
       revision++;
       resize.disconnect();

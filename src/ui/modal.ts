@@ -1,5 +1,11 @@
 import { buttonGroup, element, iconButton } from "./dom.ts";
 
+/** 스크롤바는 프레임 끝에 두고 내용 여백은 스크롤 영역 안에서 유지한다. */
+export function modalScrollRegion<T extends HTMLElement>(region: T): T {
+  region.classList.add("modal-scroll-region");
+  return region;
+}
+
 /** 본문은 필수, 푸터는 선택이다. 모든 모달의 작업 버튼은 오른쪽에 모은다. */
 export function showModal(
   dialog: HTMLDialogElement,
