@@ -4,7 +4,7 @@ import type { TreeCatalog } from "../domain/catalog.ts";
 import type { LookupResult } from "../domain/details.ts";
 import { compareIssues } from "../domain/list.ts";
 import { FOLLOW_GLOBAL_VIEW, type ViewInfo } from "../domain/view-labels.ts";
-import { element, iconButton, uiIcon } from "./dom.ts";
+import { element, iconButton, textButton, uiIcon } from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
 import { keyedContent } from "./keyed-content.ts";
 
@@ -44,7 +44,8 @@ export function detailChildren(
     head.append(filter);
   }
   const renderCards = keyedContent(list);
-  const more = element("button", "secondary detail-child-more");
+  const more = textButton("", { purpose: "quiet", size: "sm" });
+  more.classList.add("detail-child-more");
   more.addEventListener("click", () => {
     if (options)
       void options.list.queueChildren(result.parent.key, () => alive);

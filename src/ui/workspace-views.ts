@@ -17,9 +17,10 @@ import {
   element,
   elementId,
   iconButton,
+  textButton,
   uiIcon,
 } from "./dom.ts";
-import { createMenu } from "./menu.ts";
+import { createMenu, menuItemButton } from "./menu.ts";
 import { showModal } from "./modal.ts";
 import { projectChecklist } from "./project-checklist.ts";
 import { createViewEditor } from "./view-editor.ts";
@@ -125,15 +126,11 @@ export function createWorkspaceNavigation(options: {
   });
   let menuTarget = "",
     menuAnchor: HTMLElement | undefined;
-  const edit = actionButton("뷰 편집", "square-pen", { size: "sm" });
-  const duplicate = actionButton("뷰 복제", "copy", { size: "sm" });
-  edit.setAttribute("role", "menuitem");
-  duplicate.setAttribute("role", "menuitem");
+  const edit = menuItemButton("뷰 편집", "square-pen");
+  const duplicate = menuItemButton("뷰 복제", "copy");
   const menuSeparator = element("hr");
   menuSeparator.setAttribute("role", "separator");
-  const displayNames = actionButton("모든 뷰 이름 표시", "check", {
-    size: "sm",
-  });
+  const displayNames = menuItemButton("모든 뷰 이름 표시", "check");
   displayNames.setAttribute("role", "menuitemcheckbox");
   displayNames.addEventListener("click", () => {
     const anchor = menuAnchor;
@@ -213,7 +210,8 @@ export function createWorkspaceNavigation(options: {
     tabs.replaceChildren(
       ...state.tabs.map((tab) => {
         const item = element("div", "workspace-tab-item"),
-          button = element("button", "workspace-tab");
+          button = textButton("", { purpose: "quiet", selectable: true });
+        button.classList.add("workspace-tab");
         button.append(tab.icon ? workspaceIcon(tab.icon) : uiIcon("layers"));
         button.append(element("span", "workspace-tab-label", tab.name));
         if (!options.namesExpanded?.()) button.title = tab.name;
@@ -304,8 +302,10 @@ export function createWorkspaceNavigation(options: {
       projectHost = element("div"),
       editorHost = element("div"),
       error = element("p", "error"),
-      save = actionButton(creating ? "뷰 만들기" : "저장", "check", "primary"),
-      cancel = actionButton("취소", "x");
+      save = actionButton(creating ? "뷰 만들기" : "저장", "check", {
+        purpose: "confirm",
+      }),
+      cancel = actionButton("취소", "x", { purpose: "quiet" });
     name.value = original.name;
     name.required = true;
     name.maxLength = 80;
@@ -340,7 +340,9 @@ export function createWorkspaceNavigation(options: {
       } catch (reason) {
         if (request !== revision || !dialog.open) return;
         editorHost.replaceChildren();
-        const retry = actionButton("다시 불러오기", "search");
+        const retry = actionButton("다시 불러오기", "search", {
+          purpose: "utility",
+        });
         retry.addEventListener("click", () => void loadEditor());
         editorHost.append(retry);
         error.textContent =
@@ -387,7 +389,7 @@ export function createWorkspaceNavigation(options: {
     cancel.addEventListener("click", () => dialog.close());
     const actions = [cancel, save];
     if (!creating && options.state().tabs.length > 1) {
-      const remove = actionButton("뷰 삭제", "trash-2");
+      const remove = actionButton("뷰 삭제", "trash-2", { purpose: "danger" });
       remove.addEventListener("click", () => {
         if (
           !confirm(

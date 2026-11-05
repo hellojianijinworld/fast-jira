@@ -1,6 +1,12 @@
 import { shortcutLabel } from "../domain/commands.ts";
 import { feedbackUrl, PRODUCT_URL } from "../domain/product.ts";
-import { actionButton, element, externalLink, uiIcon } from "./dom.ts";
+import {
+  actionButton,
+  buttonLink,
+  element,
+  externalLink,
+  uiIcon,
+} from "./dom.ts";
 
 const features = [
   {
@@ -104,7 +110,7 @@ export function helpContent(
       element("strong", "", "궁금한 점이 있나요?"),
       element("p", "muted", "사용 방법이 궁금하면 FAQ에서 질문을 찾아보세요."),
     );
-    const search = actionButton("FAQ 검색", "search", { variant: "outline" });
+    const search = actionButton("FAQ 검색", "search", { purpose: "utility" });
     search.addEventListener("click", () => options.faq?.());
     row.append(text, search);
     content.append(row);
@@ -126,13 +132,12 @@ export function helpContent(
   const links = element("footer", "help-links");
   if (options.start) {
     const start = actionButton("시작 안내 다시 보기", "circle-help", {
-      variant: "outline",
+      purpose: "utility",
     });
     start.addEventListener("click", options.start);
     links.append(start);
   }
-  const github = externalLink(PRODUCT_URL, "", "button-link outline");
-  github.append(uiIcon("github"), document.createTextNode("GitHub"));
+  const github = buttonLink(PRODUCT_URL, "GitHub", "github");
   links.append(github, externalLink(feedbackUrl("bug"), "버그 제보"));
   content.append(links);
   return content;

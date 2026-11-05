@@ -456,9 +456,15 @@ checks.push([
       group = tools.getBoundingClientRect(),
       end = actions.getBoundingClientRect();
     assert(
-      Math.abs(group.left + group.width / 2 - bounds.left - bounds.width / 2) <
-        1,
-      "도구 그룹이 탑바 중앙에 있지 않다",
+      Math.abs(
+        (group.left +
+          (nav.querySelector(".workspace-views")?.getBoundingClientRect()
+            .right ?? group.left)) /
+          2 -
+          bounds.left -
+          bounds.width / 2,
+      ) < 1,
+      "뷰와 도구 사이 간격이 탑바 중앙에 있지 않다",
     );
     assert(
       end.right <= bounds.right && end.left >= bounds.left,
@@ -834,7 +840,19 @@ checks.push([
       const checks = root.querySelectorAll<HTMLInputElement>(
         ":scope > .settings-modal input[type=radio]",
       );
-      assert(checks.length === 7, "화면 표시 선택 카드 누락");
+      const groups = root.querySelectorAll<HTMLElement>(
+        ":scope > .settings-modal .setting-group",
+      );
+      assert(
+        groups.length === 4 &&
+          checks.length > 0 &&
+          [...groups].every(
+            (group) =>
+              group.querySelectorAll('input[type="radio"]:checked').length ===
+              1,
+          ),
+        "화면 표시 그룹의 단일 선택 누락",
+      );
       for (const label of ["테마 · 다크", "제목 표시 · 한 줄로"]) {
         const check = root.querySelector<HTMLInputElement>(
           `input[aria-label="${label}"]`,
@@ -1607,9 +1625,7 @@ checks.push([
         ),
       "메인 액션에 되돌리기가 남는다",
     );
-    const undo = root.querySelector<HTMLButtonElement>(
-      ".notice button.secondary",
-    );
+    const undo = root.querySelector<HTMLButtonElement>(".notice button.subtle");
     assert(undo?.textContent === "되돌리기", "결과 토스트에 되돌리기 누락");
     undo.click();
     await tick();
@@ -3261,7 +3277,7 @@ checks.push([
     button("설정").click();
     try {
       spacing(":scope > .settings-modal", "padding-top", small ? 10 : 20);
-      spacing(".settings-tabs", "margin-top", small ? 8 : 12);
+      spacing(".dialog-head > .settings-tabs", "margin-top", 0);
       spacing(".settings-panels", "padding-top", small ? 6 : 8);
       const content = root.querySelector<HTMLElement>(".settings-content");
       assert(

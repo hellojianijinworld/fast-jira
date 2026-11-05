@@ -146,7 +146,7 @@ export function createAssistantApprovalPanel(
       const mic = iconButton("의견 음성 입력", "mic", { size: "sm" });
       const send = iconButton("답변 보내기", "arrow-up", {
         size: "sm",
-        variant: "primary",
+        purpose: "confirm",
       });
       send.type = "submit";
       send.disabled = true;

@@ -18,7 +18,7 @@ export function createFaqDialog(host: HTMLElement) {
     alive = true;
   function question(entry: FaqEntry) {
     const back = actionButton("질문 목록", "chevron-right", {
-      variant: "ghost",
+      purpose: "quiet",
       size: "sm",
     });
     back.classList.add("faq-back");

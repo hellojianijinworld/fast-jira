@@ -26,8 +26,9 @@ export function issueHistory(
 ) {
   const trigger = actionButton("기록", "history", {
     size: "sm",
-    variant: "outline",
+    purpose: "quiet",
   });
+  trigger.classList.add("history-trigger");
   trigger.setAttribute("aria-label", "변경 기록");
   trigger
     .querySelector("span")
@@ -63,7 +64,10 @@ export function issueHistory(
   head.append(element("h3", "", "변경 기록"), close);
   const entries = element("div"),
     message = element("p", "empty"),
-    more = actionButton("이전 기록", "chevron-right");
+    more = actionButton("이전 기록", "chevron-right", {
+      purpose: "quiet",
+      size: "sm",
+    });
   const scroll = element("div", "history-scroll");
   const timeline = element("div"),
     comparison = element(

@@ -1,5 +1,5 @@
 import type { SelectionFilter } from "../domain/issue.ts";
-import { element } from "./dom.ts";
+import { buttonGroup, element, textButton } from "./dom.ts";
 export interface FilterChoice {
   id: string;
   name: string;
@@ -15,14 +15,17 @@ export function filterChecklist(
 ) {
   const section = element("section", "filter-section");
   const head = element("div", "filter-section-head");
-  const actions = element("div", "status-actions");
+  const actions = buttonGroup(element("div", "status-actions"), {
+    size: "sm",
+    compact: true,
+  });
   head.append(element("h3", "", title));
   for (const [label, value] of [
     ["전체 선택", null],
     ["선택 해제", []],
     ...shortcuts,
   ] as [string, SelectionFilter][]) {
-    const button = element("button", "", label);
+    const button = textButton(label, { purpose: "quiet", size: "sm" });
     button.type = "button";
     button.addEventListener("click", () => change(value));
     actions.append(button);

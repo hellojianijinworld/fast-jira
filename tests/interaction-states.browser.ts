@@ -86,18 +86,25 @@ const specs: Spec[] = [
     },
   },
 
-  ...(["primary", "secondary", "outline", "ghost"] as const).map((variant) => ({
+  ...(["primary", "subtle", "outline", "ghost"] as const).map((variant) => ({
     name: `버튼 ${variant}`,
     make: () => actionButton("저장", "check", variant),
   })),
-  ...["", "secondary", "outline"].map((cls) => ({
+  ...["", "subtle", "outline"].map((cls) => ({
     name: `일반 버튼 ${cls || "primary"}`,
     make: () => button(cls),
   })),
   { name: "아이콘 버튼", make: () => iconButton("도구", "search") },
   {
     name: "뷰 탭",
-    make: () => button("workspace-tab"),
+    make: () => {
+      const tab = actionButton("뷰", "layers", {
+        purpose: "quiet",
+        selectable: true,
+      });
+      tab.classList.add("workspace-tab");
+      return tab;
+    },
     select: (n) => n.setAttribute("aria-selected", "true"),
   },
   {
@@ -165,9 +172,10 @@ const specs: Spec[] = [
   },
   {
     name: "도구 활성",
-    make: () => container("nav-tools", iconButton("선택", "check")),
+    make: () =>
+      container("nav-tools", iconButton("선택", "check", { selectable: true })),
     target: (n) => n.firstElementChild as HTMLElement,
-    select: (n) => n.firstElementChild?.classList.add("active"),
+    select: (n) => n.firstElementChild?.setAttribute("aria-pressed", "true"),
   },
   {
     name: "하위 필터",

@@ -63,7 +63,9 @@ async function start(root: HTMLElement) {
     ),
   );
   if (failure) {
-    const retry = actionButton("다시 연결", "refresh-cw");
+    const retry = actionButton("다시 연결", "refresh-cw", {
+      purpose: "utility",
+    });
     retry.addEventListener("click", () => {
       void start(root);
     });

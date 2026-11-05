@@ -84,11 +84,6 @@ main {
 .nav-actions {
   justify-self: end;
 }
-.nav-tools .active {
-  color: var(--blue);
-  background: var(--selected);
-  border-color: var(--blue);
-}
 .workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
@@ -878,10 +873,6 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   flex: 1;
   min-height: 0;
   overflow: auto;
-}
-.nav-tools [aria-pressed="true"] {
-  color: var(--blue);
-  background: var(--blue-soft);
 }
 
 .attachment-images {
@@ -1690,7 +1681,7 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   .detail-head-actions {
     gap: 4px;
   }
-  .detail-head-actions > [data-variant="outline"] {
+  .detail-head-actions > .history-trigger {
     padding-inline: 4px;
     gap: 4px;
   }
@@ -2085,17 +2076,9 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
   color: var(--text);
 }
-.workspace-tab[aria-selected="true"] {
-  color: var(--blue-text);
-  background: var(--selected);
-  border-color: var(--blue);
-  font-weight: var(--font-weight-semibold);
-}
-.workspace-tab[aria-selected="true"]:hover:where(:not(:disabled)),
 .workspace-switch-option[aria-checked="true"]:hover:where(:not(:disabled)),
 .faq-topic[aria-pressed="true"]:hover:where(:not(:disabled)),
 .setting-option:has(input:checked):hover:where(:not(:has(input:disabled))),
-.nav-tools .active:hover:where(:not(:disabled)),
 .row-action.active:hover:where(:not(:disabled)),
 .detail-child-filter.active:hover:where(:not(:disabled)) {
   background: var(--selected-hover);

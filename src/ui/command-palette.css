@@ -189,7 +189,7 @@
   max-height: 180px;
   font: inherit;
   padding: var(--density-space-2-5) var(--density-space-3);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
   box-sizing: border-box;
 }
 .command-controls {
@@ -471,7 +471,7 @@
   resize: vertical;
 }
 .chat-main .command-results {
-  gap: var(--density-space-4-5);
+  gap: var(--density-space-3-5);
 }
 .chat-message {
   min-width: 0;
@@ -530,11 +530,12 @@
 }
 .chat-event-entries {
   display: grid;
-  gap: var(--density-space-2-5);
-  margin-top: var(--density-space-2);
-  padding: var(--density-space-1) 0 var(--density-space-1)
+  gap: var(--density-space-1-5);
+  margin-top: var(--density-space-1);
+  margin-inline-start: var(--density-space-1-5);
+  padding: var(--density-space-1) var(--density-space-2) var(--density-space-1)
     var(--density-space-3);
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
 }
 .chat-event-entry {
   display: grid;
@@ -561,18 +562,18 @@
 .command-user,
 .command-answer {
   font-size: var(--font-size-14);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
 }
 .command-user {
   max-width: 90%;
-  padding: var(--density-space-2-5) var(--density-space-3-5);
+  padding: var(--density-space-2) var(--density-space-3-5);
   border-radius: var(--radius-14) var(--radius-14) var(--radius-4)
     var(--radius-14);
   background: var(--blue-soft);
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
 }
 .command-answer {
   overflow-wrap: anywhere;
@@ -582,21 +583,21 @@
   margin-block: 0;
 }
 .chat-markdown > * + * {
-  margin-block-start: var(--space-3);
+  margin-block-start: var(--space-2);
 }
 .chat-markdown :is(h1, h2, h3, h4, h5, h6) {
   font-size: var(--font-size-14);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
   font-weight: var(--font-weight-semibold);
 }
 .chat-markdown :is(ul, ol) {
   padding-inline-start: var(--space-5);
 }
 .chat-markdown li + li {
-  margin-block-start: var(--space-1);
+  margin-block-start: calc(var(--space-1) / 2);
 }
 .chat-markdown li > p {
-  margin-block: var(--space-1);
+  margin-block: calc(var(--space-1) / 2);
 }
 .chat-markdown blockquote {
   margin-inline: 0;
@@ -629,7 +630,7 @@
   font-size: var(--font-size-13);
 }
 .chat-table-wrap :is(th, td) {
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
   border-bottom: 1px solid var(--border);
   text-align: start;
   vertical-align: top;
@@ -802,6 +803,7 @@
 }
 
 .chat-send-group {
+  margin-inline-start: auto;
   display: flex;
   align-items: center;
 }
@@ -814,7 +816,7 @@
   gap: var(--space-3);
   max-width: calc(100vw - 24px);
   font-size: var(--font-size-13);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
   overflow-wrap: anywhere;
 }
 .ai-chat-help h3 {
@@ -912,7 +914,7 @@
 .ai-chat-settings .view-help {
   display: block;
   font-size: var(--font-size-11);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
 }
 .ai-chat-settings > fieldset > .view-help + .view-help {
   margin-top: var(--space-2);
@@ -929,7 +931,7 @@
   padding: var(--density-space-2) var(--density-space-3);
   background: var(--surface-alt);
   font-size: var(--font-size-12);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
   overflow-wrap: anywhere;
 }
 .chat-execution-result > p {
@@ -983,8 +985,9 @@
 }
 
 .chat-input-shortcuts {
-  flex: 1;
-  min-width: min(160px, 100%);
+  min-width: 0;
+  max-width: 100%;
+  justify-self: end;
   margin: 0;
   color: var(--muted);
   font-size: var(--font-size-11);
@@ -1056,11 +1059,6 @@
     min-width: 145px;
     max-width: none;
   }
-  .is-docked .chat-input-shortcuts {
-    flex-basis: 100%;
-    order: 2;
-    text-align: left;
-  }
   .is-docked .chat-send-group {
     margin-left: auto;
   }
@@ -1075,7 +1073,7 @@
   border-radius: var(--radius-card);
   background: var(--surface-alt);
   font-size: var(--font-size-12);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
   overflow-wrap: anywhere;
 }
 .chat-error > strong {

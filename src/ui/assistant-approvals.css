@@ -1,6 +1,6 @@
 .assistant-approval {
   display: grid;
-  gap: var(--density-space-3);
+  gap: var(--density-space-2);
   margin-block: var(--density-space-3);
   padding: var(--density-space-3-5);
   border: 1px solid var(--border);
@@ -13,7 +13,7 @@
 }
 .assistant-approval h3 {
   font-size: var(--font-size-14);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
 }
 .assistant-question-context {
   color: var(--muted);
@@ -26,7 +26,7 @@
   overflow-wrap: anywhere;
   font: inherit;
   font-size: var(--font-size-12);
-  line-height: var(--line-height-prose);
+  line-height: var(--line-height-body);
   background: var(--page);
   border-radius: var(--radius-8);
 }

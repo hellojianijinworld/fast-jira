@@ -1,12 +1,16 @@
+import { createApi } from "../src/client/api.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
+import { documentForm } from "../src/ui/document-form.ts";
 import {
   actionButton,
   buttonGroup,
+  buttonLink,
   element,
   iconButton,
+  textButton,
 } from "../src/ui/dom.ts";
 import { issueCard } from "../src/ui/issue-card.ts";
-import { createMenu } from "../src/ui/menu.ts";
+import { createMenu, menuItemButton } from "../src/ui/menu.ts";
 import { enhanceSelect } from "../src/ui/select-menu.ts";
 import "../src/client/styles.css";
 
@@ -139,7 +143,7 @@ check("라이트·다크에서 공통 버튼 변형과 카드 표면이 테마�
   const root = document.documentElement;
   const original = root.dataset.theme;
   const primary = actionButton("저장", "check", { variant: "primary" });
-  const secondary = actionButton("취소", "x", { variant: "secondary" });
+  const secondary = actionButton("취소", "x", { variant: "subtle" });
   const ghost = iconButton("닫기", "x");
   fixture.append(primary, secondary, ghost);
   try {
@@ -386,5 +390,108 @@ check(
   },
 );
 
+check("본문·댓글 작성의 저장과 취소는 공통 실행·보조 역할로 구분한다", () => {
+  const form = documentForm({
+    initial: null,
+    issue: {
+      key: "TEST-1",
+      url: "https://example.atlassian.net/browse/TEST-1",
+    },
+    imageEnabled: false,
+    api: createApi(),
+    label: "본문 검사",
+    submitLabel: "저장",
+    save: async () => {},
+    close: () => {},
+  });
+  fixture.append(form.element);
+  try {
+    const save = form.element.querySelector<HTMLButtonElement>(
+      'button[type="submit"]',
+    );
+    const cancel = [
+      ...form.element.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent === "취소");
+    assert(save?.dataset.variant === "primary", "최종 저장이 primary가 아님");
+    assert(cancel?.dataset.variant === "ghost", "취소가 ghost가 아님");
+    assert(
+      getComputedStyle(save).backgroundColor !==
+        getComputedStyle(cancel).backgroundColor,
+      "저장·취소의 시각적 위계가 같음",
+    );
+    assert(
+      save.getBoundingClientRect().height ===
+        cancel.getBoundingClientRect().height,
+      "같은 작업 그룹의 버튼 높이가 다름",
+    );
+  } finally {
+    form.destroy();
+  }
+});
+check(
+  "역할 버튼·링크·메뉴와 뷰·도구 선택은 라이트·다크에서 같은 규칙을 사용한다",
+  () => {
+    const scope = element("section");
+    const confirm = actionButton("저장", "check", { purpose: "confirm" });
+    const entry = actionButton("생성", "plus", { purpose: "entry" });
+    const utility = actionButton("연결 확인", "search", { purpose: "utility" });
+    const link = buttonLink(
+      "https://example.com",
+      "외부 안내",
+      "external-link",
+    );
+    const menu = menuItemButton("뷰 복제", "copy");
+    const danger = actionButton("뷰 삭제", "trash-2", { purpose: "danger" });
+    const tab = textButton("뷰", { purpose: "quiet", selectable: true });
+    const tool = iconButton("AI 대화", "sparkles", { selectable: true });
+    tab.setAttribute("aria-selected", "true");
+    tool.setAttribute("aria-pressed", "true");
+    scope.append(confirm, entry, utility, link, menu, danger, tab, tool);
+    fixture.append(scope);
+    const original = document.documentElement.dataset.theme;
+    try {
+      for (const theme of ["light", "dark"]) {
+        document.documentElement.dataset.theme = theme;
+        const style = (node: Element) => getComputedStyle(node);
+        assert(
+          style(confirm).backgroundColor !== style(entry).backgroundColor,
+          "확정과 진입 역할이 구분되지 않음",
+        );
+        assert(
+          style(utility).backgroundColor === style(link).backgroundColor &&
+            style(utility).borderColor === style(link).borderColor &&
+            style(utility).color === style(link).color,
+          "같은 보조 동작의 버튼·링크가 다름",
+        );
+        assert(
+          menu.getAttribute("role") === "menuitem" &&
+            menu.dataset.variant === "ghost",
+          "메뉴를 강한 액션 버튼으로 생성함",
+        );
+        assert(
+          style(danger).color !== style(menu).color,
+          "위험 동작 구분 누락",
+        );
+        assert(
+          style(tab).backgroundColor === style(tool).backgroundColor &&
+            style(tab).borderColor === style(tool).borderColor &&
+            style(tab).color === style(tool).color,
+          "뷰·도구의 선택 표현이 다름",
+        );
+        const plain = element("button", "", "일반 조작");
+        scope.append(plain);
+        assert(
+          style(plain).backgroundColor !== style(confirm).backgroundColor,
+          "variant 미지정 버튼이 주요 동작처럼 보임",
+        );
+        plain.remove();
+      }
+    } finally {
+      if (original === undefined) delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = original;
+      scope.remove();
+    }
+  },
+);
 results.dataset.failures = String(failures);
 results.dataset.complete = "true";

@@ -26,7 +26,7 @@ export function createSearchDialog(config: {
     pane = element("div", "command-panel"),
     form = element("form", "search-form"),
     input = element("input", "search-query"),
-    submit = actionButton("검색", "search", "primary"),
+    submit = actionButton("검색", "search", { purpose: "confirm" }),
     status = element("p", "command-status"),
     hint = element(
       "p",
@@ -171,7 +171,10 @@ export function createSearchDialog(config: {
       remoteResults.hidden =
         remoteResults.querySelector(".issue-card") === null;
       if (nextPage) {
-        const button = actionButton("더 보기", "chevron-down");
+        const button = actionButton("더 보기", "chevron-down", {
+          purpose: "quiet",
+          size: "sm",
+        });
         button.classList.add("command-more");
         button.addEventListener("click", () => {
           if (input.value.trim() === lastQuery) void search(true);

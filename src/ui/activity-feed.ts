@@ -26,7 +26,7 @@ export function activityFeed(select: (key: string) => void, retry: () => void) {
   );
   const content = element("div");
   const message = element("p", "activity-message");
-  const again = actionButton("다시 시도", "refresh-cw");
+  const again = actionButton("다시 시도", "refresh-cw", { purpose: "utility" });
   again.addEventListener("click", retry);
   root.append(heading, description, content, message, again);
   const update = keyedContent(content);

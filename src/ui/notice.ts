@@ -1,4 +1,4 @@
-import { element, iconButton } from "./dom.ts";
+import { element, iconButton, textButton } from "./dom.ts";
 
 export type UndoAction = () => void | Promise<void>;
 /** 일반 안내는 3초, 되돌리기는 5초다. 읽거나 키보드로 조작하는 동안에는 닫지 않는다. */
@@ -42,7 +42,7 @@ export function createNotice(notice: HTMLElement) {
     duration = undo ? 5000 : 3000;
     notice.replaceChildren(element("span", "", text));
     if (undo) {
-      const button = element("button", "secondary", "되돌리기");
+      const button = textButton("되돌리기", { purpose: "entry" });
       button.type = "button";
       button.addEventListener(
         "click",

@@ -153,7 +153,9 @@ export function createFilterPanel(
     } catch (reason) {
       if (generation !== revision || !alive) return;
       error.textContent = messageOf(reason);
-      const retry = actionButton("다시 불러오기", "search");
+      const retry = actionButton("다시 불러오기", "search", {
+        purpose: "utility",
+      });
       retry.addEventListener("click", () => void startEditing());
       editHost.replaceChildren(retry);
     }

@@ -79,6 +79,13 @@
   --radius-dialog: var(--radius-12);
   --radius-popover: var(--radius-10);
   --selected-hover: color-mix(in srgb, var(--selected) 85%, var(--blue));
+  --button-selected-bg: color-mix(in srgb, var(--selected) 82%, var(--blue));
+  --button-selected-hover: color-mix(in srgb, var(--selected) 74%, var(--blue));
+  --button-selected-border: color-mix(
+    in srgb,
+    var(--blue) 65%,
+    var(--selected)
+  );
   --pressed-overlay: color-mix(in srgb, var(--text) 12%, transparent);
   --pressed-shadow: inset 0 0 0 999px var(--pressed-overlay);
   --scrollbar-thumb: color-mix(in srgb, var(--muted) 10%, transparent);
@@ -159,6 +166,7 @@
 }
 /* 화면 밀도와 구역 간격만 반응형으로 전환한다. */
 :root {
+  --density-space-1: var(--space-1);
   --density-space-1-5: var(--space-1-5);
   --density-space-2: var(--space-2);
   --density-space-2-5: var(--space-2-5);

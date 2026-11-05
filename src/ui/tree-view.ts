@@ -4,7 +4,13 @@ import type { Issue } from "../domain/issue.ts";
 import { compareIssues } from "../domain/list.ts";
 import { branchState, groupIssues, searchAncestors } from "../domain/tree.ts";
 import type { ViewInfo } from "../domain/view-labels.ts";
-import { actionButton, element, iconButton, uiIcon } from "./dom.ts";
+import {
+  actionButton,
+  element,
+  iconButton,
+  textButton,
+  uiIcon,
+} from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
 import { projectIcon } from "./meta.ts";
 
@@ -337,11 +343,7 @@ export function createTreeView(
               page.error
             ) {
               const placeholder = element("li", "child-page");
-              const button = element(
-                "button",
-                page.error
-                  ? "secondary child-more"
-                  : "page-sentinel child-more",
+              const button = textButton(
                 page.loading
                   ? "하위 불러오는 중…"
                   : page.error
@@ -349,7 +351,10 @@ export function createTreeView(
                     : page.loaded
                       ? "하위 더 보기"
                       : "하위 불러오기",
+                { purpose: page.error ? "utility" : "quiet", size: "sm" },
               );
+              button.classList.add("child-more");
+              if (!page.error) button.classList.add("page-sentinel");
               button.type = "button";
               button.disabled = page.loading;
               button.dataset.retry = String(Boolean(page.error));
@@ -436,7 +441,7 @@ export function createTreeView(
       if (callbacks.onCreate) {
         const create = actionButton("생성", "plus", {
           size: "sm",
-          variant: "secondary",
+          purpose: "entry",
         });
         create.classList.add("project-create");
         create.addEventListener("click", () => callbacks.onCreate?.(key));
@@ -469,11 +474,12 @@ export function createTreeView(
       host.querySelector(":scope > .list-more")?.remove();
     } else host.replaceChildren(message, root);
     if (list.nextPageToken || list.error) {
-      const more = element(
-        "button",
-        list.error ? "secondary list-more" : "page-sentinel list-more",
+      const more = textButton(
         list.loading ? "불러오는 중…" : list.error ? "다시 시도" : "더 보기",
+        { purpose: list.error ? "utility" : "quiet", size: "sm" },
       );
+      more.classList.add("list-more");
+      if (!list.error) more.classList.add("page-sentinel");
       more.type = "button";
       more.disabled = list.loading;
       more.dataset.retry = String(Boolean(list.error));

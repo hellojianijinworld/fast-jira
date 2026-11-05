@@ -35,7 +35,7 @@ export function createAssistantWorkspace(
       ["detail", "상세", "file-text"],
     ] as const
   ).map(([id, label, icon]) => {
-    const button = actionButton(label, icon, { variant: "ghost", size: "sm" });
+    const button = actionButton(label, icon, { purpose: "quiet", size: "sm" });
     button.dataset.pane = id;
     button.setAttribute(
       "aria-controls",

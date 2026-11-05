@@ -28,7 +28,7 @@ export function installationStatus(options: {
     heading = element("div", "installation-heading"),
     check = actionButton("다시 확인", "refresh-cw", {
       size: "sm",
-      variant: "outline",
+      purpose: "utility",
     }),
     body = element("div", "installation-rows"),
     message = element("p", "setting-help");
@@ -82,7 +82,7 @@ export function installationStatus(options: {
       const button = actionButton(
         text,
         target.endsWith("-login") ? "external-link" : "refresh-cw",
-        { size: "sm", variant: "outline" },
+        { size: "sm", purpose: "utility" },
       );
       button.setAttribute("aria-label", label);
       button.disabled = !state?.supported || busy();

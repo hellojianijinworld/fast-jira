@@ -130,7 +130,10 @@ export function creationField(
       menu.sync();
       config.onChange?.();
     }
-    const self = actionButton("나에게 할당", "user", { size: "sm" });
+    const self = actionButton("나에게 할당", "user", {
+      size: "sm",
+      purpose: "quiet",
+    });
     self.addEventListener("click", async () => {
       self.disabled = true;
       try {

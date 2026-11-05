@@ -1,5 +1,11 @@
-import { element, elementId } from "./dom.ts";
+import { actionButton, element, elementId } from "./dom.ts";
 import { popoverPosition } from "./geometry.ts";
+
+export function menuItemButton(label: string, icon: string) {
+  const button = actionButton(label, icon, { purpose: "quiet" });
+  button.setAttribute("role", "menuitem");
+  return button;
+}
 
 /** 메뉴 내용과 동작은 호출자가, 배치·닫기·키보드·포커스는 공통 메뉴가 맡는다. */
 export function createMenu(options: {

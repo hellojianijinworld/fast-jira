@@ -4,7 +4,7 @@ import {
   sortRules,
   validSort,
 } from "../domain/sort.ts";
-import { element } from "./dom.ts";
+import { element, textButton } from "./dom.ts";
 import { enhanceSelect, type SelectMenu } from "./select-menu.ts";
 
 /** 필터의 초안만 변경한다. 실제 적용 시점은 부모 팝오버가 결정한다. */
@@ -28,7 +28,7 @@ export function createSortEditor(
     action: () => void,
     disabled = false,
   ) {
-    const button = element("button", "secondary", label);
+    const button = textButton(label, { purpose: "quiet", size: "sm" });
     button.type = "button";
     button.title = title;
     button.setAttribute("aria-label", title);

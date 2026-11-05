@@ -2369,8 +2369,25 @@ await check(
       details:
         "이슈 확인 · 완료\nAA-1 · 조회 경합 수정 · 개발 중\n\n이슈 검색 · 완료\nAA · AA-1 하위\n5건 확인",
     });
+    if (event instanceof HTMLDetailsElement) event.open = true;
     host.append(event);
     try {
+      const entries = event.querySelector<HTMLElement>(".chat-event-entries");
+      const [first, second] =
+        event.querySelectorAll<HTMLElement>(".chat-event-entry");
+      if (!entries || !first || !second) throw new Error("작업 기록 누락");
+      assert(
+        first.getBoundingClientRect().left -
+          entries.getBoundingClientRect().left >=
+          12,
+        "작업 기록 본문이 구분선에 붙음",
+      );
+      assert(
+        second.getBoundingClientRect().top -
+          first.getBoundingClientRect().bottom <=
+          8,
+        "작업 기록 항목 사이의 간격이 너무 넓음",
+      );
       assert(
         event.querySelectorAll(".chat-event-entry").length === 2,
         "작업별 기록 구분 누락",

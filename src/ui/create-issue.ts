@@ -79,8 +79,8 @@ export function createIssueDialog(config: {
     const project = element("select"),
       type = element("select"),
       parentSelect = element("select");
-    const cancel = actionButton("취소", "x"),
-      save = actionButton("생성", "plus", "primary");
+    const cancel = actionButton("취소", "x", { purpose: "quiet" }),
+      save = actionButton("생성", "plus", { purpose: "confirm" });
     save.type = "submit";
     save.disabled = true;
     const field = (label: string, control: HTMLElement) => {
@@ -356,7 +356,10 @@ export function createIssueDialog(config: {
     let nextToken: string | null = null,
       parentQuery = "",
       parentSearch = 0;
-    const more = actionButton("후보 더 보기", "chevron-right", { size: "sm" });
+    const more = actionButton("후보 더 보기", "chevron-right", {
+      size: "sm",
+      purpose: "quiet",
+    });
     more.hidden = true;
     async function loadFields(initial: Record<string, JsonValue> = {}) {
       const version = ++revision;

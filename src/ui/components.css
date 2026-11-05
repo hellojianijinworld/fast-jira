@@ -38,8 +38,8 @@ button,
   padding: 0 var(--button-padding-x);
   border: 1px solid transparent;
   border-radius: var(--radius-control);
-  background: var(--button-bg);
-  color: var(--text-on-accent);
+  background: transparent;
+  color: var(--muted);
   font-size: var(--button-font-size);
   cursor: pointer;
 }
@@ -64,8 +64,7 @@ summary:focus-visible,
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
-button[data-variant="primary"]:focus-visible,
-button[class=""]:not([data-variant]):focus-visible {
+[data-variant="primary"]:focus-visible {
   outline-color: currentColor;
   outline-offset: -4px;
 }
@@ -82,8 +81,8 @@ select {
 a {
   color: var(--blue);
 }
-.secondary,
-[data-variant="secondary"] {
+.subtle,
+[data-variant="subtle"] {
   background: var(--blue-soft);
   color: var(--blue);
 }
@@ -93,11 +92,9 @@ a {
   background: transparent;
   color: var(--muted);
 }
-[data-variant="outline"]:hover:where(
-  :not(:disabled):not([aria-disabled="true"])
-) {
-  background: var(--hover);
-  color: var(--blue);
+[data-variant="primary"] {
+  background: var(--button-bg);
+  color: var(--text-on-accent);
 }
 .tool-button {
   width: var(--icon-button-size);
@@ -110,14 +107,19 @@ a {
   color: var(--muted);
   background: transparent;
 }
-.tool-button:not([data-variant]):hover:where(
-  :not(:disabled):not([aria-disabled="true"])
-),
-[data-variant="ghost"]:hover:where(
-  :not(:disabled):not([aria-disabled="true"])
+[data-purpose="danger"] {
+  color: var(--error);
+}
+.selection-button:is([aria-selected="true"], [aria-pressed="true"]) {
+  color: var(--blue-text);
+  background: var(--button-selected-bg);
+  border-color: var(--button-selected-border);
+  font-weight: var(--font-weight-semibold);
+}
+.selection-button:is([aria-selected="true"], [aria-pressed="true"]):hover:where(
+  :not(:disabled)
 ) {
-  border-color: var(--border-strong);
-  background: var(--hover);
+  background: var(--button-selected-hover);
 }
 /* Hover previews a target; selected/open states remain persistent. */
 :where(button, .button-link):where(
@@ -125,12 +127,9 @@ a {
 ):hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: var(--hover);
 }
-:where(button, .button-link):where(
-  [data-variant="primary"],
-  button:not([data-variant]):not(.secondary):not(.outline):not(.tool-button)
-):where(:not(:disabled)):hover:where(
-  :not(:disabled):not([aria-disabled="true"])
-) {
+:where(button, .button-link):where([data-variant="primary"]):where(
+  :not(:disabled)
+):hover:where(:not(:disabled):not([aria-disabled="true"])) {
   background: color-mix(in srgb, var(--button-bg) 86%, var(--text));
 }
 :where(button, .button-link, .list-item, .activity-row, .feedback-option):where(
@@ -913,17 +912,7 @@ a[href]:not(.list-item):not(.button-link):active {
   margin-bottom: var(--density-space-2-5);
 }
 .status-actions {
-  display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 4px;
-}
-.status-actions button {
-  min-height: 28px;
-  padding: 0 var(--density-space-2);
-  background: var(--soft);
-  color: var(--muted);
-  font-size: var(--font-size-12);
 }
 .project-checks {
   display: flex;
@@ -1042,8 +1031,7 @@ a[href]:not(.list-item):not(.button-link):active {
 .sort-rule .select-menu {
   flex: 1;
 }
-.sort-rule > button.secondary,
-.sort-rule > [data-variant="secondary"] {
+.sort-rule > button {
   min-width: 28px;
   padding: 0 var(--density-space-1-5);
 }

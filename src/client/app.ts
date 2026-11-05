@@ -41,6 +41,7 @@ import { installationStatus } from "../ui/installation-status.ts";
 import { issueCard } from "../ui/issue-card.ts";
 import { issueDetail } from "../ui/issue-detail.ts";
 import { keyedContent } from "../ui/keyed-content.ts";
+import { menuItemButton } from "../ui/menu.ts";
 import { refreshRelativeTimes } from "../ui/meta.ts";
 import { showModal } from "../ui/modal.ts";
 import { createNotice } from "../ui/notice.ts";
@@ -93,11 +94,11 @@ export async function createApp(
     });
   tools.setAttribute("role", "group");
   tools.setAttribute("aria-label", "이슈 도구");
-  const searchToggle = iconButton("검색", "search"),
-    aiToggle = iconButton("AI 대화", "sparkles"),
-    help = actionButton("이용 안내", "circle-help", { variant: "ghost" }),
-    settings = actionButton("설정", "settings", { variant: "ghost" }),
-    selection = iconButton("이슈 선택 모드", "check");
+  const searchToggle = iconButton("검색", "search", { selectable: true }),
+    aiToggle = iconButton("AI 대화", "sparkles", { selectable: true }),
+    help = menuItemButton("이용 안내", "circle-help"),
+    settings = menuItemButton("설정", "settings"),
+    selection = iconButton("이슈 선택 모드", "check", { selectable: true });
   aiToggle.hidden = true;
   searchToggle.title = `이슈 검색 (${shortcutLabel(navigator.platform)})`;
   searchToggle.setAttribute("aria-keyshortcuts", "Control+k Meta+k");
@@ -106,12 +107,8 @@ export async function createApp(
     "aria-keyshortcuts",
     shortcutAria(navigator.platform, "ai"),
   );
-  const feedback = actionButton("의견 보내기", "message-circle", {
-    variant: "ghost",
-  });
-  const checkUpdate = actionButton("업데이트 확인", "circle-arrow-up", {
-    variant: "ghost",
-  });
+  const feedback = menuItemButton("의견 보내기", "message-circle");
+  const checkUpdate = menuItemButton("업데이트 확인", "circle-arrow-up");
   const github = externalLink(PRODUCT_URL);
   github.append(uiIcon("github"), document.createTextNode("GitHub"));
   const appMenu = createAppMenu([
@@ -677,11 +674,13 @@ export async function createApp(
         notice.showBackground("상세 변경 확인이 지연되고 있어요.");
         return;
       }
-      const retry = actionButton("다시 시도", "refresh-cw");
+      const retry = actionButton("다시 시도", "refresh-cw", {
+        purpose: "utility",
+      });
       retry.addEventListener("click", () => {
         void select(key, false);
       });
-      const close = actionButton("닫기", "x");
+      const close = actionButton("닫기", "x", { purpose: "quiet" });
       close.addEventListener("click", closeDetail);
       detailHost.replaceChildren(
         element(
@@ -921,7 +920,7 @@ export async function createApp(
     searchInfo.replaceChildren();
     searchInfo.hidden = !query;
     if (query) {
-      const clear = actionButton("초기화", "x");
+      const clear = actionButton("초기화", "x", { purpose: "quiet" });
       clear.addEventListener("click", clearSearch);
       searchInfo.append(element("span", "", `검색: ${query}`), clear);
     }

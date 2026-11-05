@@ -32,7 +32,7 @@ export function participantsField(
   },
 ) {
   const root = element("div", "detail-field participant-field");
-  const trigger = actionButton("", "users", "ghost");
+  const trigger = actionButton("", "users", { purpose: "quiet" });
   trigger.classList.add("participant-summary");
   trigger.setAttribute("aria-label", "작업참여자 변경");
   trigger.setAttribute("aria-haspopup", "dialog");
@@ -88,10 +88,10 @@ export function participantsField(
     const content = element("div", "participant-edit-fields");
     const error = element("p", "error");
     error.setAttribute("role", "alert");
-    const save = actionButton("저장", "check", "primary");
+    const save = actionButton("저장", "check", { purpose: "confirm" });
     save.type = "submit";
     save.disabled = true;
-    const cancel = actionButton("취소", "x");
+    const cancel = actionButton("취소", "x", { purpose: "quiet" });
     cancel.addEventListener("click", () => dialog.close());
     const footer = buttonGroup(element("footer", "modal-footer"));
     footer.append(cancel, save);
@@ -247,7 +247,7 @@ export function participantsField(
         if (self) {
           const assign = actionButton("나에게 할당", "user", {
             size: "sm",
-            variant: "ghost",
+            purpose: "quiet",
           });
           assign.addEventListener("click", () => {
             if (!saving) {

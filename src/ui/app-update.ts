@@ -48,12 +48,12 @@ export function appUpdate(
   const support = element("small", "app-update-support");
   const check = actionButton("직접 확인", "search", {
     size: "sm",
-    variant: "outline",
+    purpose: "utility",
   });
   check.setAttribute("aria-label", "직접 업데이트 확인");
   const install = actionButton("업데이트하고 다시 시작", "check", {
     size: "sm",
-    variant: "primary",
+    purpose: "confirm",
   });
   install.setAttribute("aria-label", "업데이트하고 다시 시작");
   const actions = buttonGroup(element("div", "app-update-actions"), {

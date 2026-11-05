@@ -44,7 +44,10 @@ export function issueComments(
   const writingHost = element("div");
   const entries = element("div"),
     message = element("p", "empty"),
-    more = actionButton("댓글 더 보기", "chevron-right");
+    more = actionButton("댓글 더 보기", "chevron-right", {
+      purpose: "quiet",
+      size: "sm",
+    });
   root.append(head, add, writingHost, entries, message, more);
   const comments = new Map<string, Comment>();
   let startAt = 0,

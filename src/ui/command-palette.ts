@@ -131,7 +131,7 @@ export function createCommandPalette(config: {
     model = element("select", "command-model"),
     effortSelect = element("select", "command-effort"),
     microphone = iconButton("음성 입력", "mic"),
-    send = actionButton("보내기", "arrow-up", "primary"),
+    send = actionButton("보내기", "arrow-up", { purpose: "confirm" }),
     cancel = iconButton("답변 중단", "square"),
     pendingHost = element("section", "chat-queue"),
     followupField = element("fieldset", "setting-group ai-chat-setting-group"),
@@ -337,18 +337,10 @@ export function createCommandPalette(config: {
   );
   sendGroup.append(send);
 
-  controls.append(
-    provider,
-    model,
-    effortSelect,
-    shortcutHint,
-    microphone,
-    cancel,
-    sendGroup,
-  );
+  controls.append(provider, model, effortSelect, microphone, cancel, sendGroup);
   pendingHost.setAttribute("aria-label", "대기 중인 요청");
   pendingHost.setAttribute("aria-live", "polite");
-  form.append(pendingHost, input, controls);
+  form.append(pendingHost, shortcutHint, input, controls);
   policy.replaceChildren(element("summary", "", "대화 보관 안내"), policyBody);
   panel.append(chatLayout);
   helpPanel.popover = "auto";
@@ -723,7 +715,7 @@ export function createCommandPalette(config: {
     if (queue.paused(id) && !busy) {
       const resume = actionButton("계속 보내기", "play", {
         size: "sm",
-        variant: "ghost",
+        purpose: "quiet",
       });
       resume.addEventListener("click", () => {
         queue.resume(id);
@@ -1037,11 +1029,9 @@ export function createCommandPalette(config: {
     const box = element("section", "command-proposal"),
       value = element("strong", "", plan.value || "미지정"),
       list = element("p", "command-targets", plan.keys.join(", ")),
-      apply = actionButton(
-        `${plan.keys.length}개 이슈에 적용`,
-        "check",
-        "primary",
-      ),
+      apply = actionButton(`${plan.keys.length}개 이슈에 적용`, "check", {
+        purpose: "confirm",
+      }),
       result = element("p", "command-proposal-result");
     box.append(
       element("h3", "", `${fields[plan.field]} 변경`),
@@ -1718,7 +1708,9 @@ export function createCommandPalette(config: {
     ).filter((item) => item.id !== "create" || config.create);
     commandMenu.replaceChildren(
       ...items.map((item) => {
-        const button = actionButton(item.label, item.icon);
+        const button = actionButton(item.label, item.icon, {
+          purpose: "quiet",
+        });
         if (item.id === "search" || item.id === "ai")
           button.append(
             element("kbd", "", formatShortcut(navigator.platform, item.id)),

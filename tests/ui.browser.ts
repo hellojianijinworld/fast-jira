@@ -1289,7 +1289,7 @@ await check(
         undo++;
       });
       notice.showBackground("되돌리기 전 자동 알림");
-      host.querySelector<HTMLButtonElement>(".secondary")?.click();
+      host.querySelector<HTMLButtonElement>(".subtle")?.click();
       await wait();
       assert(
         undo === 1 && host.hidden === true,
@@ -1505,7 +1505,7 @@ await check("일반 알림은 3초, 되돌리기 알림은 5초 뒤 닫힌다", 
   notice.show("변경됨", () => {
     undo++;
   });
-  host.querySelector<HTMLButtonElement>(".secondary")?.click();
+  host.querySelector<HTMLButtonElement>(".subtle")?.click();
   await wait();
   assert(undo === 1 && host.hidden, "되돌리기 한 번 실행");
   notice.destroy();

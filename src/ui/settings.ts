@@ -191,7 +191,7 @@ export function settingsContent(
   if (updates) categories[2].panel.append(updates);
   const actions: HTMLButtonElement[] = [];
   if (start) {
-    const button = actionButton("시작하기", "check");
+    const button = actionButton("시작하기", "check", { purpose: "confirm" });
     button.addEventListener("click", start);
     actions.push(button);
   }

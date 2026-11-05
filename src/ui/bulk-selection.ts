@@ -154,8 +154,8 @@ export function createBulkSelection(config: {
         "bulk-hint",
         `선택한 ${selected.size}개 이슈에 적용합니다.`,
       ),
-      save = actionButton("일괄 적용", "check"),
-      cancel = actionButton("취소", "x"),
+      save = actionButton("일괄 적용", "check", { purpose: "confirm" }),
+      cancel = actionButton("취소", "x", { purpose: "quiet" }),
       footer = element("div", "document-actions");
     save.disabled = true;
     cancel.addEventListener("click", closeEditor);

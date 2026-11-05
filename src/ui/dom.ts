@@ -1,7 +1,8 @@
-import type {
-  ButtonGroupOptions,
-  ButtonOptions,
-  ButtonVariant,
+import {
+  type ButtonGroupOptions,
+  type ButtonOptions,
+  type ButtonVariant,
+  buttonVariants,
 } from "./theme.ts";
 
 let nextElementId = 0;
@@ -43,18 +44,39 @@ export function uiIcon(name: string): SVGSVGElement {
   return icon;
 }
 
+function buttonAppearance(
+  node: HTMLElement,
+  options: ButtonOptions,
+  fallback: ButtonVariant,
+) {
+  const variant = options.purpose
+    ? buttonVariants[options.purpose]
+    : (options.variant ?? fallback);
+  node.dataset.variant = variant;
+  node.dataset.size = options.size ?? "auto";
+  node.classList.add(variant);
+  if (options.purpose) node.dataset.purpose = options.purpose;
+  if (options.selectable) node.classList.add("selection-button");
+  return node;
+}
+
+export function textButton(
+  label: string,
+  options: ButtonOptions = {},
+): HTMLButtonElement {
+  const button = element("button", "", label);
+  buttonAppearance(button, options, buttonVariants.entry);
+  button.type = "button";
+  return button;
+}
+
 export function actionButton(
   label: string,
   icon: string,
-  options: ButtonOptions | ButtonVariant | "" = {},
+  options: ButtonOptions | ButtonVariant = {},
 ): HTMLButtonElement {
-  const config =
-    typeof options === "string" ? { variant: options || "primary" } : options;
-  const variant = config.variant ?? "secondary";
-  const button = element("button", variant);
-  button.dataset.variant = variant;
-  button.dataset.size = config.size ?? "auto";
-  button.type = "button";
+  const config = typeof options === "string" ? { variant: options } : options;
+  const button = textButton("", config);
   button.append(uiIcon(icon), element("span", "", label));
   return button;
 }
@@ -65,13 +87,25 @@ export function iconButton(
   options: ButtonOptions = {},
 ): HTMLButtonElement {
   const button = element("button", "tool-button");
-  button.dataset.variant = options.variant ?? "ghost";
-  button.dataset.size = options.size ?? "auto";
+  buttonAppearance(button, options, buttonVariants.quiet);
   button.type = "button";
   button.title = label;
   button.setAttribute("aria-label", label);
   button.append(uiIcon(icon));
   return button;
+}
+
+/** 버튼 모양의 외부 링크도 같은 variant·크기·상태 규칙을 사용한다. */
+export function buttonLink(
+  href: string,
+  label: string,
+  icon: string,
+  options: ButtonOptions = { purpose: "utility" },
+) {
+  const link = externalLink(href, "", "button-link");
+  buttonAppearance(link, options, buttonVariants.utility);
+  link.append(uiIcon(icon), element("span", "", label));
+  return link;
 }
 
 /** 배치만 공유하고 nav·tablist·footer 등 호출자의 의미와 동작은 보존한다. */

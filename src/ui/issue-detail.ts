@@ -81,9 +81,9 @@ export function issueDetail(
   const input = element("input");
   input.maxLength = 255;
   input.setAttribute("aria-label", "제목");
-  const save = actionButton("저장", "check");
+  const save = actionButton("저장", "check", { purpose: "confirm" });
   save.type = "submit";
-  const cancel = actionButton("취소", "x");
+  const cancel = actionButton("취소", "x", { purpose: "quiet" });
   form.append(input, save, cancel);
   form.hidden = true;
   titleRow.append(title, pencil, form);

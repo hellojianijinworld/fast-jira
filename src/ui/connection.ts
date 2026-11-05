@@ -4,7 +4,7 @@ import {
   JIRA_SITE_NAME_PATTERN,
   jiraSiteName,
 } from "../domain/connection.ts";
-import { actionButton, element, externalLink, uiIcon } from "./dom.ts";
+import { actionButton, buttonLink, element, uiIcon } from "./dom.ts";
 
 /** 토큰은 전송 직후 비우며 브라우저 저장소에는 남기지 않는다. */
 export function connectionForm(
@@ -57,12 +57,13 @@ export function connectionForm(
     if (!guided && !busy() && tokenConfigured && !fields.token.value)
       fields.token.value = storedMask;
   });
-  const issueToken = externalLink(
+  const issueToken = buttonLink(
     "https://id.atlassian.com/manage-profile/security/api-tokens",
-    "",
-    "button-link secondary connection-token-link",
+    "토큰 발급",
+    "external-link",
+    { purpose: "utility" },
   );
-  issueToken.append(uiIcon("external-link"), element("span", "", "토큰 발급"));
+  issueToken.classList.add("connection-token-link");
   let returnFocus: AbortController | undefined;
   issueToken.addEventListener("click", (event) => {
     if (busy()) {
@@ -140,7 +141,7 @@ export function connectionForm(
   const save = actionButton(
     guided ? "연결하고 시작하기" : "연결 확인 및 저장",
     "check",
-    "primary",
+    { purpose: "confirm" },
   );
   save.type = "submit";
   const saveLabel = save.querySelector("span");

@@ -29,7 +29,10 @@ export async function parentSelect(
   let requestVersion = 0;
   let query = "",
     token: string | null = null;
-  const more = actionButton("후보 더 보기", "chevron-right");
+  const more = actionButton("후보 더 보기", "chevron-right", {
+    purpose: "quiet",
+    size: "sm",
+  });
   more.hidden = true;
   async function load(text: string, append = false) {
     const version = ++requestVersion;

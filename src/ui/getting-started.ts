@@ -10,7 +10,10 @@ export function gettingStarted(actions: {
   root.setAttribute("aria-label", "처음 사용 안내");
   const head = element("div", "getting-started-head");
   head.append(element("h2", "", "Jira가 연결됐어요"));
-  const finish = actionButton("시작하기", "check", { size: "sm" });
+  const finish = actionButton("시작하기", "check", {
+    size: "sm",
+    purpose: "confirm",
+  });
   finish.addEventListener("click", actions.finish);
   head.append(finish);
   const steps = element("ol", "getting-started-steps");
@@ -31,7 +34,7 @@ export function gettingStarted(actions: {
     const step = element("li", "getting-started-step");
     const button = actionButton(label, icon, {
       size: "sm",
-      variant: "outline",
+      purpose: "utility",
     });
     button.addEventListener("click", run);
     step.append(button, element("small", "", description));

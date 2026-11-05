@@ -1,4 +1,4 @@
-import { element, elementId, uiIcon } from "./dom.ts";
+import { element, elementId, textButton, uiIcon } from "./dom.ts";
 import { type PopoverRect, popoverPosition } from "./geometry.ts";
 import type { ComponentSize } from "./theme.ts";
 
@@ -76,7 +76,7 @@ export function enhanceSelect(
     input.placeholder = config.searchLabel ?? "이름으로 검색";
     input.setAttribute("aria-label", config.searchLabel ?? "이름으로 검색");
     searchInput = input;
-    const submit = element("button", "", "검색");
+    const submit = textButton("검색", { purpose: "utility", size: "sm" });
     submit.type = "submit";
     form.append(input, submit);
     form.addEventListener(

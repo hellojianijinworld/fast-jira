@@ -31,8 +31,8 @@ export function documentForm(config: {
     }),
   );
   const actions = element("div", "document-actions"),
-    save = actionButton(config.submitLabel, "check"),
-    cancel = actionButton("취소", "x"),
+    save = actionButton(config.submitLabel, "check", { purpose: "confirm" }),
+    cancel = actionButton("취소", "x", { purpose: "quiet" }),
     error = element("p", "error");
   save.type = "submit";
   error.setAttribute("role", "alert");
