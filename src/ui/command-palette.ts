@@ -1,6 +1,7 @@
 import { createChatQueue } from "../client/chat-queue.ts";
 import { createMentionSource } from "../client/mention-source.ts";
 import { executionReport } from "../domain/assistant-execution.ts";
+import type { TreeCatalog } from "../domain/catalog.ts";
 import type { IssueDraft } from "../domain/create-issue.ts";
 import { mentionPrompt } from "../domain/mention.ts";
 import { textareaMentions } from "./mention-editors.ts";
@@ -90,9 +91,11 @@ export function createCommandPalette(config: {
     | "voiceStart"
     | "voiceStop"
   > &
-    Partial<Pick<Api, "users" | "mentionUsers">>;
+    Partial<Pick<Api, "users" | "mentionUsers" | "statuses">>;
   site: string;
   currentUserId?: string;
+  searchCatalog?: () => TreeCatalog;
+  currentUserName?: string;
   context: () => AssistantContext;
   recent: () => readonly Issue[];
   localIssues: () => readonly Issue[];
@@ -602,6 +605,10 @@ export function createCommandPalette(config: {
     api: config.api,
     site: config.site,
     currentUserId: config.currentUserId ?? "",
+    ...(config.searchCatalog ? { catalog: config.searchCatalog } : {}),
+    ...(config.currentUserName
+      ? { currentUserName: config.currentUserName }
+      : {}),
     recent: config.recent,
     localIssues: config.localIssues,
     order: config.order,

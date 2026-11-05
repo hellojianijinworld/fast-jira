@@ -9,6 +9,7 @@ export function localSearch(
   projects: readonly string[],
   favorite: (issue: Issue) => boolean,
   recent: readonly Issue[],
+  limit = 8,
 ): Issue[] {
   const term = normalize(query);
   if (!term) return [];
@@ -49,6 +50,6 @@ export function localSearch(
           (Date.parse(a.issue.updated) || 0) ||
         a.issue.key.localeCompare(b.issue.key),
     )
-    .slice(0, 8)
+    .slice(0, limit)
     .map((item) => item.issue);
 }

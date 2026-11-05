@@ -948,6 +948,8 @@ export async function createApp(
     voiceAvailable: () => assistantConnection.snapshot.voice,
     site: bootstrap.site,
     currentUserId: bootstrap.me.accountId,
+    currentUserName: bootstrap.me.displayName,
+    searchCatalog: () => catalog,
     storage,
     scope: store.scope,
     unread: (value) => {

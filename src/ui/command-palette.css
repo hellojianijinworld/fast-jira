@@ -786,12 +786,7 @@
 .search-modal .command-results {
   gap: 4px;
 }
-.command-search-group {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-.command-search-group mark {
+.search-modal .command-results mark {
   color: inherit;
   background: var(--blue-soft);
   border-radius: var(--radius-2);
@@ -1090,4 +1085,74 @@
   overflow-wrap: anywhere;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+
+/* 검색 조건은 고정하고 결과만 스크롤한다. */
+.search-modal .command-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+.search-heading {
+  flex: none;
+  padding: var(--density-space-2) var(--density-space-4) 0;
+}
+.search-modal .command-results {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--density-space-2) var(--density-space-4) var(--density-space-4);
+  overscroll-behavior: contain;
+}
+.search-refinements {
+  margin-top: var(--density-space-2);
+}
+.search-filter-bar > .select-menu {
+  margin-inline-start: auto;
+  max-width: 100%;
+}
+.search-filter-chips {
+  margin-top: var(--density-space-2);
+}
+.search-filter-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.search-filter-popover:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+.search-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: var(--density-space-2) var(--density-space-3);
+  border-bottom: 1px solid var(--border);
+}
+.search-filter-body {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--density-space-3);
+}
+.search-filter-body h3 {
+  font-size: var(--font-size-12);
+}
+.search-filter-body .people-filter-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.search-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 var(--density-space-2);
+}
+.search-meta :is(.command-hint, .command-status) {
+  margin-block: var(--density-space-2);
+}
+.search-filter-head .status-actions {
+  margin-inline-start: auto;
 }

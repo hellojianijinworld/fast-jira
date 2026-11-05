@@ -1,14 +1,22 @@
 import type { Api } from "../client/api.ts";
+import type { TreeCatalog } from "../domain/catalog.ts";
 import type { Issue } from "../domain/issue.ts";
-import { localSearch } from "../domain/local-search.ts";
+import {
+  matchesSearchFilters,
+  searchLocalIssues,
+} from "../domain/search-results.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { actionButton, element, elementId, iconButton } from "./dom.ts";
 import { type CardOptions, issueCard } from "./issue-card.ts";
+import { createSearchFilters } from "./search-filters.ts";
 
 /** 검색 입력·결과·페이지는 AI 대화와 별개로 소유하고 닫을 때 폐기한다. */
 export function createSearchDialog(config: {
   host: HTMLElement;
-  api: Pick<Api, "issues" | "lookup">;
+  api: Pick<Api, "issues" | "lookup"> &
+    Partial<Pick<Api, "users" | "statuses">>;
+  catalog?: () => TreeCatalog;
+  currentUserName?: string;
   site: string;
   currentUserId?: string;
   recent: () => readonly Issue[];
@@ -45,13 +53,28 @@ export function createSearchDialog(config: {
   status.setAttribute("aria-live", "polite");
   head.append(title, close);
   form.append(input, submit);
-  pane.append(form, hint, status, searchResults);
+  const refinements = createSearchFilters({
+    api: config.api,
+    ...(config.catalog ? { catalog: config.catalog } : {}),
+    me: {
+      accountId: config.currentUserId ?? "",
+      displayName: config.currentUserName ?? "나",
+    },
+    changed: () => {
+      if (dialog.open && lastQuery !== null) void search(false, true);
+    },
+  });
+  const heading = element("div", "search-heading");
+  const meta = element("div", "search-meta");
+  meta.append(hint, status);
+  heading.append(form, refinements.element, meta);
+  pane.append(heading, searchResults);
   dialog.append(head, pane);
   config.host.append(dialog);
   let alive = true,
     revision = 0,
     nextPage = "",
-    lastQuery = "";
+    lastQuery: string | null = null;
   const errorText = (error: unknown) =>
     error instanceof Error ? error.message : "요청에 실패했어요.";
   function choose(key: string) {
@@ -72,50 +95,58 @@ export function createSearchDialog(config: {
   function cards(issues: readonly Issue[]) {
     searchResults.replaceChildren(...issues.map(searchCard));
   }
-  const shown = new Map<string, HTMLElement>();
-  let remoteResults = element("section", "command-search-group");
-  function addResult(issue: Issue, target: HTMLElement, query: string) {
-    const card = searchCard(issue);
-    const title = card.querySelector<HTMLAnchorElement>(".list-title");
-    if (title) {
-      const words = query
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const shown = new Map<string, Issue>();
+  function renderResults(query: string) {
+    const focusedHref =
+      document.activeElement instanceof HTMLAnchorElement
+        ? document.activeElement.getAttribute("href")
+        : null;
+    cards([...shown.values()]);
+    const words = query
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    for (const title of searchResults.querySelectorAll<HTMLAnchorElement>(
+      ".list-title",
+    )) {
       if (words.length) {
         const pattern = new RegExp(`(${words.join("|")})`, "giu");
         title.replaceChildren(
-          ...issue.summary
+          ...(title.textContent ?? "")
             .split(pattern)
-            .map((text, index) =>
-              index % 2
-                ? element("mark", "", text)
-                : document.createTextNode(text),
+            .map((text, i) =>
+              i % 2 ? element("mark", "", text) : document.createTextNode(text),
             ),
         );
       }
     }
-    const existing = shown.get(issue.key);
-    if (existing) {
-      const focused = existing.contains(document.activeElement);
-      existing.replaceChildren(...card.childNodes);
-      if (focused)
-        existing
-          .querySelector<HTMLAnchorElement>(".list-title")
-          ?.focus({ preventScroll: true });
-    } else {
-      target.append(card);
-      shown.set(issue.key, card);
+    if (focusedHref)
+      [...searchResults.querySelectorAll<HTMLAnchorElement>(".list-title")]
+        .find((link) => link.getAttribute("href") === focusedHref)
+        ?.focus({ preventScroll: true });
+    if (nextPage) {
+      const button = actionButton("더 보기", "chevron-down", {
+        purpose: "quiet",
+        size: "sm",
+      });
+      button.classList.add("command-more");
+      button.addEventListener("click", () => {
+        if (input.value.trim() === lastQuery) void search(true);
+      });
+      searchResults.append(button);
     }
   }
-  async function search(more = false) {
-    const query = more ? lastQuery : input.value.trim(),
+  async function search(more = false, conditionsChanged = false) {
+    const query =
+        (more || conditionsChanged ? lastQuery : input.value.trim()) ?? "",
       current = ++revision;
-    nextPage = more ? nextPage : "";
-    if (!more) input.focus();
+    const filters = refinements.value;
+    if (!more) nextPage = "";
+    if (!more && !conditionsChanged) input.focus();
     searchResults.querySelector(".command-more")?.remove();
-    if (!query) {
-      reset();
+    if (!query && !refinements.active) {
+      lastQuery = "";
+      shown.clear();
       cards(config.recent());
       status.textContent = "최근 본 이슈";
       return;
@@ -130,59 +161,56 @@ export function createSearchDialog(config: {
       if (!more) {
         lastQuery = query;
         shown.clear();
-        searchResults.replaceChildren();
-        const local = element("section", "command-search-group");
-        const matches = localSearch(
-          config.localIssues(),
-          key || query,
-          [],
-          (issue) => config.favorites?.has(issue) ?? false,
-          config.recent(),
-        );
-        for (const issue of matches) addResult(issue, local, key || query);
-        local.hidden = !matches.length;
-        remoteResults = element("section", "command-search-group");
-        remoteResults.hidden = true;
-        searchResults.append(local, remoteResults);
+        const catalog = config.catalog?.();
+        const matches = refinements.emptyProjects
+          ? []
+          : searchLocalIssues(
+              config.localIssues(),
+              key || query,
+              filters,
+              refinements.sort,
+              config.currentUserId ?? "",
+              (issue) => config.favorites?.has(issue) ?? false,
+              config.recent(),
+              catalog?.statuses ?? [],
+              catalog?.priorities ?? [],
+            );
+        for (const issue of matches) shown.set(issue.key, issue);
+        if (matches.length) renderResults(key || query);
       }
       status.textContent = more
         ? "검색 결과를 더 불러오는 중이에요…"
         : "현재 뷰 밖의 이슈도 확인 중이에요…";
-      const page = key
-        ? { issues: [(await config.api.lookup(key)).parent], nextPageToken: "" }
-        : await config.api.issues(
-            {
-              projects: [],
-              scope: "all",
-              excludeDone: false,
-              statuses: null,
-              assignees: null,
-              sort: "recent",
-              q: query,
-            },
-            more ? nextPage : "",
-            20,
-          );
+      const page = refinements.emptyProjects
+        ? { issues: [], nextPageToken: "" }
+        : key
+          ? {
+              issues: [(await config.api.lookup(key)).parent].filter((issue) =>
+                matchesSearchFilters(
+                  issue,
+                  filters,
+                  config.currentUserId ?? "",
+                ),
+              ),
+              nextPageToken: "",
+            }
+          : await config.api.issues(
+              { ...filters, q: query },
+              more ? nextPage : "",
+              20,
+            );
       if (!alive || current !== revision || !dialog.open) return;
-      for (const issue of page.issues)
-        addResult(issue, remoteResults, key || query);
+      // 명시적 정렬에서는 서버의 페이지 순서를 따른다. 캐시 항목이 페이지 앞으로 끼어들지 않는다.
+      if (!more && refinements.sort !== "recommended") shown.clear();
+      for (const issue of page.issues) shown.set(issue.key, issue);
       nextPage = page.nextPageToken ?? "";
-      status.textContent = shown.size ? "" : "검색 결과가 없습니다.";
-      remoteResults.hidden =
-        remoteResults.querySelector(".issue-card") === null;
-      if (nextPage) {
-        const button = actionButton("더 보기", "chevron-down", {
-          purpose: "quiet",
-          size: "sm",
-        });
-        button.classList.add("command-more");
-        button.addEventListener("click", () => {
-          if (input.value.trim() === lastQuery) void search(true);
-        });
-        searchResults.append(button);
-      }
+      renderResults(key || query);
+      status.textContent = shown.size
+        ? `${shown.size}개 표시${nextPage ? " · 더 불러올 수 있어요" : ""}`
+        : "조건에 맞는 검색 결과가 없어요.";
     } catch (error) {
       if (alive && current === revision && dialog.open) {
+        if (!shown.size) searchResults.replaceChildren();
         status.textContent = `검색 실패: ${errorText(error)}`;
       }
     }
@@ -190,10 +218,11 @@ export function createSearchDialog(config: {
 
   function reset() {
     revision++;
-    input.value = nextPage = lastQuery = "";
+    input.value = nextPage = "";
+    lastQuery = null;
+    refinements.reset();
     status.textContent = "";
     shown.clear();
-    remoteResults.replaceChildren();
     searchResults.replaceChildren();
   }
   function closeSearch() {
@@ -263,6 +292,7 @@ export function createSearchDialog(config: {
       alive = false;
       closeSearch();
       config.closed();
+      refinements.destroy();
       dialog.remove();
     },
   };

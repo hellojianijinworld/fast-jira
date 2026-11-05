@@ -755,7 +755,9 @@ await check(
     palette.open("search");
     await tick();
     assert(
-      !dialog().querySelector("textarea, select, .chat-layout, [role=tab]"),
+      !dialog().querySelector(
+        "textarea, .command-model, .command-effort, .chat-layout, [role=tab]",
+      ),
       "검색 모달에 AI UI가 섞임",
     );
     palette.open("ai");
@@ -1354,7 +1356,7 @@ await check("검색과 AI 대화의 여백도 공통 밀도를 따른다", async
   palette.open("search");
   await tick();
   const searchPanel = host.querySelector<HTMLElement>(
-    ".search-modal .command-panel",
+    ".search-modal .search-heading",
   );
   assert(searchPanel, "검색 본문 누락");
   if (!searchPanel) return;
