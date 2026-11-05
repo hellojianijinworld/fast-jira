@@ -498,7 +498,7 @@ export function createCommandPalette(config: {
     close.title = "AI 대화 닫기";
     config.chatHost.append(dialog);
     sidebar.root.popover = "auto";
-    sidebar.root.classList.add("chat-history-popover");
+    sidebar.root.classList.add("chat-history-popover", "popover-surface");
     sidebar.root.id = elementId("chat-history");
     historyToggle.setAttribute("aria-haspopup", "dialog");
     historyToggle.setAttribute("aria-controls", sidebar.root.id);
@@ -594,7 +594,6 @@ export function createCommandPalette(config: {
     api: config.api,
     site: config.site,
     currentUserId: config.currentUserId ?? "",
-    context: config.context,
     recent: config.recent,
     localIssues: config.localIssues,
     order: config.order,
@@ -638,7 +637,9 @@ export function createCommandPalette(config: {
     issue: () => config.context().issue,
     local: config.localIssues,
   });
-  const mentions = textareaMentions(input, mentionSource);
+  const mentions = textareaMentions(input, mentionSource, {
+    select: selectIssue,
+  });
 
   let awaitingApproval = false;
   const approvalPanel = createAssistantApprovalPanel(
@@ -684,6 +685,7 @@ export function createCommandPalette(config: {
         ? { voiceAvailable: config.voiceAvailable }
         : {}),
       mentions: mentionSource,
+      selectIssue,
       notice: notify,
     },
   );

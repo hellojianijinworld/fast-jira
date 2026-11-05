@@ -724,6 +724,23 @@ await check("뷰는 탑바 도구 왼쪽에 있고 스크롤해도 함께 유지
   );
   const tabs = [...views.querySelectorAll<HTMLButtonElement>(".workspace-tab")];
   assert(tools && add && tabs.length, "뷰·도구 그룹 누락");
+  for (const property of [
+    "backgroundColor",
+    "borderRadius",
+    "borderBottomWidth",
+    "boxShadow",
+    "padding",
+  ]) {
+    assert(
+      getComputedStyle(views).getPropertyValue(
+        property.replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`),
+      ) ===
+        getComputedStyle(tools).getPropertyValue(
+          property.replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`),
+        ),
+      `뷰·도구 그룹 표면 불일치: ${property}`,
+    );
+  }
   const assertGapCentered = () => {
     const left = views.getBoundingClientRect(),
       right = tools.getBoundingClientRect();

@@ -39,6 +39,7 @@ export function createWorkspaceNavigation(options: {
   error: (message: string) => void;
 }) {
   const root = buttonGroup(element("nav", "workspace-views"), {
+      surface: true,
       compact: true,
       wrap: false,
     }),

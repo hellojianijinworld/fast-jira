@@ -66,7 +66,10 @@ export function issueHistory(
     more = actionButton("이전 기록", "chevron-right");
   const scroll = element("div", "history-scroll");
   const timeline = element("div"),
-    comparison = element("section", "history-diff history-diff-popover");
+    comparison = element(
+      "section",
+      "history-diff history-diff-popover popover-surface",
+    );
   comparison.popover = "auto";
   comparison.id = `history-diff-${key}`;
   comparison.setAttribute("role", "dialog");

@@ -1,4 +1,4 @@
-import type { MentionTarget } from "../domain/mention.ts";
+import type { MentionLoader, MentionTarget } from "../domain/mention.ts";
 import { element, uiIcon } from "./dom.ts";
 import type { PopoverRect } from "./geometry.ts";
 import { personPill } from "./meta.ts";
@@ -15,13 +15,16 @@ export function mentionPicker<T>(
     } | null;
     insertMention(target: MentionTarget, range: T): void;
   },
-  loadTargets: (query: string) => Promise<MentionTarget[]>,
+  loadTargets: MentionLoader,
 ) {
   const wrapper = element("div", "mention-picker"),
     select = element("select"),
-    error = element("p", "error");
+    error = element("p", "error"),
+    notice = element("p", "mention-search-status");
   select.setAttribute("aria-label", "멘션할 이슈·사람 선택");
   error.setAttribute("role", "status");
+  notice.setAttribute("role", "status");
+  notice.hidden = true;
   const placeholder = element("option", "", "@멘션");
   placeholder.value = "";
   placeholder.hidden = true;
@@ -65,6 +68,7 @@ export function mentionPicker<T>(
   menu.trigger.remove();
   select.remove();
   menu.panel.classList.add("inline-mention");
+  menu.panel.append(notice);
   menu.panel.id = `${menu.trigger.id}-panel`;
   root.setAttribute("aria-autocomplete", "list");
   root.setAttribute("aria-controls", menu.panel.id);
@@ -102,37 +106,40 @@ export function mentionPicker<T>(
       close();
       return;
     }
-    const version = request;
+    const version = request,
+      query = context.query;
     timer = setTimeout(async () => {
       error.textContent = "";
-      try {
-        const items = await loadTargets(context.query);
-        // 빠르게 바뀐 입력이나 닫힌 편집기에 늦은 검색 결과를 보여주지 않는다.
+      let warning = "";
+      function render(items: MentionTarget[], pending: boolean) {
+        // 닫거나 입력이 바뀐 뒤 도착한 로컬·원격 후보는 모두 무시한다.
         if (!alive || !wrapper.isConnected || request !== version) return;
         const current = editor.mentionQuery();
-        if (document.activeElement !== root || current?.query !== context.query)
-          return;
+        if (document.activeElement !== root || current?.query !== query) return;
+        const selected = [...targets.keys()][active];
         targets = new Map(
-          items.map((user) => [`${user.kind}:${user.id}`, user]),
+          items.map((item) => [`${item.kind}:${item.id}`, item]),
         );
         select.replaceChildren(placeholder);
-        for (const [id, user] of targets) {
+        for (const [id, item] of targets) {
           const option = element(
             "option",
             "",
-            user.kind === "issue" ? `${user.key} · ${user.label}` : user.label,
+            item.kind === "issue" ? `${item.key} · ${item.label}` : item.label,
           );
           option.value = id;
           select.append(option);
         }
-        if (!targets.size) {
-          menu.close();
-          error.textContent =
-            "검색 결과가 없어요. 이슈 제목·번호나 이름을 확인해 주세요.";
-          return;
-        }
         inline = current;
-        active = 0;
+        active = Math.max(0, [...targets.keys()].indexOf(selected ?? ""));
+        notice.textContent =
+          warning ||
+          (pending
+            ? "현재 뷰 밖의 이슈도 확인 중이에요…"
+            : !targets.size
+              ? "검색 결과가 없어요. 이슈 제목·번호나 이름을 확인해 주세요."
+              : "");
+        notice.hidden = !notice.textContent;
         menu.show(
           {
             ...root.getBoundingClientRect().toJSON(),
@@ -145,12 +152,21 @@ export function mentionPicker<T>(
         );
         root.setAttribute("aria-expanded", "true");
         highlight();
+      }
+      try {
+        const items = await loadTargets(query, (items, message) => {
+          warning = message ?? warning;
+          render(items, true);
+        });
+        render(items, false);
       } catch (reason) {
-        if (alive && request === version)
-          error.textContent =
+        if (alive && request === version) {
+          warning =
             reason instanceof Error
               ? reason.message
               : "멘션할 항목을 찾지 못했어요.";
+          render([...targets.values()], false);
+        }
       }
     }, 250);
   }

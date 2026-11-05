@@ -6,12 +6,14 @@ import {
 } from "../src/domain/mention.ts";
 import { adfEditor } from "../src/ui/adf-editor.ts";
 import { renderADF } from "../src/ui/adf-render.ts";
+import { chatMessage } from "../src/ui/chat-message.ts";
 import { element } from "../src/ui/dom.ts";
 import {
   adfMentionEditor,
   textareaMentions,
 } from "../src/ui/mention-editors.ts";
 import { mentionPicker } from "../src/ui/mention-picker.ts";
+import { mentionToken } from "../src/ui/mention-token.ts";
 
 const fixture = document.querySelector("#fixture"),
   results = document.querySelector("#results");
@@ -240,6 +242,150 @@ await check(
     else input.removeAttribute("style");
   },
 );
+await check(
+  "멘션은 로컬 후보를 먼저 표시한 채 전체 검색 중 상태를 보여주고 원격 후보를 합친다",
+  async () => {
+    const field = element("textarea");
+    let finish: ((items: MentionTarget[]) => void) | undefined;
+    const progressive = textareaMentions(field, async (_query, publish) => {
+      publish?.([targets[0]]);
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+    fixture.append(progressive.element);
+    try {
+      field.focus();
+      field.value = "@833";
+      field.setSelectionRange(4, 4);
+      field.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const panel =
+        progressive.element.querySelector<HTMLElement>(".inline-mention");
+      assert(
+        panel?.matches(":popover-open"),
+        "원격 조회 중 로컬 후보 팝오버가 열리지 않음",
+      );
+      assert(panel?.textContent?.includes("DEMO-833"), "로컬 후보 누락");
+      assert(
+        panel?.textContent?.includes("현재 뷰 밖"),
+        "전체 검색 중 안내 누락",
+      );
+      finish?.(targets);
+      await new Promise(requestAnimationFrame);
+      assert(panel?.textContent?.includes("김하나"), "원격 후보 누락");
+      assert(
+        panel?.querySelector<HTMLElement>(".mention-search-status")?.hidden,
+        "완료 후 검색 중 안내 잔존",
+      );
+    } finally {
+      progressive.destroy();
+      field.remove();
+    }
+  },
+);
+await check(
+  "전송된 이슈 멘션은 상세를 열고 사람 멘션은 링크로 만들지 않는다",
+  () => {
+    const label = mentionLabel(targets[0]);
+    let selected = "";
+    const row = chatMessage(
+      "user",
+      `${label} 확인`,
+      "",
+      {
+        site: "example.atlassian.net",
+        select: (key) => {
+          selected = key;
+        },
+      },
+      "",
+      [{ start: 0, end: label.length, target: targets[0] }],
+    );
+    const link = row.querySelector<HTMLAnchorElement>("a.chat-mention");
+    assert(link, "전송된 이슈 멘션 링크 누락");
+    link?.click();
+    assert(selected === "DEMO-833", "멘션 클릭 시 상세 이동 누락");
+    assert(
+      link?.getAttribute("href") === "?issue=DEMO-833",
+      "내부 이슈 링크 누락",
+    );
+    const user = chatMessage("user", "@김하나", "", undefined, "", [
+      { start: 0, end: 4, target: targets[1] },
+    ]);
+    assert(!user.querySelector("a"), "사람 멘션을 링크로 만들었음");
+  },
+);
+await check(
+  "작성란 멘션은 실제 클릭 영역이며 이동해도 원문과 참조를 보존한다",
+  async () => {
+    const field = element("textarea");
+    let selected = "";
+    const editor = textareaMentions(field, load, {
+      select: (key) => {
+        selected = key;
+      },
+    });
+    fixture.append(editor.element);
+    try {
+      const label = mentionLabel(targets[0]);
+      editor.restore(`${label} 확인`, [
+        { start: 0, end: label.length, target: targets[0] },
+      ]);
+      field.style.height = "80px";
+      await new Promise(requestAnimationFrame);
+      editor.element.scrollIntoView();
+      const link = editor.element.querySelector<HTMLAnchorElement>(
+        "a.mention-token-content",
+      );
+      assert(link, "작성란 멘션 링크 누락");
+      const rect = link?.getClientRects()[0];
+      if (!rect) throw new Error("멘션 클릭 영역 누락");
+      assert(
+        document
+          .elementFromPoint(rect.x + 3, rect.y + rect.height / 2)
+          ?.closest("a") === link,
+        "textarea가 멘션 클릭을 가림",
+      );
+      link?.click();
+      assert(selected === "DEMO-833", "작성란 상세 이동 누락");
+      assert(
+        field.value === `${label} 확인` &&
+          editor.references()[0]?.target.id === "123",
+        "이동 시 작성 내용 유실",
+      );
+      const passive = mentionToken(targets[0], label, {
+        clickable: false,
+        select: () => {
+          throw new Error("비활성 멘션 실행");
+        },
+      });
+      assert(passive.tagName === "SPAN", "클릭 옵션을 무시함");
+    } finally {
+      editor.destroy();
+      field.remove();
+    }
+  },
+);
+await check("본문 멘션도 내부 상세를 열고 ADF 저장 링크는 보존한다", () => {
+  let selected = "";
+  const document = rich.document();
+  const rendered = renderADF(document, {
+    key: "DEMO-1",
+    url: "https://example.atlassian.net/browse/DEMO-1",
+    select: (key) => {
+      selected = key;
+    },
+  });
+  const root = element("div");
+  root.append(rendered);
+  root.querySelector<HTMLAnchorElement>("a.mention-issue")?.click();
+  assert(selected === "DEMO-833", "본문 멘션 내부 이동 누락");
+  assert(
+    JSON.stringify(rich.document()).includes("/browse/DEMO-833"),
+    "원본 ADF 링크 변경",
+  );
+});
 document.body.dataset.failures = String(failures);
 document.body.dataset.complete = "true";
 if (new URLSearchParams(location.search).has("preview")) {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Api } from "../src/client/api.ts";
 import { createChatQueue } from "../src/client/chat-queue.ts";
 import { createMentionSource } from "../src/client/mention-source.ts";
 import {
@@ -8,6 +9,7 @@ import {
   moveMentions,
   type TextMention,
 } from "../src/domain/mention.ts";
+import { validSort } from "../src/domain/sort.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
 
 const reference: TextMention = {
@@ -77,5 +79,54 @@ test("이슈 멘션은 짧은 제목을 함께 표시하고 긴 제목·줄바�
   assert.match(
     mentionPrompt(label, [{ start: 0, end: label.length, target: issue }]),
     /"id":"123"/,
+  );
+});
+
+test("멘션은 뷰 밖 로컬 후보를 먼저 표시하고 전역 조회 결과를 중복 없이 합친다", async () => {
+  const local = {
+    ...emptyIssue("BB-866", "이메일 변경"),
+    id: "866",
+    project: "BB",
+  };
+  let release:
+    | ((value: Awaited<ReturnType<Api["issues"]>>) => void)
+    | undefined;
+  const snapshots: string[][] = [];
+  const source = createMentionSource(
+    {
+      users: async () => [],
+      issues: async (filters) => {
+        assert.deepEqual(filters.projects, []);
+        assert.equal(filters.scope, "all");
+        assert.equal(filters.excludeDone, false);
+        assert(
+          validSort(filters.sort),
+          "멘션이 서버에서 지원하지 않는 정렬값을 보냄",
+        );
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+    },
+    {
+      site: "example.atlassian.net",
+      projects: () => ["AA"],
+      local: () => [local],
+    },
+  );
+  const pending = source("866", (items) =>
+    snapshots.push(items.map((item) => item.key ?? "")),
+  );
+  assert.deepEqual(snapshots[0], ["BB-866"]);
+  release?.({
+    issues: [local, { ...local, key: "CC-866", id: "other" }],
+    nextPageToken: null,
+    ancestors: [],
+  });
+  assert.deepEqual(
+    (await pending)
+      .filter((item) => item.kind === "issue")
+      .map((item) => item.key),
+    ["BB-866", "CC-866"],
   );
 });

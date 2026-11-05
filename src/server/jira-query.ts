@@ -136,7 +136,19 @@ export function createJiraQuery(
     if (q) {
       if (/^[A-Z][A-Z0-9_]*-\d+$/i.test(q))
         conditions.push(`key = ${q.toUpperCase()}`);
-      else {
+      else if (/^\d{1,20}$/.test(q)) {
+        const selected = projectKeys(projects);
+        const candidates = (
+          selected.length
+            ? selected
+            : (await metadata.projects()).map((project) => project.key)
+        ).map((project) => `${project}-${q}`);
+        conditions.push(
+          candidates.length
+            ? `(key in (${candidates.join(", ")}) OR summary ~ "${q}")`
+            : `summary ~ "${q}"`,
+        );
+      } else {
         const words = q.match(/[\p{L}\p{N}]+/gu)?.join(" ");
         if (!words) throw invalid("검색어에 글자나 숫자를 입력하세요.");
         conditions.push(`summary ~ "${words}"`);

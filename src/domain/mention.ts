@@ -7,6 +7,10 @@ export interface MentionTarget {
   url?: string;
   avatar?: string;
 }
+export type MentionLoader = (
+  query: string,
+  publish?: (items: MentionTarget[], warning?: string) => void,
+) => Promise<MentionTarget[]>;
 export interface TextMention {
   start: number;
   end: number;

@@ -83,6 +83,7 @@ export function buttonGroup<T extends HTMLElement>(
   root.dataset.size = options.size ?? "auto";
   root.dataset.groupCompact = String(options.compact ?? false);
   root.dataset.groupWrap = String(options.wrap ?? true);
+  root.dataset.groupSurface = String(options.surface ?? false);
   return root;
 }
 

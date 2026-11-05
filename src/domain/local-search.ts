@@ -15,7 +15,7 @@ export function localSearch(
   const words = term.split(/\s+/);
   const visits = new Map(recent.map((issue, index) => [issue.key, index]));
   return [...new Map(issues.map((issue) => [issue.key, issue])).values()]
-    .filter((issue) => projects.includes(issue.project))
+    .filter((issue) => !projects.length || projects.includes(issue.project))
     .map((issue) => {
       const key = normalize(issue.key),
         title = normalize(issue.summary);

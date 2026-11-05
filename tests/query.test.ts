@@ -621,3 +621,24 @@ test("미지정 포함은 동적 사람 필드가 모두 빈 작업을 기존 �
   });
   assert(none.includes("project is EMPTY"));
 });
+
+test("번호만 검색해도 전체 프로젝트의 이슈 키와 제목을 함께 찾는다", async () => {
+  const { query } = setup((url) => {
+    assert(url.pathname.endsWith("/project/search"));
+    return Response.json({
+      values: [
+        { key: "AA", name: "A" },
+        { key: "BB", name: "B" },
+      ],
+      isLast: true,
+      total: 2,
+    });
+  });
+  const conditions = await query.browseConditions({
+    ...options,
+    projects: "",
+    q: "866",
+  });
+  assert(conditions.includes("project is not EMPTY"));
+  assert(conditions.includes('(key in (AA-866, BB-866) OR summary ~ "866")'));
+});

@@ -1,4 +1,5 @@
 import {
+  type MentionLoader,
   type MentionTarget,
   mentionLabel,
   moveMentions,
@@ -7,6 +8,7 @@ import {
 import type { AdfEditor } from "./adf-editor.ts";
 import { element } from "./dom.ts";
 import { mentionPicker } from "./mention-picker.ts";
+import { type MentionOptions, mentionToken } from "./mention-token.ts";
 export function adfMentionEditor(editor: AdfEditor) {
   return {
     element: editor.element,
@@ -18,7 +20,10 @@ export function adfMentionEditor(editor: AdfEditor) {
     },
   };
 }
-export function textareaMentionEditor(input: HTMLTextAreaElement) {
+export function textareaMentionEditor(
+  input: HTMLTextAreaElement,
+  options: MentionOptions = {},
+) {
   const host = element("div", "mention-input"),
     mirror = element("div", "mention-mirror");
   mirror.setAttribute("aria-hidden", "true");
@@ -42,6 +47,13 @@ export function textareaMentionEditor(input: HTMLTextAreaElement) {
         input.value.slice(mention.start, mention.end),
       );
       token.dataset.kind = mention.target.kind;
+      const content = mentionToken(mention.target, token.textContent ?? "", {
+        ...options,
+        className: "mention-token-content",
+      });
+      content.tabIndex = -1;
+      content.addEventListener("mousedown", (event) => event.preventDefault());
+      token.replaceChildren(content);
       mirror.append(token);
       offset = mention.end;
     }
@@ -153,9 +165,10 @@ export function textareaMentionEditor(input: HTMLTextAreaElement) {
 /** 일반 작성란도 같은 후보·키보드 선택기를 사용한다. */
 export function textareaMentions(
   input: HTMLTextAreaElement,
-  load: (query: string) => Promise<MentionTarget[]>,
+  load: MentionLoader,
+  options: MentionOptions = {},
 ) {
-  const editor = textareaMentionEditor(input),
+  const editor = textareaMentionEditor(input, options),
     picker = mentionPicker(editor, load);
   editor.host.append(picker.element);
   return {

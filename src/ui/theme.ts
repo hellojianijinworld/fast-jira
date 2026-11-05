@@ -7,6 +7,7 @@ export interface ButtonOptions {
 }
 
 export interface ButtonGroupOptions {
+  surface?: boolean;
   size?: ComponentSize;
   compact?: boolean;
   wrap?: boolean;

@@ -80,10 +80,6 @@ main {
 }
 .nav-tools {
   justify-self: center;
-  min-height: var(--list-header-height);
-  padding: var(--space-1);
-  border-radius: var(--radius-dialog);
-  background: var(--page);
 }
 .nav-actions {
   justify-self: end;
@@ -482,11 +478,6 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   margin: 0;
   padding: var(--density-space-3);
   overflow: visible;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-popover);
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-popover);
 }
 .history-diff-popover:popover-open {
   display: flex;
@@ -2037,9 +2028,6 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
 /* 뷰와 도구는 탑바 중앙을 공유하고 뷰 이름은 필요할 때 펼친다. */
 .workspace-views {
   min-width: 0;
-  padding: var(--space-1);
-  border-radius: var(--radius-dialog);
-  background: var(--page);
 }
 .workspace-tabs {
   flex: 0 1 auto;

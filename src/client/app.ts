@@ -83,6 +83,7 @@ export async function createApp(
   const nav = element("header", "top-nav"),
     center = element("div", "nav-center"),
     tools = buttonGroup(element("div", "nav-tools"), {
+      surface: true,
       compact: true,
       wrap: false,
     }),

@@ -11,7 +11,6 @@ export function createSearchDialog(config: {
   api: Pick<Api, "issues" | "lookup">;
   site: string;
   currentUserId?: string;
-  context: () => { projects: readonly string[] };
   recent: () => readonly Issue[];
   localIssues: () => readonly Issue[];
   order: () => readonly string[];
@@ -136,7 +135,7 @@ export function createSearchDialog(config: {
         const matches = localSearch(
           config.localIssues(),
           key || query,
-          config.context().projects,
+          [],
           (issue) => config.favorites?.has(issue) ?? false,
           config.recent(),
         );
@@ -146,12 +145,14 @@ export function createSearchDialog(config: {
         remoteResults.hidden = true;
         searchResults.append(local, remoteResults);
       }
-      status.textContent = "검색 중…";
+      status.textContent = more
+        ? "검색 결과를 더 불러오는 중이에요…"
+        : "현재 뷰 밖의 이슈도 확인 중이에요…";
       const page = key
         ? { issues: [(await config.api.lookup(key)).parent], nextPageToken: "" }
         : await config.api.issues(
             {
-              projects: [...config.context().projects],
+              projects: [],
               scope: "all",
               excludeDone: false,
               statuses: null,

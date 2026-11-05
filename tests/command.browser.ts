@@ -75,6 +75,7 @@ const storage = {
 };
 let localReads = 0,
   searchCalls = 0;
+let searchProjects = "";
 let localItems = [issue],
   holdSearch = false,
   failSearch = false;
@@ -108,6 +109,7 @@ const api = createApi(async (input, init) => {
   const path = new URL(String(input), location.origin);
   if (path.pathname === "/api/issues") {
     searchQuery = path.searchParams.get("q") ?? "";
+    searchProjects = path.searchParams.get("projects") ?? "";
     const query = searchQuery;
     searchCalls++;
     if (holdSearch)
@@ -452,6 +454,11 @@ await check(
     assert(
       dialog().querySelector(".list-title")?.textContent === "로컬 검색 이전",
       "API 응답 전 로컬 후보 누락",
+    );
+    assert(searchProjects === "", "전체 검색이 현재 뷰의 프로젝트로 제한됨");
+    assert(
+      dialog().textContent?.includes("현재 뷰 밖"),
+      "뷰 밖 검색 중 안내 누락",
     );
     input().dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),

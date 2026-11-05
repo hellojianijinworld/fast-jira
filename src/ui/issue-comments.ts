@@ -28,6 +28,7 @@ export function issueComments(
   accountId: string,
   onCount: (count: number) => Promise<void>,
   hold: () => () => void,
+  select?: (key: string) => void,
 ) {
   const root = element("section", "comments");
   const head = element("div", "comments-head"),
@@ -106,7 +107,7 @@ export function issueComments(
     release = hold();
     writing = documentForm({
       initial,
-      issue,
+      issue: { ...issue, select },
       imageEnabled,
       api,
       label: reply ? "답글 내용" : comment ? "댓글 편집" : "새 댓글",
@@ -170,7 +171,7 @@ export function issueComments(
       relativeTime(comment.created),
     );
     const body = element("div", "adf comment-body");
-    body.append(renderADF(comment.body, issue, imageEnabled));
+    body.append(renderADF(comment.body, { ...issue, select }, imageEnabled));
     const toolbar = buttonGroup(element("div", "comment-toolbar"), {
         compact: true,
         wrap: false,

@@ -3,6 +3,7 @@ import type { ChatMessage } from "../domain/conversation.ts";
 import { mentionLabel, type TextMention } from "../domain/mention.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { element, safeHref } from "./dom.ts";
+import { mentionToken } from "./mention-token.ts";
 
 const markdown = new MarkdownIt({
   html: false,
@@ -95,13 +96,14 @@ export function chatMessage(
       )
         continue;
       body.append(document.createTextNode(text.slice(offset, token.start)));
-      const badge = element(
-        "span",
-        "mention chat-mention",
+      const badge = mentionToken(
+        token.target,
         text.slice(token.start, token.end),
+        {
+          className: "mention chat-mention",
+          select: navigation?.select,
+        },
       );
-      badge.dataset.kind = token.target.kind;
-      badge.title = token.target.label;
       body.append(badge);
       offset = token.end;
     }

@@ -1,10 +1,12 @@
 import type { AdfNode } from "../domain/adf.ts";
 import { parseIssueKey } from "../domain/validation.ts";
 import { element, externalLink, safeHref } from "./dom.ts";
+import { mentionToken } from "./mention-token.ts";
 
 export interface AdfContext {
   key: string;
   url: string;
+  select?: ((key: string) => void) | undefined;
 }
 const tags: Record<string, keyof HTMLElementTagNameMap> = {
   paragraph: "p",
@@ -59,8 +61,18 @@ export function renderADF(
           wrapper = externalLink(safe);
           try {
             const key = parseIssueKey(safe, new URL(issue.url).hostname);
-            if (node.text?.startsWith(`${key} · `))
-              wrapper.classList.add("mention", "mention-issue");
+            if (node.text?.startsWith(`${key} · `)) {
+              wrapper = mentionToken(
+                { kind: "issue", id: "", key, label: node.text },
+                "",
+                {
+                  className: "mention mention-issue",
+                  href: safe,
+                  select: issue.select,
+                },
+              );
+              wrapper.contentEditable = "false";
+            }
           } catch {
             /* 일반 링크는 기존 표시를 유지한다. */
           }

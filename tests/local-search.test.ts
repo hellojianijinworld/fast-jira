@@ -66,3 +66,16 @@ test("이슈 번호는 대소문자와 무관하게 완전 일치를 먼저, 후
   assert.equal(result[0]?.key, "AA-8");
   assert.equal(result.length, 8);
 });
+
+test("전역 검색은 프로젝트 제한이 없으면 뷰 밖 로컬 이슈도 우선 표시한다", () => {
+  assert.deepEqual(
+    localSearch(
+      [issue("BB-866", "이메일 변경")],
+      "866",
+      [],
+      () => false,
+      [],
+    ).map((item) => item.key),
+    ["BB-866"],
+  );
+});

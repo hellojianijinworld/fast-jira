@@ -1,4 +1,4 @@
-import { type MentionTarget, mentionPrompt } from "../domain/mention.ts";
+import { type MentionLoader, mentionPrompt } from "../domain/mention.ts";
 import { textareaMentions } from "./mention-editors.ts";
 import "./assistant-approvals.css";
 import type { Api } from "../client/api.ts";
@@ -22,7 +22,8 @@ export function createAssistantApprovalPanel(
     answer: { approved: boolean; feedback: string; response: string },
   ) => void,
   options: {
-    mentions?: (query: string) => Promise<MentionTarget[]>;
+    mentions?: MentionLoader;
+    selectIssue?: (key: string) => void;
     voice?: (callbacks: VoiceCallbacks) => VoiceInput;
     voiceAvailable?: () => boolean;
     notice?: (message: string) => void;
@@ -152,7 +153,9 @@ export function createAssistantApprovalPanel(
       mic.hidden = !options.voice || options.voiceAvailable?.() === false;
       actions.append(mic, send);
       const mentions = options.mentions
-        ? textareaMentions(note, options.mentions)
+        ? textareaMentions(note, options.mentions, {
+            select: options.selectIssue,
+          })
         : undefined;
       composer.append(mentions?.element ?? note, actions);
       const error = element("p", "error");

@@ -22,7 +22,7 @@ export function createFilterPanel(
   callbacks: FilterCallbacks,
 ) {
   const views = callbacks.views;
-  const panel = element("div", "filter-panel view-panel");
+  const panel = element("div", "filter-panel view-panel popover-surface");
   panel.popover = "auto";
   const head = element("div", "view-panel-head"),
     heading = element("div", "view-panel-heading"),

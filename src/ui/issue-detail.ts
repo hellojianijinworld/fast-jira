@@ -360,7 +360,11 @@ export function issueDetail(
   function renderDescription() {
     rendered.replaceChildren(
       editor.issue.description
-        ? renderADF(editor.issue.description, editor.issue, result.imageEnabled)
+        ? renderADF(
+            editor.issue.description,
+            { ...editor.issue, select },
+            result.imageEnabled,
+          )
         : element("p", "empty", "설명이 없습니다."),
     );
     renderAttachments();
@@ -380,7 +384,7 @@ export function issueDetail(
     releaseBody = refresh.hold();
     writing = documentForm({
       initial: editor.issue.description,
-      issue: editor.issue,
+      issue: { ...editor.issue, select },
       imageEnabled: result.imageEnabled,
       api,
       label: "이슈 본문",
@@ -408,6 +412,7 @@ export function issueDetail(
     me.accountId,
     (count) => contentChanged({ commentCount: count }),
     refresh.hold,
+    select,
   );
   root.append(body, attachments);
   const children = detailChildren(
