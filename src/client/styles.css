@@ -2631,7 +2631,8 @@ button.history-change:hover:where(:not(:disabled):not([aria-disabled="true"])) {
   display: none;
   min-width: 0;
   min-height: 0;
-  background: var(--surface);
+  padding: var(--space-1);
+  background: var(--page);
 }
 .assistant-workspace[data-chat-open="true"] .assistant-workspace-chat {
   display: flex;

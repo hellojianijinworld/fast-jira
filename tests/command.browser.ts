@@ -2,7 +2,7 @@ import "../src/client/styles.css";
 import { createApi } from "../src/client/api.ts";
 import type { VoiceCallbacks } from "../src/client/codex-voice.ts";
 import { emptyIssue } from "../src/domain/wire.ts";
-import { chatMessage } from "../src/ui/chat-message.ts";
+import { chatEvent, chatMessage } from "../src/ui/chat-message.ts";
 import { createCommandPalette } from "../src/ui/command-palette.ts";
 import { element } from "../src/ui/dom.ts";
 import { issueCard } from "../src/ui/issue-card.ts";
@@ -269,12 +269,19 @@ const api = createApi(async (input, init) => {
         activity: [
           {
             role: "event",
-            text: "jira_create_issue · 완료",
+            text: "이슈 확인 · 완료",
+            details: "AA-1 · 생성 파이프라인 후속 작업 · 개발 중",
             created: Date.now(),
           },
           {
             role: "event",
-            text: "jira_description · 실패",
+            text: "이슈 검색 · 완료",
+            details: "AA · AA-1 하위 · 내 관련 작업\n5건 확인 · 다음 결과 있음",
+            created: Date.now(),
+          },
+          {
+            role: "event",
+            text: "본문 수정 요청 처리 · 실패",
             created: Date.now(),
             details: "모의 권한 오류",
           },
@@ -804,6 +811,44 @@ await check(
         ?.textContent?.includes("닫은 뒤에도 받을 답변"),
       "새 화면에서 대화 복원 실패",
     );
+    const restoredTranscript =
+      dialog().querySelector<HTMLElement>(".chat-transcript");
+    assert(restoredTranscript, "복원한 대화 영역 누락");
+    if (restoredTranscript) {
+      const atBottom = () =>
+        restoredTranscript.scrollHeight -
+          restoredTranscript.scrollTop -
+          restoredTranscript.clientHeight <
+        2;
+      assert(atBottom(), "다시 연 대화가 최신 메시지에 있지 않음");
+      restoredTranscript.scrollTop = 0;
+      restoredTranscript.dispatchEvent(new Event("scroll"));
+      const latest = dialog().querySelector<HTMLButtonElement>(
+        '[aria-label="최신 메시지로"]',
+      );
+      assert(
+        latest && !latest.hidden,
+        "지난 대화에서 최신 메시지 이동 버튼 누락",
+      );
+      dialog()
+        .querySelector(".command-results")
+        ?.append(element("p", "", "추가 응답\n".repeat(20)));
+      await tick();
+      assert(
+        restoredTranscript.scrollTop === 0 && !latest?.hidden,
+        "이전 내용을 읽는데 새 응답이 스크롤을 하단으로 이동함",
+      );
+      latest?.click();
+      assert(
+        atBottom() && latest?.hidden,
+        "최신 메시지 이동 후 버튼이 남거나 하단에 도착하지 않음",
+      );
+      restoredTranscript.scrollTop = 0;
+      dialog().close();
+      palette.open("ai");
+      await tick();
+      assert(atBottom(), "같은 대화를 다시 열면 스크롤이 이전 위치에 남음");
+    }
     assert(
       dialog().querySelectorAll(".command-proposal").length === 0,
       "이전 변경안을 재실행할 수 있다",
@@ -816,6 +861,23 @@ await check(
     assert(
       dialog().querySelectorAll(".chat-conversation").length === 2,
       "새 대화가 이전 기록을 덮어씀",
+    );
+    const previous = [
+      ...dialog().querySelectorAll<HTMLButtonElement>(
+        ".chat-conversation-open",
+      ),
+    ].find((item) => item.textContent?.includes("닫은 뒤에도 받을 답변"));
+    previous?.click();
+    await tick();
+    const switchedTranscript =
+      dialog().querySelector<HTMLElement>(".chat-transcript");
+    assert(
+      switchedTranscript &&
+        switchedTranscript.scrollHeight -
+          switchedTranscript.scrollTop -
+          switchedTranscript.clientHeight <
+          2,
+      "대화 전환 후 최신 메시지가 보이지 않음",
     );
     const first = dialog().querySelector<HTMLButtonElement>(
       ".chat-conversation button",
@@ -1316,6 +1378,10 @@ await check(
       "대화 안 승인 카드 누락",
     );
     assert(pendingApproval, "확인 전 실행 금지");
+    assert(
+      dialog().dataset.aiState === "waiting",
+      "승인 대기 중 효과가 멈추지 않음",
+    );
     const deny = dialog().querySelector<HTMLInputElement>(
       ".assistant-approval input[value=deny]",
     );
@@ -2175,6 +2241,142 @@ await check(
     );
     const plain = chatMessage("user", "<script>실행 안 함</script>");
     assert(!plain.querySelector("script"), "사용자 입력을 HTML로 실행함");
+  },
+);
+await check(
+  "AI 테두리는 생성·정상 완료·중단·오류를 구분하고 완료 효과는 한 번만 재생한다",
+  async () => {
+    const effectHost = element("div"),
+      chatHost = element("aside");
+    effectHost.style.height = "500px";
+    effectHost.append(chatHost);
+    document.body.append(effectHost);
+    let complete:
+      | ((value: Awaited<ReturnType<typeof api.assistantRun>>) => void)
+      | undefined;
+    let rejectRun: ((error: Error) => void) | undefined;
+    const effectPalette = createCommandPalette({
+      host: effectHost,
+      chatHost,
+      api: {
+        ...api,
+        assistantRun: async (
+          _prompt,
+          _context,
+          _conversation,
+          _model,
+          signal,
+        ) =>
+          new Promise((resolve, reject) => {
+            complete = resolve;
+            rejectRun = reject;
+            signal.addEventListener("abort", () => reject(new Error("취소")), {
+              once: true,
+            });
+          }),
+      },
+      site: "fixture.atlassian.net",
+      context: () => ({ projects: ["AA"], issue: "", keys: [] }),
+      recent: () => [],
+      localIssues: () => [],
+      order: () => [],
+      select: () => {},
+      changed: async () => {},
+      canMutate: () => true,
+      notice: () => {},
+    });
+    try {
+      effectPalette.open("ai");
+      await tick();
+      const panel = effectHost.querySelector<HTMLDialogElement>(".ai-modal");
+      const composer = effectHost.querySelector<HTMLTextAreaElement>(
+        ".command-form textarea",
+      );
+      assert(panel && composer, "효과 검사 UI 누락");
+      if (!panel || !composer) return;
+      const send = () => {
+        composer.value = "모의 작업 확인";
+        panel.querySelector("form")?.requestSubmit();
+      };
+      const reply = {
+        conversationId: "effects",
+        answer: "모의 작업을 확인했어요.",
+        proposals: [],
+      };
+      send();
+      await tick();
+      assert(panel.dataset.aiState === "working", "생성 중 상태 누락");
+      complete?.(reply);
+      await tick();
+      assert(panel.dataset.aiState === "complete", "완료 효과 누락");
+      assert(
+        getComputedStyle(panel, "::after").animationIterationCount === "1",
+        "완료 효과가 반복됨",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 950));
+      assert(panel.dataset.aiState === "idle", "완료 효과가 끝나지 않음");
+      panel.close();
+      effectPalette.open("ai");
+      await tick();
+      assert(panel.dataset.aiState === "idle", "다시 열면서 완료 효과 재생됨");
+      send();
+      await tick();
+      panel
+        .querySelector<HTMLButtonElement>('[aria-label="답변 중단"]')
+        ?.click();
+      await tick();
+      assert(panel.dataset.aiState === "idle", "중단 후 완료 효과가 남음");
+      send();
+      await tick();
+      rejectRun?.(new Error("모의 실패"));
+      await tick();
+      assert(panel.dataset.aiState === "error", "실패가 완료로 표시됨");
+      send();
+      await tick();
+      panel.close();
+      complete?.(reply);
+      await tick();
+      effectPalette.open("ai");
+      await tick();
+      assert(
+        panel.dataset.aiState === "idle",
+        "닫힌 상태의 완료 효과가 다시 재생됨",
+      );
+    } finally {
+      effectPalette.destroy();
+      effectHost.remove();
+    }
+  },
+);
+await check(
+  "작업 기록은 대상·결과를 구분하고 본문보다 작은 타이포로 표시한다",
+  async () => {
+    const event = chatEvent({
+      text: "작업 과정 · 12초",
+      details:
+        "이슈 확인 · 완료\nAA-1 · 조회 경합 수정 · 개발 중\n\n이슈 검색 · 완료\nAA · AA-1 하위\n5건 확인",
+    });
+    host.append(event);
+    try {
+      assert(
+        event.querySelectorAll(".chat-event-entry").length === 2,
+        "작업별 기록 구분 누락",
+      );
+      assert(!event.querySelector("pre"), "작업 기록이 코드 블록으로 표시됨");
+      assert(
+        event
+          .querySelector(".chat-event-detail")
+          ?.textContent?.includes("AA-1"),
+        "대상 정보 누락",
+      );
+      const title = event.querySelector<HTMLElement>(".chat-event-title");
+      assert(
+        title && Number.parseFloat(getComputedStyle(title).fontSize) <= 12,
+        "작업 기록 글자가 본문처럼 크게 표시됨",
+      );
+    } finally {
+      event.remove();
+    }
   },
 );
 document.body.dataset.result = failures ? "failed" : "passed";

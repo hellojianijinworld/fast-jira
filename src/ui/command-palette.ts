@@ -139,6 +139,8 @@ export function createCommandPalette(config: {
     chatLayout = element("div", "chat-layout"),
     chatMain = element("div", "chat-main"),
     transcript = element("div", "chat-transcript"),
+    transcriptRegion = element("div", "chat-transcript-region"),
+    latestMessage = iconButton("최신 메시지로", "arrow-up", { size: "sm" }),
     helpToggle = iconButton("AI 대화 도움말", "circle-help", { size: "sm" }),
     helpPanel = element("div", "select-options ai-chat-help"),
     settingsToggle = iconButton("AI 대화 설정", "settings", { size: "sm" }),
@@ -165,6 +167,18 @@ export function createCommandPalette(config: {
     policyBody = element("div", "chat-policy-content"),
     status = element("p", "command-status"),
     aiResults = element("div", "command-results");
+  let completionEffect: ReturnType<typeof setTimeout> | undefined;
+  function setAiState(
+    state: "idle" | "working" | "waiting" | "complete" | "error",
+  ) {
+    clearTimeout(completionEffect);
+    dialog.dataset.aiState = state;
+    if (state === "complete")
+      completionEffect = setTimeout(() => {
+        dialog.dataset.aiState = "idle";
+      }, 900);
+  }
+  setAiState("idle");
   let conversations: Conversation[] = [],
     current: Conversation | undefined,
     storageError = "";
@@ -195,6 +209,7 @@ export function createCommandPalette(config: {
     choose: (item) => {
       closeHistory();
       if (busy || steering || stopping || applying || recording) return;
+      setAiState("idle");
       current = item;
       conversationId = item.conversationId;
       selectedModel = item.model;
@@ -204,7 +219,8 @@ export function createCommandPalette(config: {
       renderConversation();
       status.textContent = "";
       sync();
-      input.focus();
+      input.focus({ preventScroll: true });
+      revealLatest();
     },
     remove: (id) => {
       if (busy || steering || stopping || applying || recording) return;
@@ -234,7 +250,11 @@ export function createCommandPalette(config: {
   transcript.setAttribute("aria-label", "대화 내용");
   aiResults.setAttribute("role", "log");
   aiResults.setAttribute("aria-live", "polite");
-  chatMain.append(transcript, form);
+  latestMessage.classList.add("chat-latest-message");
+  latestMessage.hidden = true;
+  latestMessage.addEventListener("click", scrollConversation);
+  transcriptRegion.append(transcript, latestMessage);
+  chatMain.append(transcriptRegion, form);
   chatLayout.append(sidebar.root, chatMain);
   capabilities.append(element("summary", "", "연결 및 지원 상태"));
   commandQuery.placeholder = "명령 검색…";
@@ -626,6 +646,7 @@ export function createCommandPalette(config: {
     (waiting) => {
       if (!alive) return;
       awaitingApproval = waiting;
+      if (busy) setAiState(stopping ? "idle" : waiting ? "waiting" : "working");
       dialog.classList.toggle("awaiting-approval", waiting);
       if (waiting) {
         hideThinking();
@@ -1123,6 +1144,7 @@ export function createCommandPalette(config: {
     );
   }
   function newConversation() {
+    setAiState("idle");
     current = undefined;
     conversationId = "";
     input.value = "";
@@ -1244,9 +1266,36 @@ export function createCommandPalette(config: {
     aiResults.append(thinkingMessage);
     if (follow) scrollConversation();
   }
-  function scrollConversation() {
-    transcript.scrollTop = transcript.scrollHeight;
+  let followingLatest = true;
+  let revealFrame = 0;
+  function updateLatestButton() {
+    latestMessage.hidden =
+      transcript.scrollHeight -
+        transcript.scrollTop -
+        transcript.clientHeight <=
+      80;
   }
+  function scrollConversation() {
+    followingLatest = true;
+    transcript.scrollTop = transcript.scrollHeight;
+    updateLatestButton();
+  }
+  function revealLatest() {
+    cancelAnimationFrame(revealFrame);
+    scrollConversation();
+    revealFrame = requestAnimationFrame(scrollConversation);
+  }
+  transcript.addEventListener("scroll", () => {
+    updateLatestButton();
+    followingLatest = latestMessage.hidden === true;
+  });
+  const transcriptResize = new ResizeObserver(() => {
+    if (!dialog.open || !dialog.getClientRects().length) return;
+    if (followingLatest) scrollConversation();
+    else updateLatestButton();
+  });
+  transcriptResize.observe(transcript);
+  transcriptResize.observe(aiResults);
   async function ask(
     queuedPrompt?: string,
     followup = followupMode,
@@ -1299,7 +1348,9 @@ export function createCommandPalette(config: {
       text: prompt,
       ...(references.length ? { mentions: structuredClone(references) } : {}),
     });
+    const startedAt = Date.now();
     busy = true;
+    setAiState("working");
     request = new AbortController();
     const controller = request;
     aiResults.append(
@@ -1419,7 +1470,7 @@ export function createCommandPalette(config: {
       const activity = reply.activity?.length
         ? {
             role: "event" as const,
-            text: `도구 ${reply.activity.length}개 사용`,
+            text: `작업 과정 · ${Math.max(1, Math.round((Date.now() - startedAt) / 1000))}초`,
             details: reply.activity
               .map((event) =>
                 [event.text, event.details].filter(Boolean).join("\n"),
@@ -1500,6 +1551,7 @@ export function createCommandPalette(config: {
           transcript.clientHeight + 80;
         hideThinking();
         aiResults.append(chatError(failure));
+        setAiState("error");
         status.textContent = "";
         saveConversation();
         if (follow) scrollConversation();
@@ -1516,6 +1568,15 @@ export function createCommandPalette(config: {
         hideThinking();
         stopApprovals();
         if (alive) {
+          if (controller.signal.aborted) setAiState("idle");
+          else if (succeeded && dialog.dataset.aiState !== "error")
+            setAiState(
+              dialog.open &&
+                dialog.getClientRects().length &&
+                document.visibilityState === "visible"
+                ? "complete"
+                : "idle",
+            );
           sync();
           if (dialog.open) input.focus();
           if (succeeded) void drainQueue();
@@ -1545,7 +1606,8 @@ export function createCommandPalette(config: {
       config.unread?.(false);
       sync();
       void loadModels();
-      input.focus();
+      input.focus({ preventScroll: true });
+      revealLatest();
     }
   }
   function toggleAI() {
@@ -1677,6 +1739,7 @@ export function createCommandPalette(config: {
   async function stopRequest() {
     if (stopping) return;
     stopping = true;
+    setAiState("idle");
     const requestId = activeRequestId;
     if (current) queue.pause(current.id);
     request?.abort();
@@ -1714,6 +1777,7 @@ export function createCommandPalette(config: {
   close.addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => {
     if (!alive || dialog.open) return;
+    if (dialog.dataset.aiState === "complete") setAiState("idle");
     config.chatVisibility?.(false);
     closeHistory();
     restoreNotice(dialog);
@@ -1766,6 +1830,9 @@ export function createCommandPalette(config: {
     },
     destroy() {
       alive = false;
+      clearTimeout(completionEffect);
+      cancelAnimationFrame(revealFrame);
+      transcriptResize.disconnect();
       request?.abort();
       voice.destroy();
       historyResize?.disconnect();

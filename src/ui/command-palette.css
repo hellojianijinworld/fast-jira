@@ -76,6 +76,104 @@
 .ai-modal .command-head {
   padding-bottom: var(--density-space-2-5);
 }
+.ai-modal[data-ai-state] {
+  --ai-edge: color-mix(in srgb, var(--blue) 55%, var(--border-strong));
+  --ai-edge-highlight: color-mix(in srgb, var(--blue) 65%, var(--text));
+  isolation: isolate;
+}
+.ai-modal[data-ai-state]::before,
+.ai-modal[data-ai-state]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 3;
+}
+.ai-modal[data-ai-state]::before {
+  padding: 1px;
+  background: var(--ai-edge);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.ai-modal[data-ai-state="working"]::before,
+.ai-modal[data-ai-state="working"]::after {
+  padding: 3px;
+  background: conic-gradient(
+    from var(--ai-chat-edge-angle),
+    var(--border-strong) 0deg 240deg,
+    var(--blue) 285deg,
+    color-mix(in srgb, var(--blue) 25%, var(--text)) 310deg 325deg,
+    var(--border-strong) 345deg
+  );
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: ai-chat-orbit 3s linear infinite;
+}
+.ai-modal[data-ai-state="working"]::after {
+  padding: 6px;
+  filter: blur(4px);
+  opacity: 0.65;
+}
+.ai-modal[data-ai-state="complete"]::before {
+  animation: ai-chat-complete 0.9s ease-out 1;
+}
+.ai-modal[data-ai-state="complete"]::after {
+  background: linear-gradient(
+    115deg,
+    transparent 36%,
+    color-mix(in srgb, var(--blue) 13%, transparent) 50%,
+    transparent 64%
+  );
+  background-size: 250% 100%;
+  animation: ai-chat-sheen 0.85s ease-out 1 both;
+}
+.ai-modal[data-ai-state="error"]::before {
+  background: color-mix(in srgb, var(--error) 55%, var(--border-strong));
+}
+@property --ai-chat-edge-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes ai-chat-orbit {
+  to {
+    --ai-chat-edge-angle: 360deg;
+  }
+}
+@keyframes ai-chat-complete {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  25% {
+    opacity: 1;
+    background: var(--ai-edge-highlight);
+  }
+}
+@keyframes ai-chat-sheen {
+  from {
+    background-position: 160% 0;
+    opacity: 1;
+  }
+  to {
+    background-position: -60% 0;
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-modal[data-ai-state]::before,
+  .ai-modal[data-ai-state]::after {
+    animation: none;
+  }
+  .ai-modal[data-ai-state="complete"]::after {
+    display: none;
+  }
+}
 .command-form {
   display: grid;
   gap: var(--density-space-2);
@@ -294,6 +392,28 @@
   display: flex;
   flex-direction: column;
 }
+.chat-transcript-region {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.chat-latest-message[data-variant] {
+  position: absolute;
+  bottom: var(--density-space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-popover);
+}
+.chat-latest-message .ui-icon {
+  transform: rotate(180deg);
+}
 .chat-transcript {
   flex: 1;
   min-height: 0;
@@ -372,13 +492,27 @@
 .chat-event > summary {
   cursor: pointer;
 }
-.chat-event pre {
+.chat-event-entries {
+  display: grid;
+  gap: var(--density-space-2-5);
+  margin-top: var(--density-space-2);
+  padding: var(--density-space-1) 0 var(--density-space-1)
+    var(--density-space-3);
+  border-left: 1px solid var(--border);
+}
+.chat-event-entry p {
+  margin: 0;
+  font-size: var(--font-size-12);
+  line-height: var(--line-height-body);
+}
+.chat-event-title {
+  color: var(--secondary-text);
+  font-weight: var(--font-weight-medium);
+}
+.chat-event-entry .chat-event-detail {
+  font-size: var(--font-size-11);
+  color: var(--muted);
   white-space: pre-wrap;
-  margin: var(--density-space-2) 0 0;
-  padding: var(--density-space-2);
-  background: var(--page);
-  border-radius: var(--radius-8);
-  font: inherit;
 }
 .chat-message-user {
   align-items: flex-end;
@@ -829,8 +963,8 @@
   max-width: 100%;
   height: 100%;
   max-height: none;
-  border: 0;
-  border-radius: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-dialog);
   box-shadow: none;
   container-type: inline-size;
 }

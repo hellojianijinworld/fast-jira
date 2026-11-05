@@ -220,7 +220,7 @@ test("Codex는 연결 도구를 유지하고 Jira 변경은 제안으로 반환�
     assert.equal(result.threadId, undefined);
     assert.deepEqual(
       result.activity?.map((event) => event.text),
-      ["jira_search · 완료", "jira_propose_change · 완료"],
+      ["이슈 검색 · 완료", "변경안 준비 · 완료"],
     );
     assert.ok(f.reads > 0);
     assert.equal(f.writes, 0);

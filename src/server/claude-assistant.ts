@@ -5,6 +5,7 @@ import type {
   AssistantReply,
   AssistantStatus,
 } from "../domain/assistant.ts";
+import { toolActivity } from "../domain/assistant-activity.ts";
 import type { ApprovalHandler } from "../domain/assistant-approval.ts";
 import type { AssistantExecution } from "../domain/assistant-execution.ts";
 import type { ChatMessage } from "../domain/conversation.ts";
@@ -110,6 +111,7 @@ export function createClaudeAssistant(
       const changedKeys = new Set<string>();
       const creations: IssueDraft[] = [];
       const execution: AssistantExecution[] = [];
+      const activity: ChatMessage[] = [];
       let bridge: Awaited<ReturnType<typeof createAssistantMcp>> | undefined;
       try {
         bridge = await createAssistantMcp(
@@ -170,7 +172,14 @@ export function createClaudeAssistant(
                     interrupt: false,
                   };
             }
-            const value = await tools.call(name, args);
+            let value: unknown;
+            try {
+              value = await tools.call(name, args);
+              activity.push(toolActivity(name, args, value));
+            } catch (error) {
+              activity.push(toolActivity(name, args, undefined, true));
+              throw error;
+            }
             for (const key of changedJiraKeys(name, args, value))
               changedKeys.add(key);
             if (name === "jira_prepare_issue") {
@@ -262,6 +271,7 @@ export function createClaudeAssistant(
             ? input.conversationId
             : `claude:${randomUUID()}`,
           answer: result.result,
+          activity,
           execution,
           ...(changedKeys.size
             ? {

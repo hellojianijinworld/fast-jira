@@ -7,6 +7,7 @@ import {
   type AssistantStatus,
   assistantContext,
 } from "../domain/assistant.ts";
+import { toolActivity } from "../domain/assistant-activity.ts";
 import {
   type AssistantExecution,
   decodeExecutions,
@@ -547,11 +548,16 @@ export function createAssistantService(
               params.item.type === "mcpToolCall"
             ) {
               const item = params.item;
-              activity.push({
-                role: "event",
-                text: `${String(item.tool ?? "연결 도구")} · ${item.status === "failed" || item.error ? "실패" : "완료"}`,
-                created: Date.now(),
-              });
+              const started = items.get(String(item.id));
+              activity.push(
+                toolActivity(
+                  String(item.tool ?? ""),
+                  item.arguments ??
+                    (isRecord(started) ? started.arguments : undefined),
+                  item.result,
+                  item.status === "failed" || Boolean(item.error),
+                ),
+              );
             }
             if (
               message.method === "item/completed" &&
@@ -740,11 +746,13 @@ export function createAssistantService(
                       )
                         proposals.push(plan);
                     }
-                    activity.push({
-                      role: "event",
-                      text: `${String(params.tool)} · 완료`,
-                      created: Date.now(),
-                    });
+                    activity.push(
+                      toolActivity(
+                        String(params.tool),
+                        params.arguments,
+                        result,
+                      ),
+                    );
                     if (!ended)
                       native.respond(id, {
                         success: true,
@@ -756,12 +764,14 @@ export function createAssistantService(
                         ],
                       });
                   } catch (error) {
-                    activity.push({
-                      role: "event",
-                      text: `${String(params.tool)} · 실패`,
-                      created: Date.now(),
-                      details: messageOf(error),
-                    });
+                    activity.push(
+                      toolActivity(
+                        String(params.tool),
+                        params.arguments,
+                        undefined,
+                        true,
+                      ),
+                    );
                     if (!ended)
                       native.respond(id, {
                         success: false,

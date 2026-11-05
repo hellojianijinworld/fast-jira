@@ -131,7 +131,18 @@ export function chatEvent({
 }: Pick<ChatMessage, "text" | "details" | "created">) {
   const event = element(details ? "details" : "div", "chat-event");
   event.append(element(details ? "summary" : "span", "", text));
-  if (details) event.append(element("pre", "", details));
+  if (details) {
+    const entries = element("div", "chat-event-entries");
+    for (const block of details.split(/\n\s*\n/).filter(Boolean)) {
+      const [title, ...lines] = block.split("\n");
+      const entry = element("div", "chat-event-entry");
+      entry.append(element("p", "chat-event-title", title));
+      for (const line of lines)
+        entry.append(element("p", "chat-event-detail", line));
+      entries.append(entry);
+    }
+    event.append(entries);
+  }
   if (created) event.title = new Date(created).toLocaleString();
   return event;
 }

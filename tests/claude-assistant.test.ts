@@ -232,6 +232,22 @@ test("Codex 없이도 Claude로 대화·조회·변경안을 만들고 도구와
       history: [{ role: "user", text: "이전 요청" }],
     });
     assert.equal(result.answer, "변경안을 확인하세요.");
+    assert(
+      result.activity?.some(
+        (event) =>
+          event.text === "이슈 검색 · 완료" &&
+          event.details?.includes("0건 확인"),
+      ),
+      "Claude 검색 결과 기록 누락",
+    );
+    assert(
+      result.activity?.some(
+        (event) =>
+          event.text === "변경안 준비 · 완료" &&
+          event.details?.includes("AA-1"),
+      ),
+      "Claude 변경 대상 기록 누락",
+    );
     assert(result.conversationId.startsWith("claude:"));
     assert.deepEqual(result.proposals, [
       { keys: ["AA-1"], field: "assignee", value: "member-1" },
