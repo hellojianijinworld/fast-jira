@@ -72,7 +72,7 @@ async function fixture(t: { after: (run: () => Promise<void>) => void }) {
   };
   return {
     env: { HOME: root },
-    source,
+    source: join(source, "dist/marketplace"),
     market,
     run,
     installed,

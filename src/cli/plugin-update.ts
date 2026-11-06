@@ -134,25 +134,42 @@ async function verify(plugin: string, platform: Platform, version: string) {
 }
 /** 공식 CLI로 설치된 Fast Jira만 갱신하고, 앱 교체 실패까지 같은 복구 범위로 묶는다. */
 async function updatePlugins(
-  source: string,
+  marketplace: string,
   version: string,
   env: NodeJS.ProcessEnv,
   install: () => Promise<void>,
   run: PluginCommand = runPluginCommand,
+  platforms: readonly Platform[] = ["codex", "claude"],
 ) {
-  const plugins = await discoverPlugins(run, env);
+  const plugins = await discoverPlugins(run, env, platforms);
   const changed: { plugin: InstalledPlugin; path: string; backup: string }[] =
     [];
   async function refresh(plugin: InstalledPlugin, expected: string) {
+    if (expected === plugin.version) {
+      const remove =
+        plugin.platform === "codex"
+          ? ["plugin", "remove", selector, "--json"]
+          : ["plugin", "uninstall", selector, "--scope", "user"];
+      if ((await run(plugin.platform, remove, env)) === null)
+        throw new PluginUpdateError(
+          "기존 Fast Jira 플러그인을 다시 불러오지 못했어요.",
+        );
+    }
     const args =
       plugin.platform === "codex"
         ? ["plugin", "add", selector, "--json"]
-        : ["plugin", "update", selector, "--scope", "user"];
+        : [
+            "plugin",
+            expected === plugin.version ? "install" : "update",
+            selector,
+            "--scope",
+            "user",
+          ];
     if ((await run(plugin.platform, args, env)) === null)
       throw new PluginUpdateError(
         `${plugin.platform} 실행 파일을 찾지 못했어요.`,
       );
-    const state = (await discoverPlugins(run, env)).find(
+    const state = (await discoverPlugins(run, env, [plugin.platform])).find(
       (item) => item.platform === plugin.platform,
     );
     if (state?.version !== expected || state.enabled !== plugin.enabled)
@@ -167,7 +184,7 @@ async function updatePlugins(
       plugin.version,
     );
     await verify(
-      join(source, "dist/marketplace/plugins", plugin.platform, "fast-jira"),
+      join(marketplace, "plugins", plugin.platform, "fast-jira"),
       plugin.platform,
       version,
     );
@@ -179,12 +196,7 @@ async function updatePlugins(
         backup = `${path}.previous-${randomUUID()}`;
       try {
         await cp(
-          join(
-            source,
-            "dist/marketplace/plugins",
-            plugin.platform,
-            "fast-jira",
-          ),
+          join(marketplace, "plugins", plugin.platform, "fast-jira"),
           next,
           { recursive: true },
         );
@@ -219,11 +231,12 @@ async function updatePlugins(
 }
 
 export async function withPluginUpdates(
-  source: string,
+  marketplace: string,
   version: string,
   env: NodeJS.ProcessEnv,
   install: () => Promise<void>,
   run: PluginCommand = runPluginCommand,
+  platforms: readonly Platform[] = ["codex", "claude"],
 ) {
   // 앱의 --home이 달라도 사용자 AI 플러그인은 공유되므로 함께 잠근다.
   const directory = join(env.HOME ?? homedir(), ".cache", "fast-jira");
@@ -236,7 +249,7 @@ export async function withPluginUpdates(
   });
   try {
     await lock.writeFile(String(process.pid));
-    await updatePlugins(source, version, env, install, run);
+    await updatePlugins(marketplace, version, env, install, run, platforms);
   } finally {
     await lock.close();
     await rm(path, { force: true });

@@ -147,7 +147,7 @@ export async function runReleaseUpdate(
       job.message = "앱과 설치된 Fast Jira 플러그인을 업데이트하고 있어요…";
       await writeUpdateJob(home, job);
       await (options.plugins ?? withPluginUpdates)(
-        source,
+        join(source, "dist/marketplace"),
         job.version,
         env,
         () =>

@@ -289,3 +289,118 @@ test("꺼진 Claude 플러그인은 성공으로 보고하거나 자동 활성�
   assert.notEqual(result.code, "plugin_ready");
   assert.equal(mutations, 0);
 });
+
+test("이 개인 설치에 등록된 플러그인은 새 배포 내용을 기존 원본 경로에 반영한다", async (t) => {
+  const { cp, readFile } = await import("node:fs/promises");
+  for (const platform of ["codex", "claude"] as const) {
+    for (const previousVersion of ["0.1.0", "0.1.1"]) {
+      const f = await fixture(t),
+        old = join(f.root, "previous market");
+      await cp(f.market, old, { recursive: true });
+      await mkdir(join(f.root, "config"));
+      await writeFile(
+        join(f.root, "config/installation.json"),
+        JSON.stringify({
+          version: 1,
+          targets: [{ platform, marketplace: old }],
+        }),
+      );
+      for (const [base, version, payload] of [
+        [old, previousVersion, "old code"],
+        [f.market, "0.1.1", "new code"],
+      ] as const) {
+        const plugin = join(base, "plugins", platform, "fast-jira");
+        await mkdir(join(plugin, `.${platform}-plugin`));
+        await writeFile(
+          join(plugin, `.${platform}-plugin/plugin.json`),
+          JSON.stringify({ name: "fast-jira", version }),
+        );
+        await writeFile(
+          join(plugin, "package.json"),
+          JSON.stringify({ name: "fast-jira", version }),
+        );
+        await writeFile(join(plugin, "payload.txt"), payload);
+        await writeFile(
+          join(plugin, ".mcp.json"),
+          JSON.stringify({
+            mcpServers: {
+              fast_jira: {
+                command: process.execPath,
+                env: { FAST_JIRA_HOME: f.root },
+              },
+            },
+          }),
+        );
+      }
+      let installed = true,
+        installedVersion = previousVersion,
+        loaded = "old code";
+      const result = await registerPlatform({
+        platform,
+        marketplace: f.market,
+        version: "0.1.1",
+        home: f.root,
+        env: { HOME: f.root },
+        run: async (_, args) => {
+          if (args.includes("--help")) return "help";
+          if (args[1] === "list")
+            return JSON.stringify(
+              platform === "codex"
+                ? {
+                    installed: installed
+                      ? [
+                          {
+                            pluginId: "fast-jira@fast-jira-local",
+                            version: installedVersion,
+                            enabled: true,
+                            marketplaceSource: {
+                              sourceType: "local",
+                              source: old,
+                            },
+                          },
+                        ]
+                      : [],
+                  }
+                : installed
+                  ? [
+                      {
+                        id: "fast-jira@fast-jira-local",
+                        version: installedVersion,
+                        enabled: true,
+                        scope: "user",
+                      },
+                    ]
+                  : [],
+            );
+          if (args[1] === "marketplace" && args[2] === "list")
+            return JSON.stringify([
+              { name: "fast-jira-local", source: "directory", path: old },
+            ]);
+          if (["remove", "uninstall"].includes(args[1] ?? "")) {
+            installed = false;
+            return "{}";
+          }
+          assert(["add", "install", "update"].includes(args[1] ?? ""));
+          const plugin = join(old, "plugins", platform, "fast-jira");
+          const next = JSON.parse(
+            await readFile(join(plugin, "package.json"), "utf8"),
+          ).version;
+          if (!installed || next !== installedVersion)
+            loaded = await readFile(join(plugin, "payload.txt"), "utf8");
+          installed = true;
+          installedVersion = next;
+          return "{}";
+        },
+      });
+      assert.equal(result.code, "plugin_ready");
+      assert.equal(
+        await readFile(
+          join(old, "plugins", platform, "fast-jira/payload.txt"),
+          "utf8",
+        ),
+        "new code",
+      );
+      assert.equal(loaded, "new code");
+    }
+  }
+});

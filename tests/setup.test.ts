@@ -298,3 +298,48 @@ test("현재 빌드의 실제 ZIP을 풀어 통합 설치하고 종료·재시�
   await startService(installationPaths(f.home), false);
   assert.equal((await fetch(origin)).status, 200);
 });
+
+test("같은 버전 재설치는 새 실행 파일을 적용하고 개인 설정과 도메인 상태를 보존한다", async (t) => {
+  const f = await fixture(t),
+    paths = installationPaths(f.home);
+  const marker = join(f.source, "dist/client/reinstall-check.txt");
+  await writeFile(marker, "before");
+  const options = {
+    source: f.source,
+    marketplace: f.market,
+    home: f.home,
+    port: f.port,
+    platform: "codex",
+    domainConsent: false,
+    open: false,
+    run: async () => null,
+    checkAssistant: async () => false,
+  };
+  await setupInstallation(options);
+  const config = await readFile(paths.config, "utf8");
+  const token = await readFile(paths.mcpToken, "utf8");
+  await writeFile(
+    paths.credentials,
+    "JIRA_SITE=example.atlassian.net\nJIRA_EMAIL=test@example.com\nJIRA_API_TOKEN=test-only\n",
+  );
+  await mkdir(join(f.home, "config/portless"));
+  const cert = join(f.home, "config/portless/ca.pem");
+  await writeFile(cert, "existing certificate");
+  await writeFile(marker, "after");
+  const result = await setupInstallation(options);
+  assert.equal(result.appReady, true);
+  assert.equal(
+    await readFile(
+      join(paths.runtime, "dist/client/reinstall-check.txt"),
+      "utf8",
+    ),
+    "after",
+  );
+  assert.equal(await readFile(paths.config, "utf8"), config);
+  assert.equal(await readFile(paths.mcpToken, "utf8"), token);
+  assert.equal(await readFile(cert, "utf8"), "existing certificate");
+  assert.equal(
+    await readFile(paths.credentials, "utf8"),
+    "JIRA_SITE=example.atlassian.net\nJIRA_EMAIL=test@example.com\nJIRA_API_TOKEN=test-only\n",
+  );
+});

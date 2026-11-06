@@ -5,10 +5,12 @@ import {
   installationResult,
 } from "../domain/installation.ts";
 import { record } from "../domain/validation.ts";
+import { installationTargets } from "./installation-record.ts";
 import {
   discoverPlugins,
   type PluginCommand,
   runPluginCommand,
+  withPluginUpdates,
 } from "./plugin-update.ts";
 
 export async function registerPlatform(options: {
@@ -26,7 +28,13 @@ export async function registerPlatform(options: {
     code: NonNullable<
       NonNullable<Parameters<typeof installationResult>[1]>["plugin"]
     >,
-  ) => installationResult(platform, { plugin: code }).plugin;
+    marketplace?: string,
+  ): ReturnType<typeof installationResult>["plugin"] & {
+    marketplace?: string;
+  } => ({
+    ...installationResult(platform, { plugin: code }).plugin,
+    ...(marketplace ? { marketplace } : {}),
+  });
   async function matches(
     plugin: { version: string; root: string; enabled: boolean } | undefined,
   ) {
@@ -67,11 +75,47 @@ export async function registerPlatform(options: {
       return result("plugin_unsupported");
     }
     const previous = (await discoverPlugins(run, env, [platform]))[0];
-    // 기존 등록·개발 원본은 일반 설치에서 교체하지 않는다.
-    if (previous)
+    if (previous) {
+      if (!previous.enabled) return result("plugin_failed");
+      const target =
+        options.home &&
+        (await installationTargets(options.home)).find(
+          (item) => item.platform === platform,
+        );
+      if (target && resolve(target.marketplace) === resolve(previous.root)) {
+        const mcp = record(
+          JSON.parse(
+            await readFile(
+              join(previous.root, "plugins", platform, "fast-jira/.mcp.json"),
+              "utf8",
+            ),
+          ),
+        );
+        if (
+          record(record(record(mcp.mcpServers).fast_jira).env)
+            .FAST_JIRA_HOME !== options.home
+        )
+          return result("plugin_failed");
+        await withPluginUpdates(
+          marketplace,
+          version,
+          env,
+          async () => {},
+          run,
+          [platform],
+        );
+        const refreshed = (await discoverPlugins(run, env, [platform]))[0];
+        return result(
+          (await matches(refreshed)) ? "plugin_ready" : "plugin_failed",
+          previous.root,
+        );
+      }
+      // 설치 기록이 없는 개발 원본·다른 개인 설치는 변경하지 않는다.
       return result(
         (await matches(previous)) ? "plugin_ready" : "plugin_failed",
+        previous.root,
       );
+    }
     const listing = await run(
       platform,
       ["plugin", "marketplace", "list", "--json"],

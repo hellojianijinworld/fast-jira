@@ -69,9 +69,7 @@ test("미리 빌드된 ZIP을 받아 앱·플러그인을 같은 작업으로 �
       plugins++;
       assert.equal(env.JIRA_API_TOKEN, undefined);
       assert.equal(env.NODE_OPTIONS, undefined);
-      await readFile(
-        join(source, "dist/marketplace/plugins/claude/fast-jira/package.json"),
-      );
+      await readFile(join(source, "plugins/claude/fast-jira/package.json"));
       await install();
     },
     environment: {

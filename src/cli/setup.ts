@@ -20,7 +20,6 @@ import {
   serviceStatus,
   setupDomain,
   setupService,
-  startService,
   withServiceLock,
 } from "./service.ts";
 
@@ -121,21 +120,7 @@ export async function setupInstallation(options: {
     );
     const version = String(pkg.version);
     try {
-      const config = await readServiceConfig(paths);
-      const current = await readFile(
-        join(paths.runtime, "package.json"),
-        "utf8",
-      )
-        .then((text) => record(JSON.parse(text)))
-        .catch(() => null);
-      if (
-        config &&
-        current?.version === version &&
-        config.node === process.execPath &&
-        (options.port === undefined || options.port === config.port)
-      )
-        await startService(paths, false);
-      else await setupService(options.source, paths, options.port);
+      await setupService(options.source, paths, options.port);
       const status = await serviceStatus(paths);
       if (!status.running) throw new Error("Web unavailable");
       codes.web = "web_ready";
@@ -193,7 +178,13 @@ export async function setupInstallation(options: {
       if (!status.running) codes.web = "web_failed";
       url = "url" in status ? status.url : "";
     } else if (url === "https://fast-jira.local") codes.domain = "domain_ready";
-    const target = { platform, marketplace };
+    const target = {
+      platform,
+      marketplace:
+        registration.marketplace ??
+        targets.find((item) => item.platform === platform)?.marketplace ??
+        marketplace,
+    };
     const receipt = join(paths.home, "config/installation.json");
     await atomicWrite(
       receipt,
