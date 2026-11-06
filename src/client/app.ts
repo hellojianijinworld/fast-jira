@@ -712,7 +712,7 @@ export async function createApp(
     me: {
       id: bootstrap.me.accountId,
       name: bootstrap.me.displayName,
-      avatar: "",
+      avatar: bootstrap.me.avatar ?? "",
     },
     recents: store.people,
     storage,

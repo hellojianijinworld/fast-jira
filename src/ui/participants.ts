@@ -10,10 +10,10 @@ import {
   uniqueParticipants,
 } from "../domain/participants.ts";
 import { actionButton, buttonGroup, element } from "./dom.ts";
-import { personChip, personPill } from "./meta.ts";
 import { showModal } from "./modal.ts";
 import { participantAvatars } from "./participant-avatars.ts";
-import { enhanceSelect, type SelectMenu } from "./select-menu.ts";
+import { personSelect } from "./person-select.ts";
+import type { SelectMenu } from "./select-menu.ts";
 
 /** 평소에는 사람만 합쳐 표시하고, 지정 중에만 Jira의 실제 필드를 구분한다. */
 export function participantsField(
@@ -120,10 +120,9 @@ export function participantsField(
             field.name + (field.required ? " *" : ""),
           ),
         );
-        const selected = element("div", "participant-people");
         const select = element("select");
         select.setAttribute("aria-label", `${field.name} 지정`);
-        row.append(head, selected, select);
+        row.append(head, select);
         content.append(row);
         let candidates: UserOption[] = [];
         let defaults: UserOption[] | undefined;
@@ -151,75 +150,55 @@ export function participantsField(
           renderSelected();
         }
         function renderSelected() {
-          selected.replaceChildren();
-          for (const user of drafts.get(field.id) ?? []) {
-            const chip = personChip(
-              user,
-              `${field.name} ${user.name} 해제`,
-              () => {
-                drafts.set(
-                  field.id,
-                  (drafts.get(field.id) ?? []).filter(
-                    (value) => value.id !== user.id,
-                  ),
-                );
-                renderSelected();
-              },
-            );
-            selected.append(chip);
-          }
           showCandidates(candidates);
         }
-        const prompt = new Option(
-          field.multiple ? "참여자 추가" : "참여자 선택",
-          "",
-        );
-        prompt.hidden = true;
-        select.append(prompt);
-        const menu = enhanceSelect(select, {
-          searchLabel: "이름으로 검색",
-          renderOption: (option) =>
-            !option.value
-              ? document.createTextNode(option.textContent ?? "")
-              : personPill(
-                  candidates.find((user) => user.id === option.value) ?? {
-                    name: option.textContent ?? "",
-                    avatar: "",
-                  },
-                ),
-          focusSearch: false,
-          beforeOpen: async () => {
-            showCandidates([...seeds(), ...(defaults ?? [])]);
-            if (!defaults && !defaultLoading) {
-              defaultLoading = true;
-              void loadCandidates("")
-                .catch((reason) => {
-                  if (alive && dialog.open && version === revision && !saving)
-                    error.textContent = `추가 후보 조회 실패: ${errorMessage(reason)}`;
-                })
-                .finally(() => {
-                  defaultLoading = false;
-                });
+        const picker = personSelect(select, {
+          multiple: field.multiple,
+          selected: () => drafts.get(field.id) ?? [],
+          choose,
+          clear: () => {
+            if (!saving) {
+              drafts.set(field.id, []);
+              renderSelected();
             }
-            return true;
           },
-          onSearch: loadCandidates,
+          remove: (user) => {
+            if (!saving) {
+              drafts.set(
+                field.id,
+                (drafts.get(field.id) ?? []).filter(
+                  (value) => value.id !== user.id,
+                ),
+              );
+              renderSelected();
+            }
+          },
+          removeLabel: (user) => `${field.name} ${user.name} 해제`,
+          menu: {
+            searchLabel: "이름으로 검색",
+            focusSearch: false,
+            beforeOpen: async () => {
+              showCandidates([...seeds(), ...(defaults ?? [])]);
+              if (!defaults && !defaultLoading) {
+                defaultLoading = true;
+                void loadCandidates("")
+                  .catch((reason) => {
+                    if (alive && dialog.open && version === revision && !saving)
+                      error.textContent = `추가 후보 조회 실패: ${errorMessage(reason)}`;
+                  })
+                  .finally(() => {
+                    defaultLoading = false;
+                  });
+              }
+              return true;
+            },
+            onSearch: loadCandidates,
+          },
         });
+        const menu = picker.menu;
         function showCandidates(users: readonly UserOption[]) {
           candidates = uniqueParticipants(users);
-          select.replaceChildren(
-            prompt,
-            ...candidates
-              .filter(
-                (user) =>
-                  !drafts
-                    .get(field.id)
-                    ?.some((selected) => selected.id === user.id),
-              )
-              .map((user) => new Option(user.name, user.id)),
-          );
-          select.value = "";
-          menu.sync();
+          picker.sync(candidates);
         }
         async function loadCandidates(query: string) {
           const request = ++candidateRevision;
@@ -237,13 +216,6 @@ export function participantsField(
         }
         menu.panel.classList.add("participant-options");
         menus.push(menu);
-        select.addEventListener("change", () => {
-          if (saving) return;
-          const user = candidates.find((user) => user.id === select.value);
-          if (user) choose(user);
-          select.value = "";
-          menu.sync();
-        });
         if (self) {
           const assign = actionButton("나에게 할당", "user", {
             size: "sm",
@@ -251,7 +223,11 @@ export function participantsField(
           });
           assign.addEventListener("click", () => {
             if (!saving) {
-              choose(self);
+              choose(
+                uniqueParticipants([self, ...candidates]).find(
+                  (user) => user.id === self.id,
+                ) ?? self,
+              );
             }
           });
           head.append(assign);

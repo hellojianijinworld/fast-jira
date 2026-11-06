@@ -271,10 +271,13 @@ await check(
       host.querySelector("dialog")?.textContent?.includes("기획"),
       "빈 필드 누락",
     );
-    const remove = button("개발 Alice 해제");
+    const single = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="개발 지정"]',
+    );
+    assert(single?.value === alice.id, "단일 선택값 미표시");
     assert(
-      remove.parentElement?.classList.contains("person-pill"),
-      "해제 X가 배지 밖에 있음",
+      !host.querySelector('[aria-label="개발 Alice 해제"]'),
+      "단일 선택에 X 배지 유지",
     );
     const rows = [
       ...host.querySelectorAll<HTMLElement>(".participant-edit-row"),
@@ -297,7 +300,8 @@ await check(
       button("협업 Bob 해제") && bobRemove.isConnected === false,
       "나에게 할당이 다른 참여자를 제거함",
     );
-    remove.click();
+    single.value = "";
+    single.dispatchEvent(new Event("change", { bubbles: true }));
     await closeDialog();
     assert(
       writes === 0 && Number(holds) === 0,
@@ -357,7 +361,7 @@ await check(
     await wait();
     assert(writes === 0, "검색 Enter가 참여자를 저장함");
     const option = host.querySelector<HTMLButtonElement>(
-      ".select-options:popover-open .select-option",
+      `.select-options:popover-open .select-option[data-value="${charlie.id}"]`,
     );
     assert(option, "검색 후보 없음");
     option.click();
@@ -431,7 +435,12 @@ await check(
     shouldFail = true;
     button("작업참여자 변경").click();
     await wait();
-    button("개발 Charlie 해제").click();
+    const clear = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="개발 지정"]',
+    );
+    assert(clear, "단일 선택 누락");
+    clear.value = "";
+    clear.dispatchEvent(new Event("change", { bubbles: true }));
     host.querySelector<HTMLFormElement>(".participant-form")?.requestSubmit();
     await wait();
     assert(host.querySelector("dialog[open]"), "실패했는데 편집 창이 닫힘");
@@ -451,7 +460,12 @@ await check(
     delaySearch = delaySave = true;
     button("작업참여자 변경").click();
     await wait();
-    button("개발 Charlie 해제").click();
+    const clear = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="개발 지정"]',
+    );
+    assert(clear, "단일 선택 누락");
+    clear.value = "";
+    clear.dispatchEvent(new Event("change", { bubbles: true }));
     button("협업 지정").click();
     await wait();
     const search = host.querySelector<HTMLFormElement>(

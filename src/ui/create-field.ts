@@ -14,7 +14,7 @@ import { adfEditor } from "./adf-editor.ts";
 import { actionButton, element, elementId } from "./dom.ts";
 import { adfMentionEditor } from "./mention-editors.ts";
 import { mentionPicker } from "./mention-picker.ts";
-import { personChip, personPill } from "./meta.ts";
+import { personSelect } from "./person-select.ts";
 import { enhanceSelect } from "./select-menu.ts";
 
 export function creationField(
@@ -58,7 +58,6 @@ export function creationField(
   };
   if (field.type === "user" || field.items === "user") {
     const multi = field.type === "array",
-      chips = element("div", "participant-people"),
       select = element("select");
     let users: UserOption[] = [],
       alive = true;
@@ -72,38 +71,49 @@ export function creationField(
                 typeof item.displayName === "string"
                   ? item.displayName
                   : item.accountId,
-              avatar: "",
+              avatar:
+                (
+                  config.recents
+                    ?.recent()
+                    .find((user) => user.id === item.accountId) ??
+                  (config.me.id === item.accountId ? config.me : undefined)
+                )?.avatar ?? "",
             },
           ]
         : [],
     );
     people = () => selected;
-    const prompt = new Option("참여자 선택", "");
-    root.append(chips);
     identify(select);
-    select.append(prompt);
-    const menu = enhanceSelect(select, {
-      focusSearch: false,
-      renderOption: (option) => {
-        const user = users.find((user) => user.id === option.value);
-        return user
-          ? personPill(user)
-          : document.createTextNode(option.textContent ?? "");
-      },
-      beforeOpen: async () => {
-        const fetched = await config.api.creationUsers(
-          config.project,
-          config.type,
-          field.id,
-        );
-        if (!alive) return false;
-        users = uniqueParticipants([
-          ...(config.recents?.recent() ?? []),
-          config.me,
-          ...fetched,
-        ]).filter((user) => fetched.some((item) => item.id === user.id));
+    const picker = personSelect(select, {
+      multiple: multi,
+      selected: () => selected,
+      choose,
+      clear: () => {
+        selected = [];
         render();
-        return true;
+      },
+      remove: (user) => {
+        selected = selected.filter((item) => item.id !== user.id);
+        render();
+      },
+      removeLabel: (user) => `${user.name} 해제`,
+      menu: {
+        focusSearch: false,
+        beforeOpen: async () => {
+          const fetched = await config.api.creationUsers(
+            config.project,
+            config.type,
+            field.id,
+          );
+          if (!alive) return false;
+          users = uniqueParticipants([
+            ...(config.recents?.recent() ?? []),
+            config.me,
+            ...fetched,
+          ]).filter((user) => fetched.some((item) => item.id === user.id));
+          render();
+          return true;
+        },
       },
     });
     function choose(user: UserOption) {
@@ -112,22 +122,7 @@ export function creationField(
       render();
     }
     function render() {
-      chips.replaceChildren();
-      for (const user of selected) {
-        const chip = personChip(user, `${user.name} 해제`, () => {
-          selected = selected.filter((item) => item.id !== user.id);
-          render();
-        });
-        chips.append(chip);
-      }
-      select.replaceChildren(
-        prompt,
-        ...users
-          .filter((user) => !selected.some((item) => item.id === user.id))
-          .map((user) => new Option(user.name, user.id)),
-      );
-      select.value = "";
-      menu.sync();
+      picker.sync(users);
       config.onChange?.();
     }
     const self = actionButton("나에게 할당", "user", {
@@ -142,8 +137,11 @@ export function creationField(
           config.type,
           field.id,
         );
-        if (alive && candidates.some((user) => user.id === config.me.id))
-          choose(config.me);
+        users = uniqueParticipants([config.me, ...users, ...candidates]);
+        const self = users.find((user) => user.id === config.me.id);
+        if (alive && self && candidates.some((user) => user.id === self.id)) {
+          choose(self);
+        }
       } catch (reason) {
         if (alive) {
           error.textContent =
@@ -158,10 +156,6 @@ export function creationField(
     const error = element("small", "error");
     error.setAttribute("role", "alert");
     root.append(self, error);
-    select.addEventListener("change", () => {
-      const user = users.find((user) => user.id === select.value);
-      if (user) choose(user);
-    });
     render();
     read = () =>
       multi
@@ -171,7 +165,7 @@ export function creationField(
           : undefined;
     destroy = () => {
       alive = false;
-      menu.destroy();
+      picker.destroy();
     };
   } else if (field.id === "description" || field.type === "textarea") {
     const editor = adfEditor(

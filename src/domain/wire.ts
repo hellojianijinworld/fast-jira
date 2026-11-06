@@ -151,7 +151,7 @@ export function decodeChanges(value: unknown): ChangeBatch {
 }
 export interface Bootstrap {
   site: string;
-  me: { accountId: string; displayName: string };
+  me: { accountId: string; displayName: string; avatar?: string };
   projects: ProjectOption[];
   priorities: PriorityOption[];
 }
@@ -163,6 +163,7 @@ export function decodeIdentity(value: unknown): Pick<Bootstrap, "site" | "me"> {
     me: {
       accountId: wireString(me.accountId),
       displayName: wireString(me.displayName),
+      ...(me.avatar === undefined ? {} : { avatar: wireString(me.avatar) }),
     },
   };
 }

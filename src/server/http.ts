@@ -131,7 +131,11 @@ export function createHttpServer(
         const me = await service.currentUser(true);
         return {
           site: service.site,
-          me: { accountId: me.accountId, displayName: me.displayName },
+          me: {
+            accountId: me.accountId,
+            displayName: me.displayName,
+            avatar: me.avatar,
+          },
         };
       }
       case "/api/projects": {
@@ -144,7 +148,11 @@ export function createHttpServer(
           site: service.site,
           projects,
           priorities,
-          me: { accountId: me.accountId, displayName: me.displayName },
+          me: {
+            accountId: me.accountId,
+            displayName: me.displayName,
+            avatar: me.avatar,
+          },
         };
       }
       case "/api/issue-types":

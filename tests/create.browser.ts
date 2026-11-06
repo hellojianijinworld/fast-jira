@@ -140,7 +140,9 @@ const api = createApi(async (path, init) => {
   if (url.pathname === "/api/create-parents")
     return Response.json({ issues: [issue], nextPageToken: null });
   if (url.pathname === "/api/create-users")
-    return Response.json([{ id: "me", name: "나", avatar: "" }]);
+    return Response.json([
+      { id: "me", name: "나", avatar: "https://fixture.atlassian.net/me.png" },
+    ]);
   if (url.pathname === "/api/assistant/status")
     return Response.json({
       ready: true,
@@ -395,6 +397,73 @@ await check(
     close.click();
     assert(!dialog.open, "공통 닫기 동작 실패");
     delayMetadata = false;
+  },
+);
+await check(
+  "단일 사람 필드는 선택값 안에 아바타를 표시하고 직접 선택과 나에게 할당이 같다",
+  async () => {
+    const field = creationField(
+      {
+        id: "assignee",
+        name: "담당자",
+        type: "user",
+        items: "",
+        required: false,
+        allowed: [],
+      },
+      undefined,
+      {
+        api,
+        project: "AA",
+        type: "2",
+        site: "fixture.atlassian.net",
+        me: { id: "me", name: "나", avatar: "" },
+      },
+    );
+    host.append(field.element);
+    const self = required(
+      [...field.element.querySelectorAll<HTMLButtonElement>("button")].find(
+        (button) => button.textContent?.trim() === "나에게 할당",
+      ),
+    );
+    self.click();
+    await wait(() => field.people().length === 1);
+    const trigger = required(
+      field.element.querySelector<HTMLButtonElement>(".select-trigger"),
+    );
+    const photo = field.people()[0]?.avatar;
+    assert(
+      photo?.includes("me.png") && trigger.querySelector(".avatar"),
+      "나에게 할당의 실제 아바타 누락",
+    );
+    assert(
+      !field.element.querySelector(".person-remove"),
+      "단일 선택에 X 배지 표시",
+    );
+    const native = required(
+      field.element.querySelector<HTMLSelectElement>("select"),
+    );
+    change(native, "");
+    assert(!field.people().length, "미지정 전환 실패");
+    trigger.click();
+    await wait(
+      () =>
+        !!field.element.querySelector(
+          '.select-options:popover-open [data-value="me"]',
+        ),
+    );
+    required(
+      field.element.querySelector<HTMLButtonElement>('[data-value="me"]'),
+    ).click();
+    assert(field.people()[0]?.avatar === photo, "직접 선택과 아바타가 다름");
+    assert(native.value === "me", "네이티브 선택값 미반영");
+    assert(
+      field.element.querySelectorAll(".participant-people .person-pill")
+        .length === 0,
+      "단일 선택이 별도 배지로 표시됨",
+    );
+    field.destroy();
+    field.element.remove();
   },
 );
 document.body.dataset.failures = String(failures);

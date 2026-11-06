@@ -407,3 +407,20 @@ test("여러 커스텀 필드의 기본 후보는 기존 멤버 캐시를 공유
     count,
   );
 });
+
+test("같은 사람의 기본 계정 정보가 실제 아바타를 지우지 않는다", async () => {
+  const { uniqueParticipants } = await import("../src/domain/participants.ts");
+  const { decodeIdentity } = await import("../src/domain/wire.ts");
+  const user = { id: "me", name: "나", avatar: "https://example.com/me.png" };
+  assert.equal(
+    uniqueParticipants([user, { ...user, avatar: "" }])[0]?.avatar,
+    user.avatar,
+  );
+  assert.equal(
+    decodeIdentity({
+      site: "example.atlassian.net",
+      me: { accountId: "me", displayName: "나", avatar: user.avatar },
+    }).me.avatar,
+    user.avatar,
+  );
+});

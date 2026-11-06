@@ -521,7 +521,7 @@ test("초기 계정 확인은 프로젝트·우선순위 조회 없이 캐시의
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     site: "example.atlassian.net",
-    me: { accountId: "my-account", displayName: "나" },
+    me: { accountId: "my-account", displayName: "나", avatar: "" },
   });
   assert.equal(app.count() - before, 1);
 });

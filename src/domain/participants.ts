@@ -65,5 +65,13 @@ export function rememberParticipant(
 }
 
 export function uniqueParticipants(users: readonly UserOption[]): UserOption[] {
-  return [...new Map(users.map((user) => [user.id, user])).values()];
+  const result = new Map<string, UserOption>();
+  for (const user of users) {
+    const previous = result.get(user.id);
+    result.set(user.id, {
+      ...user,
+      avatar: user.avatar || previous?.avatar || "",
+    });
+  }
+  return [...result.values()];
 }
