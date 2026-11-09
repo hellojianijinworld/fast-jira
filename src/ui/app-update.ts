@@ -94,7 +94,10 @@ export function appUpdate(
     target.textContent = state?.release ? `→ ${state.release.version}` : "";
     message.textContent =
       state?.phase === "current" && !controller.disconnected
-        ? "최신 버전이에요."
+        ? state.job?.phase === "complete" &&
+          (state.job.skippedPlugins?.length ?? 0) > 0
+          ? state.job.message
+          : "최신 버전이에요."
         : controller.disconnected
           ? (state?.message ?? "")
           : (state?.job?.phase !== "complete" && state?.job?.message) ||

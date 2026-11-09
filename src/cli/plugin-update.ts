@@ -141,7 +141,18 @@ async function updatePlugins(
   run: PluginCommand = runPluginCommand,
   platforms: readonly Platform[] = ["codex", "claude"],
 ) {
-  const plugins = await discoverPlugins(run, env, platforms);
+  const discovered = await discoverPlugins(run, env, platforms);
+  const plugins: InstalledPlugin[] = [];
+  const skipped: Platform[] = [];
+  for (const plugin of discovered) {
+    try {
+      await lstat(join(plugin.root, "plugins", plugin.platform, "fast-jira"));
+      plugins.push(plugin);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      skipped.push(plugin.platform);
+    }
+  }
   const changed: { plugin: InstalledPlugin; path: string; backup: string }[] =
     [];
   async function refresh(plugin: InstalledPlugin, expected: string) {
@@ -228,6 +239,7 @@ async function updatePlugins(
   }
   for (const { backup } of changed)
     await rm(backup, { recursive: true, force: true });
+  return skipped;
 }
 
 export async function withPluginUpdates(
@@ -249,7 +261,14 @@ export async function withPluginUpdates(
   });
   try {
     await lock.writeFile(String(process.pid));
-    await updatePlugins(marketplace, version, env, install, run, platforms);
+    return await updatePlugins(
+      marketplace,
+      version,
+      env,
+      install,
+      run,
+      platforms,
+    );
   } finally {
     await lock.close();
     await rm(path, { force: true });

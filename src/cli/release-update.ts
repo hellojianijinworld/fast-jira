@@ -146,7 +146,7 @@ export async function runReleaseUpdate(
       job.phase = "installing";
       job.message = "앱과 설치된 Fast Jira 플러그인을 업데이트하고 있어요…";
       await writeUpdateJob(home, job);
-      await (options.plugins ?? withPluginUpdates)(
+      const skipped = await (options.plugins ?? withPluginUpdates)(
         join(source, "dist/marketplace"),
         job.version,
         env,
@@ -156,8 +156,10 @@ export async function runReleaseUpdate(
           ),
       );
       job.phase = "complete";
-      job.message =
-        "앱과 플러그인을 업데이트했어요. 새 버전으로 화면을 열고 있어요…";
+      if (skipped.length) job.skippedPlugins = skipped;
+      job.message = skipped.length
+        ? `앱을 업데이트했어요. ${skipped.join("·")} 플러그인은 설치 원본을 찾지 못해 갱신하지 못했어요.`
+        : "앱과 플러그인을 업데이트했어요. 새 버전으로 화면을 열고 있어요…";
       await writeUpdateJob(home, job);
     });
   } catch (error) {

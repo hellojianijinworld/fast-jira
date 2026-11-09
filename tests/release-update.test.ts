@@ -71,6 +71,7 @@ test("미리 빌드된 ZIP을 받아 앱·플러그인을 같은 작업으로 �
       assert.equal(env.NODE_OPTIONS, undefined);
       await readFile(join(source, "plugins/claude/fast-jira/package.json"));
       await install();
+      return [];
     },
     environment: {
       PATH: process.env.PATH,
@@ -90,6 +91,29 @@ test("미리 빌드된 ZIP을 받아 앱·플러그인을 같은 작업으로 �
     await readFile(join(home, ".env"), "utf8"),
     "JIRA_API_TOKEN=test-private-value\\n",
   );
+  await writeUpdateJob(home, {
+    id: "job-skipped",
+    version: "0.1.1",
+    commit,
+    phase: "preparing",
+    startedAt: Date.now(),
+    message: "준비 중",
+  });
+  await runReleaseUpdate(home, "job-skipped", {
+    fetcher: async (input) =>
+      String(input).endsWith(".json")
+        ? Response.json(packed.manifest)
+        : new Response(packed.archive),
+    plugins: async (_source, _version, _env, install) => {
+      await install();
+      return ["claude"];
+    },
+    install: async () => {},
+  });
+  const result = await readUpdateJob(home);
+  assert.equal(result?.phase, "complete");
+  assert.deepEqual(result?.skippedPlugins, ["claude"]);
+  assert.match(result?.message ?? "", /claude.*갱신하지 못했어요/);
 });
 test("검증 정보를 받지 못하면 기존 실행본과 개인 설정을 교체하지 않는다", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "fast-jira-release-fail-"));

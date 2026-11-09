@@ -15,6 +15,7 @@ export interface UpdateJob {
   phase: "preparing" | "installing" | "complete" | "failed";
   startedAt: number;
   message: string;
+  skippedPlugins?: ("codex" | "claude")[];
 }
 export interface AppUpdateStatus {
   currentVersion: string;
@@ -63,12 +64,23 @@ export function decodeUpdateJob(value: unknown): UpdateJob {
   )
     throw new Error("업데이트 작업 정보가 올바르지 않습니다.");
   versionParts(data.version);
+  if (
+    data.skippedPlugins !== undefined &&
+    (!Array.isArray(data.skippedPlugins) ||
+      !data.skippedPlugins.every(
+        (item) => item === "codex" || item === "claude",
+      ))
+  )
+    throw new Error("플러그인 업데이트 정보가 올바르지 않습니다.");
   return {
     id: data.id,
     version: data.version,
     phase: data.phase as UpdateJob["phase"],
     startedAt: data.startedAt,
     message: data.message,
+    ...(Array.isArray(data.skippedPlugins)
+      ? { skippedPlugins: data.skippedPlugins as ("codex" | "claude")[] }
+      : {}),
   };
 }
 export function decodeUpdateStatus(value: unknown): AppUpdateStatus {

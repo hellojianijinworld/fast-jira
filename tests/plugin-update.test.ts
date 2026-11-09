@@ -100,6 +100,27 @@ test("한 작업에서 설치된 두 플랫폼을 같은 버전으로 갱신한 
   assert.ok(!f.calls.some((call) => /remove|uninstall|install /.test(call)));
 });
 
+test("원본이 사라진 Claude는 건너뛰고 Codex와 앱은 업데이트한다", async (t) => {
+  const f = await fixture(t);
+  await rm(join(f.market, "plugins", "claude", "fast-jira"), {
+    recursive: true,
+  });
+  let apps = 0;
+  const skipped = await withPluginUpdates(
+    f.source,
+    "0.1.1",
+    f.env,
+    async () => {
+      apps++;
+    },
+    f.run,
+  );
+  assert.equal(apps, 1);
+  assert.equal(f.installed.codex, "0.1.1");
+  assert.equal(f.installed.claude, "0.1.0");
+  assert.deepEqual(skipped, ["claude"]);
+});
+
 test("한 플랫폼이나 앱 교체가 실패하면 두 플러그인의 원본과 설치 버전을 복구한다", async (t) => {
   for (const failure of ["claude", "app"]) {
     const f = await fixture(t);
