@@ -205,6 +205,13 @@ export function createCommandPalette(config: {
   let sendMode: ChatSendMode = historyStore?.sendMode() ?? "enter";
   let followupMode: ChatFollowupMode = historyStore?.followupMode() ?? "queue";
   const queue = createChatQueue();
+  const conversationStates = new Map<string, string>();
+  const activeRuns = new Map<
+    string,
+    { controller: AbortController; requestId: string; owner: Conversation }
+  >();
+  const drafts = new Map<string, string>();
+  const proposalCards = new Map<string, HTMLElement[]>();
   let reportedStorageError = "";
   const sidebar = createChatSidebar({
     copy: (item) => {
@@ -213,29 +220,43 @@ export function createCommandPalette(config: {
     },
     create: () => {
       closeHistory();
-      if (!busy && !steering && !stopping && !applying && !recording)
+      if (!steering && !stopping && !applying && !recording) {
+        leaveConversation();
         newConversation();
+      }
     },
     choose: (item) => {
       closeHistory();
-      if (busy || steering || stopping || applying || recording) return;
+      if (steering || stopping || applying || recording) return;
+      leaveConversation();
       setAiState("idle");
+      const run = activeRuns.get(item.id);
+      item = run?.owner ?? item;
       current = item;
-      conversationId = item.conversationId;
+      request = run?.controller;
+      activeRequestId = run?.requestId ?? "";
+      busy = Boolean(run);
+      awaitingApproval = conversationStates.get(item.id) === "확인 필요";
+      dialog.classList.toggle("awaiting-approval", awaitingApproval);
+      for (const [id, panel] of approvalPanels)
+        panel.element.hidden = id !== item.id;
       selectedModel = item.model;
       selectedEffort =
         item.effort ?? historyStore?.defaultEffort(item.model) ?? "";
       if ([...model.options].some((option) => option.value === selectedModel))
         model.value = selectedModel;
-      input.value = "";
+      input.value = drafts.get(item.id) ?? "";
       renderConversation();
+      if (busy && !awaitingApproval) showThinking();
+      setAiState(busy ? (awaitingApproval ? "waiting" : "working") : "idle");
       status.textContent = "";
       sync();
       input.focus({ preventScroll: true });
       revealLatest();
     },
     remove: (id) => {
-      if (busy || steering || stopping || applying || recording) return;
+      if (activeRuns.has(id) || steering || stopping || applying || recording)
+        return;
       try {
         conversations = historyStore
           ? historyStore.remove(id)
@@ -246,6 +267,9 @@ export function createCommandPalette(config: {
         return;
       }
       queue.clear(id);
+      conversationStates.delete(id);
+      drafts.delete(id);
+      proposalCards.delete(id);
       if (current?.id === id) newConversation();
       else sync();
     },
@@ -571,7 +595,6 @@ export function createCommandPalette(config: {
     steering = false,
     stopping = false,
     applying = false,
-    conversationId = "",
     voicePrefix = "",
     recording = false,
     selectedModel = "",
@@ -662,54 +685,73 @@ export function createCommandPalette(config: {
   });
 
   let awaitingApproval = false;
-  const approvalPanel = createAssistantApprovalPanel(
-    config.api,
-    (waiting) => {
-      if (!alive) return;
-      awaitingApproval = waiting;
-      if (busy) setAiState(stopping ? "idle" : waiting ? "waiting" : "working");
-      dialog.classList.toggle("awaiting-approval", waiting);
-      if (waiting) {
-        hideThinking();
-        status.textContent = "";
-        if (!dialog.open || !dialog.getClientRects().length)
-          config.unread?.(true);
-        else scrollConversation();
-      } else if (busy) {
-        showThinking();
-        if (dialog.open) scrollConversation();
-      }
-    },
-    (approval, answer) => {
-      if (!current) return;
-      const text = `${approval.title} · ${answer.feedback ? "의견을 전달했어요" : answer.response || (answer.approved ? "승인했어요" : "건너뛰었어요")}`;
-      const details = [approval.description, approval.details, answer.feedback]
-        .filter(Boolean)
-        .join("\n\n");
-      const created = Date.now();
-      current.messages.push({ role: "event", text, details, created });
-      aiResults.append(chatEvent({ text, details, created }));
-      saveConversation();
-      if (dialog.open) scrollConversation();
-    },
-    {
-      voice: (callbacks) =>
-        config.voice
-          ? config.voice(callbacks)
-          : createCodexVoice({
-              api: config.api,
-              subscribe: subscribeVoice,
-              ...callbacks,
-            }),
-      ...(config.voiceAvailable
-        ? { voiceAvailable: config.voiceAvailable }
-        : {}),
-      mentions: mentionSource,
-      selectIssue,
-      notice: notify,
-    },
-  );
-  transcript.insertBefore(approvalPanel.element, status);
+  const approvalPanels = new Map<
+    string,
+    ReturnType<typeof createAssistantApprovalPanel>
+  >();
+  function createApprovalPanel(owner: Conversation) {
+    const approvalPanel = createAssistantApprovalPanel(
+      config.api,
+      (waiting) => {
+        if (!alive) return;
+        conversationStates.set(owner.id, waiting ? "확인 필요" : "답변 중");
+        if (current !== owner) {
+          sync();
+          return;
+        }
+        awaitingApproval = waiting;
+        if (busy)
+          setAiState(stopping ? "idle" : waiting ? "waiting" : "working");
+        dialog.classList.toggle("awaiting-approval", waiting);
+        sync();
+        if (waiting) {
+          hideThinking();
+          status.textContent = "";
+          if (!dialog.open || !dialog.getClientRects().length)
+            config.unread?.(true);
+          else scrollConversation();
+        } else if (busy) {
+          showThinking();
+          if (dialog.open) scrollConversation();
+        }
+      },
+      (approval, answer) => {
+        const text = `${approval.title} · ${answer.feedback ? "의견을 전달했어요" : answer.response || (answer.approved ? "승인했어요" : "건너뛰었어요")}`;
+        const details = [
+          approval.description,
+          approval.details,
+          answer.feedback,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+        const created = Date.now();
+        owner.messages.push({ role: "event", text, details, created });
+        if (current === owner)
+          aiResults.append(chatEvent({ text, details, created }));
+        saveConversation(owner);
+        if (current === owner && dialog.open) scrollConversation();
+      },
+      {
+        voice: (callbacks) =>
+          config.voice
+            ? config.voice(callbacks)
+            : createCodexVoice({
+                api: config.api,
+                subscribe: subscribeVoice,
+                ...callbacks,
+              }),
+        ...(config.voiceAvailable
+          ? { voiceAvailable: config.voiceAvailable }
+          : {}),
+        mentions: mentionSource,
+        selectIssue,
+        notice: notify,
+      },
+    );
+    approvalPanels.set(owner.id, approvalPanel);
+    transcript.insertBefore(approvalPanel.element, status);
+    return approvalPanel;
+  }
   function renderQueue() {
     const id = current?.id ?? "",
       messages = queue.list(id);
@@ -910,7 +952,8 @@ export function createCommandPalette(config: {
     sidebar.render(
       conversations,
       current?.id ?? "",
-      busy || steering || stopping || applying || recording,
+      steering || stopping || applying || recording,
+      conversationStates,
     );
     policyBody.replaceChildren(
       ...(storageError
@@ -1137,15 +1180,15 @@ export function createCommandPalette(config: {
     });
     return box;
   }
-  function saveConversation() {
-    if (!current) return;
-    current.updated = Date.now();
+  function saveConversation(target = current) {
+    if (!target) return;
+    target.updated = Date.now();
     conversations = [
-      current,
-      ...conversations.filter((item) => item.id !== current?.id),
+      target,
+      ...conversations.filter((item) => item.id !== target.id),
     ];
     try {
-      if (historyStore) conversations = historyStore.upsert(current);
+      if (historyStore) conversations = historyStore.upsert(target);
       storageError = "";
     } catch (error) {
       storageError = errorText(error);
@@ -1166,12 +1209,25 @@ export function createCommandPalette(config: {
                 message,
               ),
       ),
+      ...(current ? (proposalCards.get(current.id) ?? []) : []),
     );
+  }
+  function leaveConversation() {
+    if (current) {
+      drafts.set(current.id, input.value);
+      approvalPanels.get(current.id)?.stopVoice();
+    }
+    hideThinking();
+    for (const panel of approvalPanels.values()) panel.element.hidden = true;
+    busy = false;
+    request = undefined;
+    activeRequestId = "";
+    awaitingApproval = false;
+    dialog.classList.remove("awaiting-approval");
   }
   function newConversation() {
     setAiState("idle");
     current = undefined;
-    conversationId = "";
     input.value = "";
     aiResults.replaceChildren();
     selectedModel = [...model.options].some(
@@ -1379,18 +1435,22 @@ export function createCommandPalette(config: {
     queuedPrompt?: string,
     followup = followupMode,
     references = mentions.references(queuedPrompt ?? input.value.trim()),
+    target?: Conversation,
   ) {
     const prompt = queuedPrompt ?? input.value.trim();
+    const background = Boolean(target && current !== target);
     if (
       !prompt ||
-      stopping ||
-      applying ||
-      recording ||
-      !ready ||
-      model.selectedOptions[0]?.disabled
+      (!background &&
+        (stopping ||
+          applying ||
+          recording ||
+          !ready ||
+          model.selectedOptions[0]?.disabled)) ||
+      (target && activeRuns.has(target.id))
     )
       return;
-    if (busy) {
+    if (!background && busy) {
       if (!current) return;
       if (followup === "steer")
         await sendImmediately(prompt, undefined, references);
@@ -1401,8 +1461,8 @@ export function createCommandPalette(config: {
       }
       return;
     }
-    voice.stop();
-    if (!current)
+    if (!background) voice.stop();
+    if (!current && !target)
       current = {
         id: `${Date.now().toString(36)}-${elementId("conversation")}`,
         conversationId: "",
@@ -1410,14 +1470,22 @@ export function createCommandPalette(config: {
         updated: Date.now(),
         messages: [],
       };
-    current.model = selectedModel;
-    current.effort = selectedEffort;
-    const active = current;
+    const chosen = target ?? current;
+    if (!chosen) return;
+    const active: Conversation = chosen;
+    if (!background) {
+      active.model = selectedModel;
+      active.effort = selectedEffort;
+    }
+    const visible = () => current === active;
+    const requestModel = active.model;
+    const requestEffort = active.effort ?? "";
+    const requestConversationId = active.conversationId;
     let history: ChatMessage[];
     try {
       history = conversationContext(
         active.messages,
-        !selectedModel.startsWith("claude:"),
+        !requestModel.startsWith("claude:"),
       );
     } catch (error) {
       notify(errorText(error));
@@ -1429,22 +1497,28 @@ export function createCommandPalette(config: {
       ...(references.length ? { mentions: structuredClone(references) } : {}),
     });
     const startedAt = Date.now();
-    busy = true;
-    setAiState("working");
-    request = new AbortController();
-    const controller = request;
-    aiResults.append(
-      renderMessage("user", prompt, selectedModel, { mentions: references }),
-    );
-    if (queuedPrompt === undefined) input.value = "";
-    status.textContent = "";
-    showThinking();
-    saveConversation();
-    scrollConversation();
+    conversationStates.set(active.id, "답변 중");
+    const controller = new AbortController();
+    if (visible()) {
+      busy = true;
+      setAiState("working");
+      request = controller;
+      aiResults.append(
+        renderMessage("user", prompt, requestModel, { mentions: references }),
+      );
+      if (queuedPrompt === undefined) input.value = "";
+      status.textContent = "";
+      showThinking();
+    }
+    saveConversation(active);
+    if (visible()) scrollConversation();
     const requestId = [...crypto.getRandomValues(new Uint8Array(16))]
       .map((value) => value.toString(16).padStart(2, "0"))
       .join("");
-    activeRequestId = requestId;
+    if (visible()) activeRequestId = requestId;
+    activeRuns.set(active.id, { controller, requestId, owner: active });
+    const approvalPanel = createApprovalPanel(active);
+    approvalPanel.element.hidden = !visible();
     const stopApprovals = approvalPanel.start(requestId, controller.signal);
     let succeeded = false;
     const streamed = new Map<
@@ -1462,8 +1536,8 @@ export function createCommandPalette(config: {
       for (const [id, entry] of streamed) {
         if (!final && !dirty.has(id)) continue;
         const row = final
-          ? renderMessage("assistant", entry.message.text, selectedModel)
-          : chatMessage("assistant", entry.message.text, selectedModel, {
+          ? renderMessage("assistant", entry.message.text, requestModel)
+          : chatMessage("assistant", entry.message.text, requestModel, {
               site: config.site,
               select: selectIssue,
             });
@@ -1471,30 +1545,35 @@ export function createCommandPalette(config: {
         entry.row = row;
       }
       dirty.clear();
-      if (follow) scrollConversation();
+      if (
+        visible() &&
+        [...streamed.values()].some((entry) => !entry.row.isConnected)
+      )
+        renderConversation();
+      if (visible() && follow) scrollConversation();
     }
     function receiveProgress(event: AssistantProgress) {
       if (!alive || controller.signal.aborted) return;
       if (event.type === "activity") {
-        showThinking(event.text);
+        if (visible()) showThinking(event.text);
         return;
       }
       const follow =
         transcript.scrollHeight - transcript.scrollTop <
         transcript.clientHeight + 80;
-      hideThinking();
+      if (visible()) hideThinking();
       let entry = streamed.get(event.id);
       if (!entry) {
         const message: ChatMessage = {
           role: "assistant",
           text: "",
-          model: selectedModel,
+          model: requestModel,
         };
-        const row = chatMessage("assistant", "", selectedModel);
+        const row = chatMessage("assistant", "", requestModel);
         entry = { message, row };
         streamed.set(event.id, entry);
         active.messages.push(message);
-        aiResults.append(row);
+        if (visible()) aiResults.append(row);
       }
       entry.message.text = event.replace
         ? event.text
@@ -1502,20 +1581,20 @@ export function createCommandPalette(config: {
       dirty.add(event.id);
       if (!progressFrame)
         progressFrame = requestAnimationFrame(() => flushProgress());
-      if (event.replace) saveConversation();
-      if (follow) scrollConversation();
+      if (event.replace) saveConversation(active);
+      if (visible() && follow) scrollConversation();
     }
     try {
       const reply = await config.api.assistantRun(
         mentionPrompt(prompt, references),
         config.context(),
-        conversationId,
-        selectedModel,
+        requestConversationId,
+        requestModel,
         controller.signal,
         history,
         requestId,
         receiveProgress,
-        selectedEffort || undefined,
+        requestEffort || undefined,
       );
       if (!alive || controller.signal.aborted) return;
       succeeded = true;
@@ -1526,15 +1605,15 @@ export function createCommandPalette(config: {
             config.notice("Jira 변경은 저장됐지만 화면 갱신에 실패했어요."),
           );
       if (!alive || controller.signal.aborted) return;
-      conversationId = active.conversationId = reply.conversationId;
-      if (reply.reconnected && !selectedModel.startsWith("claude:")) {
+      active.conversationId = reply.conversationId;
+      if (reply.reconnected && !requestModel.startsWith("claude:")) {
         const event = {
           role: "event" as const,
           text: "저장한 대화와 작업 기록을 불러와 이어가요.",
           created: Date.now(),
         };
         active.messages.push(event);
-        aiResults.append(chatEvent(event));
+        if (visible()) aiResults.append(chatEvent(event));
       }
       const answer =
         reply.answer ||
@@ -1566,9 +1645,10 @@ export function createCommandPalette(config: {
           active.messages.push({
             role: "assistant",
             text,
-            model: selectedModel,
+            model: requestModel,
           });
-          aiResults.append(renderMessage("assistant", text, selectedModel));
+          if (visible())
+            aiResults.append(renderMessage("assistant", text, requestModel));
         }
       flushProgress(true);
       const finalEntry = [...streamed.values()]
@@ -1577,7 +1657,7 @@ export function createCommandPalette(config: {
       const finalMessage = {
         role: "assistant" as const,
         text: answer,
-        model: selectedModel,
+        model: requestModel,
         ...(executionNote ? { executionNote } : {}),
         ...(executionSummary ? { executionSummary } : {}),
       };
@@ -1591,8 +1671,8 @@ export function createCommandPalette(config: {
       const follow =
         transcript.scrollHeight - transcript.scrollTop <
         transcript.clientHeight + 80;
-      hideThinking();
-      const finalRow = renderMessage("assistant", answer, selectedModel, {
+      if (visible()) hideThinking();
+      const finalRow = renderMessage("assistant", answer, requestModel, {
         ...(executionNote ? { executionNote } : {}),
         ...(executionSummary ? { executionSummary } : {}),
       });
@@ -1600,21 +1680,31 @@ export function createCommandPalette(config: {
         finalEntry.row.replaceWith(finalRow);
         finalEntry.row = finalRow;
       }
-      aiResults.append(
-        ...(activity ? [chatEvent(activity)] : []),
-        ...(!finalEntry ? [finalRow] : []),
-        ...reply.proposals.map(proposal),
-      );
-      saveConversation();
-      if (follow) scrollConversation();
-      status.textContent = reply.proposals.length
-        ? "아직 저장하지 않았어요. 대상과 값을 확인하고 적용하세요."
-        : "";
+      const cards = reply.proposals.map(proposal);
+      if (cards.length)
+        proposalCards.set(active.id, [
+          ...(proposalCards.get(active.id) ?? []),
+          ...cards,
+        ]);
+      if (visible())
+        aiResults.append(
+          ...(activity ? [chatEvent(activity)] : []),
+          ...(!finalEntry ? [finalRow] : []),
+          ...cards,
+        );
+      saveConversation(active);
+      if (visible() && finalEntry && !finalEntry.row.isConnected)
+        renderConversation();
+      if (visible() && follow) scrollConversation();
+      if (visible())
+        status.textContent = reply.proposals.length
+          ? "아직 저장하지 않았어요. 대상과 값을 확인하고 적용하세요."
+          : "";
       if (!dialog.open || !dialog.getClientRects().length)
         config.unread?.(true);
     } catch (error) {
       if (alive && !controller.signal.aborted) {
-        conversationId = active.conversationId = "";
+        active.conversationId = "";
         const message = errorText(error);
         const executionNote =
           error instanceof ApiError &&
@@ -1630,27 +1720,40 @@ export function createCommandPalette(config: {
         const follow =
           transcript.scrollHeight - transcript.scrollTop <
           transcript.clientHeight + 80;
-        hideThinking();
-        aiResults.append(chatError(failure));
-        setAiState("error");
-        status.textContent = "";
-        saveConversation();
-        if (follow) scrollConversation();
+        if (visible()) {
+          hideThinking();
+          aiResults.append(chatError(failure));
+          setAiState("error");
+          status.textContent = "";
+        }
+        saveConversation(active);
+        if (visible() && follow) scrollConversation();
         if (!dialog.open || !dialog.getClientRects().length)
           config.unread?.(true);
       }
     } finally {
       flushProgress();
-      if (request === controller) {
-        request = undefined;
-        activeRequestId = "";
-        busy = false;
+      if (activeRuns.get(active.id)?.controller === controller) {
+        activeRuns.delete(active.id);
+        if (visible()) {
+          request = undefined;
+          activeRequestId = "";
+          busy = false;
+        }
         if (!succeeded) queue.pause(active.id);
-        hideThinking();
+        if (visible()) hideThinking();
         stopApprovals();
+        approvalPanel.destroy();
+        approvalPanels.delete(active.id);
+        if (controller.signal.aborted) conversationStates.delete(active.id);
+        else
+          conversationStates.set(
+            active.id,
+            succeeded ? "답변 완료" : "요청 실패",
+          );
         if (alive) {
-          if (controller.signal.aborted) setAiState("idle");
-          else if (succeeded && dialog.dataset.aiState !== "error")
+          if (visible() && controller.signal.aborted) setAiState("idle");
+          else if (visible() && succeeded && dialog.dataset.aiState !== "error")
             setAiState(
               dialog.open &&
                 dialog.getClientRects().length &&
@@ -1659,8 +1762,15 @@ export function createCommandPalette(config: {
                 : "idle",
             );
           sync();
-          if (dialog.open) input.focus();
-          if (succeeded) void drainQueue();
+          if (visible() && dialog.open) input.focus();
+          if (succeeded) {
+            if (visible()) void drainQueue();
+            else {
+              const next = queue.take(active.id);
+              if (next)
+                void ask(next.text, followupMode, next.mentions ?? [], active);
+            }
+          }
         }
       }
     }
@@ -1816,7 +1926,6 @@ export function createCommandPalette(config: {
   });
   current = conversations[0];
   if (current) {
-    conversationId = current.conversationId;
     selectedModel = current.model;
     selectedEffort = current.effort ?? "";
     renderConversation();
@@ -1853,7 +1962,7 @@ export function createCommandPalette(config: {
         if (
           previous.startsWith("claude:") !== selectedModel.startsWith("claude:")
         )
-          current.conversationId = conversationId = "";
+          current.conversationId = "";
         current.model = selectedModel;
         current.effort = selectedEffort;
         const text = `모델을 ${model.selectedOptions[0]?.dataset.label ?? selectedModel}로 변경했어요.`;
@@ -1879,7 +1988,6 @@ export function createCommandPalette(config: {
     if (current) queue.pause(current.id);
     request?.abort();
     hideThinking();
-    conversationId = "";
     status.textContent = "요청을 중지했어요. 이미 저장된 변경은 유지돼요.";
     if (current) {
       current.conversationId = "";
@@ -1919,7 +2027,7 @@ export function createCommandPalette(config: {
     closeHelp();
     closeSettings();
     voice.stop();
-    approvalPanel.stopVoice();
+    if (current) approvalPanels.get(current.id)?.stopVoice();
   });
   for (const modal of [dialog, pickerDialog])
     modal.addEventListener("click", (event) => {
@@ -1977,13 +2085,15 @@ export function createCommandPalette(config: {
       clearTimeout(completionEffect);
       cancelAnimationFrame(revealFrame);
       transcriptResize.disconnect();
-      request?.abort();
+      for (const run of activeRuns.values()) run.controller.abort();
+      activeRuns.clear();
       voice.destroy();
       historyResize?.disconnect();
       closeHistory();
       closeHelp();
       closeSettings();
-      approvalPanel.destroy();
+      for (const panel of approvalPanels.values()) panel.destroy();
+      approvalPanels.clear();
       mentions.destroy();
       window.removeEventListener("keydown", shortcut, true);
       searchDialog.destroy();

@@ -252,18 +252,254 @@ test("잘못된 입력·지원하지 않는 모델은 Jira 요청 전에 거절�
     f.assistant.dispose();
   }
 });
-test("동시 실행과 숨은 변경 도구를 차단하고 취소하면 연결을 닫는다", async () => {
+test("서로 다른 대화는 동시에 실행하고 하나를 중단해도 다른 요청은 계속된다", async () => {
+  const f = fixture();
+  const started: string[] = [];
+  const releases = new Map<string, () => void>();
+  const assistant = createAssistantService(
+    () => f.service,
+    async () => f.client,
+    {
+      status: async () => ({
+        ready: true,
+        error: "",
+        models: [{ id: "claude:default", name: "Claude", isDefault: true }],
+      }),
+      run: (input, signal) =>
+        new Promise((resolve, reject) => {
+          started.push(input.prompt);
+          signal?.addEventListener("abort", () => reject(new Error("취소")), {
+            once: true,
+          });
+          releases.set(input.prompt, () =>
+            resolve({
+              conversationId: input.prompt,
+              answer: input.prompt,
+              proposals: [],
+              creations: [],
+            }),
+          );
+        }),
+      dispose() {},
+    },
+    async () => false,
+  );
+  const firstId = "1".repeat(32),
+    secondId = "2".repeat(32);
+  const first = assistant.run({
+    prompt: "첫 대화",
+    context,
+    model: "claude:default",
+    requestId: firstId,
+  });
+  const firstResult = first.catch((error: unknown) => error);
+  try {
+    for (let i = 0; i < 30 && !started.length; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.deepEqual(started, ["첫 대화"]);
+    const second = assistant.run({
+      prompt: "둘째 대화",
+      context,
+      model: "claude:default",
+      requestId: secondId,
+    });
+    const secondResult = second.catch((error: unknown) => error);
+    for (let i = 0; i < 30 && started.length < 2; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.deepEqual(started, ["첫 대화", "둘째 대화"]);
+    await assistant.control({ requestId: firstId, action: "stop" });
+    assert.match(String(await firstResult), /취소/);
+    releases.get("둘째 대화")?.();
+    assert.equal(
+      ((await secondResult) as { answer?: string }).answer,
+      "둘째 대화",
+    );
+  } finally {
+    for (const release of releases.values()) release();
+    assistant.dispose();
+    f.assistant.dispose();
+  }
+});
+test("Codex 동시 대화 중 하나를 중단해도 다른 대화의 응답은 유지된다", async () => {
+  const f = fixture();
+  const request = f.client.request;
+  let threads = 0;
+  f.client.request = async (method, params) => {
+    if (method === "thread/start")
+      return { thread: { id: `thread-${++threads}` } };
+    if (method === "turn/interrupt") return {};
+    return request(method, params);
+  };
+  const firstId = "3".repeat(32),
+    secondId = "4".repeat(32);
+  const first = f.assistant.run({
+    prompt: "첫 대화",
+    context,
+    requestId: firstId,
+  });
+  const firstResult = first.catch((error: unknown) => error);
+  try {
+    await f.waitTurn();
+    const second = f.assistant.run({
+      prompt: "둘째 대화",
+      context,
+      requestId: secondId,
+    });
+    await f.waitTurn(2);
+    f.emit("turn/started", { threadId: "thread-1", turn: { id: "turn-1" } });
+    f.emit("turn/started", { threadId: "thread-2", turn: { id: "turn-2" } });
+    await f.assistant.control({ requestId: firstId, action: "stop" });
+    assert.match(String(await firstResult), /취소/);
+    assert.equal(f.closed, false);
+    f.emit("item/completed", {
+      threadId: "thread-2",
+      item: { type: "agentMessage", text: "둘째 답변" },
+    });
+    f.emit("turn/completed", {
+      threadId: "thread-2",
+      turn: { status: "completed" },
+    });
+    assert.equal((await second).answer, "둘째 답변");
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("동시 대화의 승인 요청은 요청별로 분리된다", async () => {
+  const f = fixture();
+  const request = f.client.request;
+  let threads = 0;
+  f.client.request = async (method, params) => {
+    if (method === "thread/start")
+      return { thread: { id: `thread-${++threads}` } };
+    if (method === "turn/interrupt") return {};
+    return request(method, params);
+  };
+  const firstId = "6".repeat(32),
+    secondId = "7".repeat(32);
+  const first = f.assistant.run({
+    prompt: "첫 대화",
+    context,
+    requestId: firstId,
+  });
+  const firstResult = first.catch((error: unknown) => error);
+  try {
+    await f.waitTurn();
+    const second = f.assistant.run({
+      prompt: "둘째 대화",
+      context,
+      requestId: secondId,
+    });
+    const secondResult = second.catch((error: unknown) => error);
+    await f.waitTurn(2);
+    f.emit(
+      "item/tool/call",
+      {
+        threadId: "thread-1",
+        tool: "jira_update_issues",
+        arguments: { keys: ["AA-1"], field: "status", value: "Done" },
+      },
+      11,
+    );
+    for (
+      let i = 0;
+      i < 30 && !f.assistant.approvals.pending(firstId).length;
+      i++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(f.assistant.approvals.pending(firstId).length, 1);
+    assert.equal(f.assistant.approvals.pending(secondId).length, 0);
+    await f.assistant.control({ requestId: firstId, action: "stop" });
+    assert.match(String(await firstResult), /취소/);
+    assert.equal(f.assistant.approvals.pending(firstId).length, 0);
+    f.emit("item/completed", {
+      threadId: "thread-2",
+      item: { type: "agentMessage", text: "다른 대화 완료" },
+    });
+    f.emit("turn/completed", {
+      threadId: "thread-2",
+      turn: { status: "completed" },
+    });
+    assert.equal(
+      ((await secondResult) as { answer?: string }).answer,
+      "다른 대화 완료",
+    );
+    assert.equal(f.writes, 0);
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("대화가 많이 생겨 세션을 정리해도 진행 중인 대화는 해제하지 않는다", async () => {
+  const f = fixture();
+  const request = f.client.request;
+  let threads = 0;
+  const unsubscribed: string[] = [];
+  f.client.request = async (method, params) => {
+    if (method === "thread/start")
+      return { thread: { id: `thread-${++threads}` } };
+    if (method === "thread/unsubscribe") {
+      unsubscribed.push((params as { threadId: string }).threadId);
+      return {};
+    }
+    if (method === "turn/interrupt") return {};
+    return request(method, params);
+  };
+  const firstId = "5".repeat(32);
+  const first = f.assistant.run({
+    prompt: "긴 요청",
+    context,
+    requestId: firstId,
+  });
+  const firstResult = first.catch((error: unknown) => error);
+  try {
+    await f.waitTurn();
+    for (let index = 2; index <= 14; index++) {
+      const next = f.assistant.run({ prompt: `요청 ${index}`, context });
+      await f.waitTurn(index);
+      f.emit("item/completed", {
+        threadId: `thread-${index}`,
+        item: { type: "agentMessage", text: "완료" },
+      });
+      f.emit("turn/completed", {
+        threadId: `thread-${index}`,
+        turn: { status: "completed" },
+      });
+      await next;
+    }
+    assert(unsubscribed.length > 0);
+    assert(!unsubscribed.includes("thread-1"));
+    f.emit("item/completed", {
+      threadId: "thread-1",
+      item: { type: "agentMessage", text: "첫 답변" },
+    });
+    f.emit("turn/completed", {
+      threadId: "thread-1",
+      turn: { status: "completed" },
+    });
+    assert.equal(
+      ((await firstResult) as { answer?: string }).answer,
+      "첫 답변",
+    );
+  } finally {
+    f.assistant.dispose();
+  }
+});
+test("같은 대화의 동시 실행과 숨은 변경 도구를 차단하고 취소하면 연결을 닫는다", async () => {
   const f = fixture(),
     abort = new AbortController();
   try {
     const pending = f.assistant.run(
-      { prompt: "조회", context, requestId: "a".repeat(32) },
+      {
+        prompt: "조회",
+        context,
+        conversationId: "same",
+        requestId: "a".repeat(32),
+      },
       abort.signal,
     );
     const rejected = assert.rejects(pending, /취소/);
     await f.waitTurn();
     await assert.rejects(
-      f.assistant.run({ prompt: "다시", context }),
+      f.assistant.run({ prompt: "다시", context, conversationId: "same" }),
       /이전 AI 요청/,
     );
     f.emit(
@@ -1025,10 +1261,8 @@ test("명시적 중단은 요청 종료까지 기다리고 잘못된 요청 ID�
     const pending = f.assistant.run({ prompt: "조회", context, requestId });
     const stopped = assert.rejects(pending, /취소/);
     await f.waitTurn();
-    await assert.rejects(
-      f.assistant.control({ requestId: "d".repeat(32), action: "stop" }),
-      /현재 대화/,
-    );
+    await f.assistant.control({ requestId: "d".repeat(32), action: "stop" });
+    assert.equal(f.closed, false);
     await assert.rejects(
       f.assistant.control({ requestId, action: "execute" }),
       /진행 중/,

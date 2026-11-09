@@ -19,6 +19,8 @@ const assert = (condition: unknown, message: string) => {
 };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 async function check(name: string, work: () => Promise<void>) {
+  const only = new URLSearchParams(location.search).get("only");
+  if (only && !name.includes(only)) return;
   try {
     await work();
     results?.append(element("li", "", `통과: ${name}`));
@@ -80,6 +82,11 @@ let localItems = [issue],
   holdSearch = false,
   failSearch = false;
 let releaseSearch: (() => void) | undefined;
+let parallelProposal = false;
+let holdParallel = false;
+let holdParallelStreams = false;
+const parallelStreams = new Map<string, (event: unknown) => void>();
+const parallelReleases = new Map<string, () => void>();
 let streamReply = false;
 let emitProgress: ((event: unknown) => void) | undefined;
 const controls: { action: string; prompt?: string }[] = [];
@@ -215,6 +222,42 @@ const api = createApi(async (input, init) => {
   }
   if (path.pathname === "/api/assistant/run") {
     assistantCalls++;
+    if (holdParallelStreams) {
+      const requestPrompt = JSON.parse(String(init?.body)).prompt as string;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            parallelStreams.set(requestPrompt, (event) =>
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`),
+              ),
+            );
+          },
+          cancel() {
+            parallelStreams.delete(requestPrompt);
+          },
+        }),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    }
+    if (holdParallel) {
+      const requestPrompt = JSON.parse(String(init?.body)).prompt as string;
+      await new Promise<void>((resolve, reject) => {
+        parallelReleases.set(requestPrompt, resolve);
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("취소", "AbortError")),
+          { once: true },
+        );
+      });
+      return Response.json({
+        conversationId: requestPrompt,
+        answer: `${requestPrompt} 응답`,
+        proposals: parallelProposal
+          ? [{ keys: ["AA-1"], field: "status", value: "Done" }]
+          : [],
+      });
+    }
     requestedThread = JSON.parse(String(init?.body)).threadId ?? "";
     if (networkFailure) throw new TypeError("Failed to fetch");
     if (holdApproval) {
@@ -1883,6 +1926,330 @@ function endControlChat() {
   releaseAnswer?.();
   palette.destroy();
 }
+await check(
+  "승인 대기 중 다른 대화로 전환해도 승인이 섞이지 않는다",
+  async () => {
+    await openControlChat();
+    try {
+      button("대화 시작").click();
+      holdApproval = true;
+      input().value = "승인 대기 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      for (
+        let i = 0;
+        i < 150 && !dialog().querySelector(".assistant-approval");
+        i++
+      )
+        await tick();
+      assert(
+        dialog().querySelector(".assistant-approval"),
+        `첫 대화 승인 카드 누락: calls=${assistantCalls} pending=${pendingApproval} input=${input().value} content=${dialog().querySelector(".command-results")?.textContent}`,
+      );
+      button("대화 시작").click();
+      assert(
+        !dialog().querySelector<HTMLElement>(
+          ".assistant-approvals:not([hidden]) .assistant-approval",
+        ),
+        "다른 대화에 승인 카드 노출",
+      );
+      const first = [
+        ...dialog().querySelectorAll<HTMLButtonElement>(
+          ".chat-conversation-open",
+        ),
+      ].find((item) => item.textContent?.includes("승인 대기 요청"));
+      assert(first?.textContent?.includes("확인 필요"), "승인 대기 상태 누락");
+      first?.click();
+      assert(
+        dialog().classList.contains("awaiting-approval"),
+        "돌아온 대화의 승인 대기 화면 상태가 복원되지 않음",
+      );
+      const deny = dialog().querySelector<HTMLInputElement>(
+        ".assistant-approvals:not([hidden]) input[value=deny]",
+      );
+      assert(deny, "돌아온 대화에 승인 카드 누락");
+      deny?.click();
+      holdApproval = false;
+      await tick();
+      await tick();
+      assert(!pendingApproval, "거절 후 승인 대기 잔존");
+    } finally {
+      holdApproval = false;
+      releaseApproval?.();
+      endControlChat();
+    }
+  },
+);
+await check(
+  "다른 대화를 보는 중에도 대기열이 원래 대화에서 이어진다",
+  async () => {
+    await openControlChat();
+    try {
+      button("대화 시작").click();
+      holdParallel = true;
+      input().value = "백그라운드 첫 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      input().value = "백그라운드 대기 요청";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      button("대화 시작").click();
+      input().value = "다른 대화 초안";
+      parallelReleases.get("백그라운드 첫 요청")?.();
+      for (
+        let i = 0;
+        i < 100 && !parallelReleases.has("백그라운드 대기 요청");
+        i++
+      )
+        await tick();
+      assert(
+        parallelReleases.has("백그라운드 대기 요청"),
+        "백그라운드 대기열이 자동 실행되지 않음",
+      );
+      assert(input().value === "다른 대화 초안", "다른 대화 초안을 덮어씀");
+      assert(
+        !dialog().textContent?.includes("백그라운드 대기 요청"),
+        "백그라운드 내용이 다른 대화에 표시됨",
+      );
+      parallelReleases.get("백그라운드 대기 요청")?.();
+      await tick();
+      await tick();
+    } finally {
+      holdParallel = false;
+      for (const release of parallelReleases.values()) release();
+      parallelReleases.clear();
+      endControlChat();
+    }
+  },
+);
+await check(
+  "동시 요청 중 한 대화만 중단해도 다른 대화는 완료된다",
+  async () => {
+    await openControlChat();
+    try {
+      button("대화 시작").click();
+      holdParallel = true;
+      input().value = "중단할 대화";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      button("대화 시작").click();
+      input().value = "계속할 대화";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      const select = (name: string) =>
+        [
+          ...dialog().querySelectorAll<HTMLButtonElement>(
+            ".chat-conversation-open",
+          ),
+        ].find((item) => item.textContent?.includes(name));
+      select("중단할 대화")?.click();
+      button("답변 중단").click();
+      await tick();
+      await tick();
+      assert(
+        select("계속할 대화")?.textContent?.includes("답변 중"),
+        "다른 대화도 중단됨",
+      );
+      select("계속할 대화")?.click();
+      parallelReleases.get("계속할 대화")?.();
+      await tick();
+      await tick();
+      assert(
+        dialog().textContent?.includes("계속할 대화 응답"),
+        "다른 대화 답변 누락",
+      );
+    } finally {
+      holdParallel = false;
+      for (const release of parallelReleases.values()) release();
+      parallelReleases.clear();
+      endControlChat();
+    }
+  },
+);
+await check(
+  "동시 스트리밍은 대화 전환 뒤에도 메시지를 섞지 않는다",
+  async () => {
+    await openControlChat();
+    try {
+      button("대화 시작").click();
+      holdParallelStreams = true;
+      input().value = "첫 스트림";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      button("대화 시작").click();
+      input().value = "둘째 스트림";
+      dialog().querySelector("form")?.requestSubmit();
+      await tick();
+      const select = (name: string) =>
+        [
+          ...dialog().querySelectorAll<HTMLButtonElement>(
+            ".chat-conversation-open",
+          ),
+        ].find((item) => item.textContent?.includes(name));
+      parallelStreams.get("첫 스트림")?.({
+        type: "message",
+        id: "one",
+        text: "첫 중간 답변",
+        replace: false,
+      });
+      parallelStreams.get("둘째 스트림")?.({
+        type: "message",
+        id: "two",
+        text: "둘째 중간 답변",
+        replace: false,
+      });
+      await tick();
+      await tick();
+      assert(
+        dialog().textContent?.includes("둘째 중간 답변"),
+        "현재 대화의 스트림 누락",
+      );
+      assert(
+        !dialog().textContent?.includes("첫 중간 답변"),
+        "다른 대화의 스트림이 섞임",
+      );
+      select("첫 스트림")?.click();
+      await tick();
+      assert(
+        dialog().textContent?.includes("첫 중간 답변"),
+        "돌아온 대화의 스트림 누락",
+      );
+      parallelStreams.get("첫 스트림")?.({
+        type: "message",
+        id: "one",
+        text: " 추가",
+        replace: false,
+      });
+      await tick();
+      await tick();
+      assert(
+        dialog().textContent?.includes("첫 중간 답변 추가"),
+        "전환 후 스트림 업데이트 누락",
+      );
+      parallelStreams.get("첫 스트림")?.({
+        type: "result",
+        value: {
+          conversationId: "one",
+          answer: "첫 중간 답변 추가",
+          proposals: [],
+        },
+      });
+      parallelStreams.get("둘째 스트림")?.({
+        type: "result",
+        value: {
+          conversationId: "two",
+          answer: "둘째 중간 답변",
+          proposals: [],
+        },
+      });
+      await tick();
+      await tick();
+    } finally {
+      holdParallelStreams = false;
+      parallelStreams.clear();
+      endControlChat();
+    }
+  },
+);
+await check("백그라운드 변경 제안은 원래 대화에서 확인할 수 있다", async () => {
+  await openControlChat();
+  const writesBefore = writes.length;
+  try {
+    button("대화 시작").click();
+    holdParallel = true;
+    parallelProposal = true;
+    input().value = "변경안 요청";
+    dialog().querySelector("form")?.requestSubmit();
+    await tick();
+    button("대화 시작").click();
+    parallelReleases.get("변경안 요청")?.();
+    await tick();
+    await tick();
+    assert(
+      !dialog().querySelector(".command-proposal"),
+      "다른 대화에 변경안 노출",
+    );
+    const original = [
+      ...dialog().querySelectorAll<HTMLButtonElement>(
+        ".chat-conversation-open",
+      ),
+    ].find((item) => item.textContent?.includes("변경안 요청"));
+    original?.click();
+    assert(
+      dialog().querySelector(".command-proposal"),
+      "원래 대화의 변경안 유실",
+    );
+    assert(writes.length === writesBefore, "확인하지 않은 변경이 실행됨");
+  } finally {
+    holdParallel = false;
+    parallelProposal = false;
+    for (const release of parallelReleases.values()) release();
+    parallelReleases.clear();
+    endControlChat();
+  }
+});
+await check("여러 대화를 진행 중 전환하고 각각 답변을 보존한다", async () => {
+  await openControlChat();
+  try {
+    button("대화 시작").click();
+    holdParallel = true;
+    const before = assistantCalls;
+    input().value = "첫 동시 요청";
+    dialog().querySelector("form")?.requestSubmit();
+    await tick();
+    input().value = "첫 대화 초안";
+    button("대화 시작").click();
+    input().value = "둘째 동시 요청";
+    dialog().querySelector("form")?.requestSubmit();
+    await tick();
+    assert(
+      assistantCalls === before + 2,
+      "별도 대화 요청이 동시에 시작되지 않음",
+    );
+    const select = (name: string) =>
+      [
+        ...dialog().querySelectorAll<HTMLButtonElement>(
+          ".chat-conversation-open",
+        ),
+      ].find((item) => item.textContent?.includes(name));
+    assert(
+      select("첫 동시 요청")?.textContent?.includes("답변 중"),
+      `첫 대화 진행 상태 누락: ${[...dialog().querySelectorAll(".chat-conversation-open")].map((item) => item.textContent).join(" | ")}`,
+    );
+    parallelReleases.get("첫 동시 요청")?.();
+    await tick();
+    await tick();
+    assert(
+      !dialog().textContent?.includes("첫 동시 요청 응답"),
+      "다른 대화 답변이 현재 화면에 섞임",
+    );
+    assert(
+      select("첫 동시 요청")?.textContent?.includes("답변 완료"),
+      "백그라운드 완료 상태 누락",
+    );
+    select("첫 동시 요청")?.click();
+    assert(
+      input().value === "첫 대화 초안",
+      "대화 전환 시 작성 중인 초안 유실",
+    );
+    assert(
+      dialog().textContent?.includes("첫 동시 요청 응답"),
+      "첫 대화의 응답 누락",
+    );
+    select("둘째 동시 요청")?.click();
+    parallelReleases.get("둘째 동시 요청")?.();
+    await tick();
+    await tick();
+    assert(
+      dialog().textContent?.includes("둘째 동시 요청 응답"),
+      "둘째 대화의 응답 누락",
+    );
+  } finally {
+    holdParallel = false;
+    for (const release of parallelReleases.values()) release();
+    parallelReleases.clear();
+    endControlChat();
+  }
+});
 await check(
   "답변 중 요청은 대기열에 보관하고 완료 후 순서대로 실행한다",
   async () => {

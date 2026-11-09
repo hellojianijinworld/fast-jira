@@ -20,6 +20,7 @@ export function createChatSidebar(actions: {
       items: readonly Conversation[],
       selected: string,
       disabled: boolean,
+      states: ReadonlyMap<string, string> = new Map(),
     ) {
       create.disabled = disabled;
       list.replaceChildren(
@@ -28,7 +29,10 @@ export function createChatSidebar(actions: {
             open = element("button", "chat-conversation-open"),
             remove = iconButton("대화 삭제", "trash-2", { size: "sm" });
           open.type = "button";
-          open.disabled = remove.disabled = disabled;
+          open.disabled = disabled;
+          remove.disabled =
+            disabled ||
+            ["답변 중", "확인 필요"].includes(states.get(item.id) ?? "");
           open.setAttribute("aria-current", String(item.id === selected));
           open.append(
             element(
@@ -39,6 +43,22 @@ export function createChatSidebar(actions: {
             ),
             element("small", "", item.model),
           );
+          const state = states.get(item.id);
+          if (state) {
+            const indicator = element(
+              "small",
+              "chat-conversation-state",
+              state,
+            );
+            indicator.dataset.state =
+              state === "확인 필요"
+                ? "waiting"
+                : state === "요청 실패"
+                  ? "error"
+                  : "active";
+            indicator.setAttribute("role", "status");
+            open.append(indicator);
+          }
           open.title = new Date(item.updated).toLocaleString();
           open.addEventListener("click", () => actions.choose(item));
           remove.addEventListener("click", () => actions.remove(item.id));

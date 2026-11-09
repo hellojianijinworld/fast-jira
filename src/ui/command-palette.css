@@ -385,6 +385,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.chat-conversation-open .chat-conversation-state {
+  color: var(--blue);
+  font-weight: 600;
+}
+.chat-conversation-open .chat-conversation-state[data-state="error"] {
+  color: var(--error);
+}
 .chat-conversation > .tool-button {
   visibility: hidden;
   flex: none;
