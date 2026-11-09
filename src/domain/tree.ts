@@ -19,7 +19,7 @@ export function branchState(
   // 부모를 접으면 관심 범위가 끝난다. 다시 펼쳐도 이전 하위 펼침은 복원하지 않는다.
   return {
     collapsed: Boolean(
-      state?.collapsed || ancestorReset > (state?.openedAt ?? 0),
+      (state?.collapsed ?? true) || ancestorReset > (state?.openedAt ?? 0),
     ),
     childReset: Math.max(ancestorReset, state?.resetAt ?? 0),
   };

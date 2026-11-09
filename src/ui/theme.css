@@ -19,10 +19,9 @@
   --tree-indent: var(--space-4);
   --tree-gutter: var(--space-6);
   --tree-icon-size: 14px;
-  --child-row-gap: var(--space-1);
   --tree-row-gap: var(--space-1-5);
   --tree-child-gap: var(--space-2);
-  --tree-branch-gap: var(--space-3);
+  --tree-branch-gap: calc(var(--space-2-5) - 1px);
   --tree-project-gap: var(--space-6);
   --font-size-10: 10px;
   --font-size-11: 11px;

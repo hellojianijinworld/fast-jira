@@ -382,14 +382,24 @@ a[href]:not(.list-item):not(.button-link):active {
   gap: var(--tree-branch-gap);
   padding-inline-start: var(--tree-indent);
 }
+.project-tree > .tree-list {
+  --tree-row-gap: calc(var(--space-2) - 1px);
+}
 .project-tree:not(:empty) {
   margin-block-start: var(--tree-child-gap);
 }
 .tree-children {
   position: relative;
-  --tree-row-gap: var(--child-row-gap);
-  margin: var(--tree-child-gap) 0 0;
+  --tree-row-gap: calc(var(--space-1-5) - 1px);
+  margin: var(--tree-row-gap) 0 0;
   padding-inline-start: var(--tree-indent);
+  padding-inline-end: var(--space-1-5);
+}
+.tree-children .tree-children {
+  --tree-row-gap: var(--space-1);
+}
+.tree-children:not(.completed-grid) > li[data-subtask] + li[data-subtask] {
+  margin-block-start: calc(2px - var(--tree-row-gap));
 }
 .tree-children:has(> .child-page:only-child .page-sentinel) {
   margin-block-start: 0;

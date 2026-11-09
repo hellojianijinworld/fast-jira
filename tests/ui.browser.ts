@@ -2068,6 +2068,7 @@ await check(
     );
     list.items.set(parent.key, parent);
     list.childPage(parent.key).loaded = true;
+    list.toggle(parent.key, false);
     for (const child of children) list.items.set(child.key, child);
     list.matched.add(parent.key);
     for (const child of children) list.matched.add(child.key);
@@ -2702,6 +2703,8 @@ await check(
     }
     list.childPage("TEST-100").loaded = true;
     list.childPage("TEST-101").loaded = true;
+    list.toggle("TEST-100", false);
+    list.toggle("TEST-101", false);
     let selected = "";
     const tree = createTreeView(host, list, {
       catalog: () => ({
@@ -2915,6 +2918,7 @@ await check(
     list.items.set(parent.key, parent);
     list.direct.add(parent.key);
     list.matched.add(parent.key);
+    list.toggle(parent.key, false);
     const page = list.childPage(parent.key);
     page.loaded = true;
     page.restored = { count: 100, complete: true };
@@ -3012,6 +3016,7 @@ await check(
     list.items.set(parent.key, parent);
     list.direct.add(parent.key);
     list.matched.add(parent.key);
+    list.toggle(parent.key, false);
     const page = list.childPage(parent.key);
     page.loaded = true;
     page.restored = { count: 35, complete: true };
@@ -3535,6 +3540,16 @@ await check(
     });
     try {
       view.render();
+      assert(
+        host
+          .querySelector(`[data-issue-key="${parent.key}"]`)
+          ?.getAttribute("aria-expanded") === "false" &&
+          !host.querySelector(".tree-children"),
+        "저장된 펼침 상태가 없는 새 분기가 자동으로 열렸다",
+      );
+      list.toggle(parent.key, false);
+      view.render();
+      const openedState = list.tree.states.get(parent.key);
       const issues = host.querySelector<HTMLElement>(
         '.project-tree > [data-tree-key="issues"]',
       );
@@ -3642,7 +3657,8 @@ await check(
         closed?.click();
       }
       assert(
-        list.tree.states.size === 0,
+        list.tree.states.size === 1 &&
+          list.tree.states.get(parent.key) === openedState,
         "그룹 접기가 이슈 펼침 상태를 바꿨다",
       );
       toggle?.click();

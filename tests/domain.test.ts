@@ -72,6 +72,17 @@ test("상대 시각 경계와 마감일의 달력 날짜", () => {
   assert.equal(dateLabel("2026-10-02", true, now), "10월 2일 · 내일");
   assert.equal(dateLabel("2026-09-30", true, now), "9월 30일 · 어제 마감");
 });
+test("처음 본 분기는 접고 저장된 펼침과 접힘 상태는 유지한다", () => {
+  const states = new Map<string, CollapseState>([
+    ["saved-open", { collapsed: false, openedAt: 1 }],
+    ["saved-closed", { collapsed: true, resetAt: 2 }],
+  ]);
+  assert.equal(branchState(states, "new").collapsed, true);
+  assert.equal(branchState(states, "saved-open").collapsed, false);
+  assert.equal(branchState(states, "saved-closed").collapsed, true);
+  setBranchState(states, "new", false, 3);
+  assert.equal(branchState(states, "new").collapsed, false);
+});
 test("부모를 접었다 펼쳐도 이전 하위 펼침은 복원하지 않는다", () => {
   const states = new Map<string, CollapseState>();
   setBranchState(states, "child", false, 1);

@@ -251,6 +251,7 @@ export function createTreeView(
             (type) =>
               type.project === issue.project && type.id === issue.issueTypeId,
           )?.hierarchyLevel;
+        if (level === -1) item.dataset.subtask = "true";
         const compactCompleted =
           issue.statusCategory === "done" &&
           ((level === -1 &&

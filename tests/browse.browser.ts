@@ -18,6 +18,16 @@ function assert(value: unknown, message: string): asserts value {
 }
 const values = new Map<string, string>([
   [
+    "fastJira:tree:fixture.atlassian.net:my-account",
+    JSON.stringify({
+      version: 2,
+      states: [
+        ["TEST-1", { collapsed: false, openedAt: 1 }],
+        ["TEST-2", { collapsed: false, openedAt: 2 }],
+      ],
+    }),
+  ],
+  [
     "fastJira:filters:fixture.atlassian.net:my-account",
     JSON.stringify({ configured: true }),
   ],
