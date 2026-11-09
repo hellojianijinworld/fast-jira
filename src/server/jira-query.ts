@@ -182,8 +182,7 @@ export function createJiraQuery(
     maxResults: number,
     statusIds: readonly string[] = [],
   ): Promise<IssuePage> {
-    if (!validSort(sort) || pageToken.length > 1000)
-      throw invalid("정렬·페이지 조건이 올바르지 않습니다.");
+    if (!validSort(sort)) throw invalid("정렬 조건이 올바르지 않습니다.");
     if (conditions.includes("project is EMPTY"))
       return { issues: [], nextPageToken: null };
     const rules = sortRules(sort);

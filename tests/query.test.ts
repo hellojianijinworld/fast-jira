@@ -642,3 +642,38 @@ test("번호만 검색해도 전체 프로젝트의 이슈 키와 제목을 함�
   assert(conditions.includes("project is not EMPTY"));
   assert(conditions.includes('(key in (AA-866, BB-866) OR summary ~ "866")'));
 });
+
+for (const sort of ["recent", "due", "status,due"]) {
+  test(`${sort} 정렬은 긴 Jira 커서를 잘라내지 않고 다음 페이지를 조회한다`, async () => {
+    const token = "opaque+/=".repeat(180);
+    const { query, calls } = setup((url) =>
+      Response.json(
+        url.searchParams.has("nextPageToken")
+          ? { issues: [rawIssue("AA-2")] }
+          : { issues: [rawIssue("AA-1")], nextPageToken: token },
+      ),
+    );
+    const statuses = sort.startsWith("status") ? ["10"] : [];
+    const first = await query.sortedPage(
+      ["project = AA"],
+      sort,
+      "",
+      30,
+      statuses,
+    );
+    assert(first.nextPageToken);
+    assert(first.nextPageToken.length > 1000);
+    const second = await query.sortedPage(
+      ["project = AA"],
+      sort,
+      first.nextPageToken,
+      30,
+      statuses,
+    );
+    assert.deepEqual(
+      second.issues.map((issue) => issue.key),
+      ["AA-2"],
+    );
+    assert.equal(calls[1]?.searchParams.get("nextPageToken"), token);
+  });
+}
